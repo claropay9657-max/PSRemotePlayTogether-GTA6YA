@@ -13,6 +13,7 @@ Free and open source, for Windows, Linux and macOS. Powered by [GamerNova.net](h
 - **Shared play.** Everybody's controller is merged into the one Remote Play controller. Three ways to share it: everyone at once, one at a time (control passes to whoever is playing while the others rest), or only the host while guests watch.
 - **Any controller.** DualSense (with haptics and adaptive triggers when connected by cable), DualShock 4, Xbox and other controllers. Rumble, trigger effects and the light bar reach every player.
 - **Voice chat and webcams.** Everybody can talk to and see each other. Mute yourself, mute somebody just for you, switch the webcam on and off during play. The host can mute a guest for everyone or remove them.
+- **Text chat.** Write to everybody in the session while you play: clickable links with a preview, emoji, and new messages shown on the game picture and, if you like, in your OBS overlay.
 - **Controller only.** Sit next to each other, or watch the host's own stream: join without picture and sound and only send your controller.
 - **Everybody on the game picture.** Players, who is talking, webcams, each player's controller live and the controller the console gets, on top of the game while you play. Show what you want, drag every piece where you want it, and keep several arrangements as presets.
 - **Stream overlay for OBS.** The same for your viewers, as a browser source: who is playing, who is in control, every controller live, webcams, controller battery, and the conversation so it ends up in your stream. Transparent by default, arranged by dragging, with presets. Every player gets the overlay, not only the host.
@@ -67,6 +68,14 @@ The controller shortcut can be changed in **Settings → General → Stream Menu
 **Play Together → Voice & webcam** has the settings: take part in the voice chat, start muted, which webcam and how large its picture is. Microphone and speakers are the ones from the audio settings. During play, open the stream menu to mute yourself, switch voices or the webcam on and off, and click a player for more.
 
 You never hear your own voice in the app, only the others. Use headphones: without them the others hear themselves through your microphone.
+
+### Text chat
+
+Press **⌘T** (Ctrl+T on Windows and Linux), or choose **Chat** in the stream menu, which also shows how many messages you have not read yet. The chat opens beside the game and takes the keyboard while it is open; Escape gives it back to the game. Anybody who joins later sees the last 30 messages.
+
+- Links can be clicked. For the first link in your own message, your app looks at the page once and sends a small preview (title, site, picture) along, so your friends' apps never contact a site they did not choose. Switch this off under **Play Together → Voice & webcam**.
+- Emoji come from the picker, from shortcodes such as `:fire:`, `:gg:`, `:thumbsup:`, and from `:)`, `:D`, `<3`, `xD`.
+- New messages show on the game picture for a few seconds and, with **The chat, for the viewers**, in the OBS overlay (add `?chat=0` to the overlay address to hide it there).
 
 ### On the game picture
 

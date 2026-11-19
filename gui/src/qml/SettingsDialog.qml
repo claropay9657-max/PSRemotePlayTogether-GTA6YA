@@ -18,7 +18,7 @@ DialogView {
     property bool quitControllerMapping: true
     id: dialog
     title: qsTr("Settings")
-    header: qsTr("* Defaults in () to right of value or marked with (Default)")
+    header: qsTr("Changes are saved at once. The grey text after a setting is its default.")
     buttonVisible: false
     function flickContainsItem(flick, item) {
         let current = item;
@@ -165,13 +165,140 @@ DialogView {
     }
 
     Item {
-        TabBar {
-            id: bar
+        // The sections, down the left side; L1 / R1 on a controller go up and down
+        Rectangle {
+            id: sidebar
             anchors {
                 top: parent.top
                 left: parent.left
+                bottom: parent.bottom
+                margins: 14
+                topMargin: 10
+            }
+            width: 210
+            radius: 18
+            color: Qt.rgba(16 / 255, 14 / 255, 32 / 255, 0.72)
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.07)
+
+            Column {
+                anchors {
+                    fill: parent
+                    margins: 10
+                }
+                spacing: 4
+
+                Repeater {
+                    model: [
+                        { label: qsTr("General"), detail: qsTr("Disconnect, sleep, menu") },
+                        { label: qsTr("Video"), detail: qsTr("Decoder, renderer, window") },
+                        { label: qsTr("Stream"), detail: qsTr("Resolution, frame rate") },
+                        { label: qsTr("Audio & Wi-Fi"), detail: qsTr("Devices, buffers") },
+                        { label: qsTr("Consoles"), detail: qsTr("Registered and hidden") },
+                        { label: qsTr("Keyboard"), detail: qsTr("Keys for the controller") },
+                        { label: qsTr("Controllers"), detail: qsTr("Mapping, haptics, motion") },
+                        { label: qsTr("Remote"), detail: qsTr("PSN, outside your home") },
+                        { label: qsTr("Profiles"), detail: qsTr("Saved setting sets") }
+                    ]
+                    delegate: Rectangle {
+                        id: navItem
+                        required property var modelData
+                        required property int index
+                        readonly property bool current: bar.currentIndex === index
+                        width: parent.width
+                        height: 52
+                        radius: 12
+                        color: current ? Qt.rgba(140 / 255, 82 / 255, 1, 0.28)
+                             : navArea.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
+                        border.width: current ? 1 : 0
+                        border.color: Qt.rgba(140 / 255, 82 / 255, 1, 0.7)
+
+                        Rectangle {
+                            visible: navItem.current
+                            anchors {
+                                left: parent.left
+                                verticalCenter: parent.verticalCenter
+                                leftMargin: 4
+                            }
+                            width: 3
+                            height: 24
+                            radius: 1.5
+                            color: "#00f2ff"
+                        }
+
+                        Column {
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                verticalCenter: parent.verticalCenter
+                                leftMargin: 16
+                                rightMargin: 8
+                            }
+                            spacing: 1
+
+                            Label {
+                                width: parent.width
+                                elide: Text.ElideRight
+                                font.pixelSize: 15
+                                font.bold: true
+                                text: navItem.modelData.label
+                            }
+                            Label {
+                                width: parent.width
+                                elide: Text.ElideRight
+                                font.pixelSize: 11
+                                opacity: 0.5
+                                text: navItem.modelData.detail
+                            }
+                        }
+
+                        MouseArea {
+                            id: navArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: bar.currentIndex = navItem.index
+                        }
+                    }
+                }
+
+                Item { width: 1; height: 8 }
+
+                Row {
+                    visible: Chiaki.controllers.length > 0
+                    spacing: 6
+                    leftPadding: 8
+                    Image {
+                        width: 24
+                        height: 24
+                        sourceSize: Qt.size(width, height)
+                        source: "qrc:/icons/l1.svg"
+                    }
+                    Image {
+                        width: 24
+                        height: 24
+                        sourceSize: Qt.size(width, height)
+                        source: "qrc:/icons/r1.svg"
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        opacity: 0.55
+                        font.pixelSize: 12
+                        text: qsTr("change section")
+                    }
+                }
+            }
+        }
+
+        TabBar {
+            id: bar
+            // Keeps the current page; the sidebar above is what is shown
+            visible: false
+            height: 0
+            anchors {
+                top: parent.top
+                left: sidebar.right
                 right: parent.right
-                topMargin: 5
             }
             TabButton {
                 id: general
@@ -420,11 +547,11 @@ DialogView {
             }
         }
 
-        // The page of the selected tab sits on a glass panel
+        // The page of the selected section sits on a glass panel
         Rectangle {
             anchors {
-                top: bar.bottom
-                left: parent.left
+                top: parent.top
+                left: sidebar.right
                 right: parent.right
                 bottom: parent.bottom
                 margins: 14
@@ -438,10 +565,13 @@ DialogView {
 
         StackLayout {
             anchors {
-                top: bar.bottom
-                left: parent.left
+                top: parent.top
+                left: sidebar.right
                 right: parent.right
                 bottom: parent.bottom
+                topMargin: 10
+                leftMargin: 14
+                rightMargin: 14
             }
             currentIndex: bar.currentIndex
             onCurrentIndexChanged: {
@@ -494,7 +624,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Ask)")
                         }
 
@@ -511,7 +643,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Do Nothing)")
                         }
 
@@ -527,7 +661,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Checked)")
                         }
 
@@ -550,7 +686,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Unchecked)")
                             visible: (typeof Chiaki.settings.steamDeckHaptics !== "undefined")
                         }
@@ -574,7 +712,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Unchecked)")
                             visible: typeof Chiaki.settings.verticalDeck !== "undefined"
                         }
@@ -592,7 +732,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Audio and Video Enabled)")
                         }
 
@@ -634,7 +776,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Unchecked)")
                         }
 
@@ -659,7 +803,9 @@ DialogView {
                         }
 
                             Label {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                                opacity: 0.4
+                                font.pixelSize: 12
                                 text: qsTr("(Checked)")
                             }
                         }
@@ -749,7 +895,9 @@ DialogView {
                         }
 
                             Label {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                                opacity: 0.4
+                                font.pixelSize: 12
                                 text: qsTr("(L1+R1+L3+R3)")
                             }
                         }
@@ -821,7 +969,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(Auto)")
                     }
 
@@ -840,7 +990,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(Fullscreen)")
                     }
 
@@ -871,7 +1023,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(1920)")
                         visible: Chiaki.settings.windowType == 1
                     }
@@ -903,7 +1057,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(1080)")
                         visible: Chiaki.settings.windowType == 1
                     }
@@ -919,7 +1075,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(Unchecked)")
                     }
 
@@ -933,7 +1091,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(Checked)")
                     }
 
@@ -952,7 +1112,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(Unchecked)")
                     }
 
@@ -979,7 +1141,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(High Quality)")
                     }
 
@@ -1003,7 +1167,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(Direct Mapping)")
                     }
 
@@ -1021,7 +1187,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(None)")
                     }
 
@@ -1044,7 +1212,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(Vulkan)")
                     }
 
@@ -1061,7 +1231,9 @@ DialogView {
                     }
 
                     Label {
-                        Layout.alignment: Qt.AlignRight
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        opacity: 0.4
+                        font.pixelSize: 12
                         text: qsTr("(Unchecked)")
                         visible: Chiaki.settings.rendererBackend == 0
                     }
@@ -1606,7 +1778,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Auto)")
                         }
 
@@ -1630,7 +1804,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Auto)")
                         }
 
@@ -1662,7 +1838,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(50 ms)")
                         }
 
@@ -1692,7 +1870,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(100%)")
                         }
 
@@ -1707,7 +1887,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Unchecked)")
                         }
 
@@ -1725,7 +1907,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Unchecked)")
                             visible: typeof Chiaki.settings.speechProcessing !== "undefined"
                         }
@@ -1756,7 +1940,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(6 dB)")
                             visible: if (typeof Chiaki.settings.speechProcessing !== "undefined") {Chiaki.settings.speechProcessing} else {false}
                         }
@@ -1787,7 +1973,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(30 dB)")
                             visible: if (typeof Chiaki.settings.speechProcessing !== "undefined") {Chiaki.settings.speechProcessing} else {false}
                         }
@@ -1816,7 +2004,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(3%)")
                         }
 
@@ -1844,7 +2034,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(5%)")
                         }
 
@@ -1859,7 +2051,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Unchecked)")
                         }
 
@@ -1875,7 +2069,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Unchecked)")
                         }
                     }
@@ -2613,7 +2809,9 @@ DialogView {
                             }
 
                             Label {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                                opacity: 0.4
+                                font.pixelSize: 12
                                 text: qsTr("(Checked)")
                             }
                         }
@@ -2641,7 +2839,9 @@ DialogView {
                             }
 
                             Label {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                                opacity: 0.4
+                                font.pixelSize: 12
                                 text: qsTr("(Checked)")
                             }
                         }
@@ -2775,7 +2975,9 @@ DialogView {
                             }
 
                             Label {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                                opacity: 0.4
+                                font.pixelSize: 12
                                 text: qsTr("(L1+R1+dpad Up)")
                             }
                         }
@@ -2805,7 +3007,9 @@ DialogView {
                             }
 
                             Label {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                                opacity: 0.4
+                                font.pixelSize: 12
                                 text: qsTr("(Unchecked)")
                             }
                         }
@@ -2826,7 +3030,9 @@ DialogView {
                             }
 
                             Label {
-                                Layout.alignment: Qt.AlignRight
+                                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                                opacity: 0.4
+                                font.pixelSize: 12
                                 text: qsTr("(Normal)")
                             }
                         }
@@ -2949,7 +3155,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(Unchecked)")
                         }
 
@@ -3009,7 +3217,9 @@ DialogView {
                         }
 
                         Label {
-                            Layout.alignment: Qt.AlignRight
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            opacity: 0.4
+                            font.pixelSize: 12
                             text: qsTr("(250)")
                             Layout.leftMargin: 100
                         }
