@@ -21,6 +21,8 @@ FocusScope {
     signal displayPanelRequested()
     signal mainViewRequested()
     signal chatRequested()
+    /** Drag the things on the game picture into place. */
+    signal arrangeRequested()
 
     readonly property color accent: "#8c52ff"
     readonly property color pink: "#f0469b"
@@ -32,8 +34,16 @@ FocusScope {
     readonly property var session: Chiaki.session
     readonly property bool connected: !!session && session.connected
     readonly property bool guest: !!session && session.coplayGuest
+    readonly property bool together: !!session && session.coplayActive
     /** Where the up key goes from the bottom row. */
-    readonly property Item upFromControls: coplayBar.visible ? coplayBar.firstItem : resumeButton
+    readonly property Item upFromControls: menu.together ? coplayBar.firstItem : resumeButton
+    /**
+     * How tall the menu wants to be. The controls at the bottom take a second row when the
+     * window is too narrow for one, and the menu grows with them instead of cutting them off.
+     */
+    readonly property int wantedHeight: Math.ceil(sheetColumn.implicitHeight)
+        + sheet.anchors.topMargin + sheet.anchors.bottomMargin
+        + sheetColumn.anchors.topMargin + sheetColumn.anchors.bottomMargin
 
     Keys.onEscapePressed: closeRequested()
     Keys.onMenuPressed: closeRequested()
@@ -212,6 +222,7 @@ FocusScope {
         }
 
         ColumnLayout {
+            id: sheetColumn
             anchors {
                 fill: parent
                 leftMargin: 18
@@ -334,37 +345,49 @@ FocusScope {
             // ---------------------------------------- Play Together
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 144
-                visible: coplayBar.visible
+                // Without Play Together in this session there is only a line of text in it
+                Layout.preferredHeight: menu.together ? 166 : 84
+                // Not coplayBar.visible: that is false while this is hidden, and it would never show again
+                visible: !!menu.session
                 radius: 14
                 color: Qt.rgba(1, 1, 1, 0.045)
                 border.color: Qt.rgba(1, 1, 1, 0.09)
+
+                Label {
+                    id: togetherTitle
+                    x: 14
+                    y: 10
+                    // Says whose microphone this is: the one below, under Sound, talks to the console
+                    text: menu.together ? qsTr("PLAY TOGETHER  ·  VOICE AND WEBCAM WITH YOUR FRIENDS") : qsTr("PLAY TOGETHER")
+                    font.pixelSize: 11
+                    font.bold: true
+                    font.letterSpacing: 1.4
+                    opacity: 0.55
+                }
 
                 PlayTogetherBar {
                     id: coplayBar
                     anchors {
                         fill: parent
                         margins: 10
+                        topMargin: 32
                     }
                     upItem: resumeButton
                     downItem: volDown
                     onCloseRequested: menu.closeRequested()
-                    onDisplayRequested: menu.displayPanelRequested()
                 }
             }
 
-            // ---------------------------------------- sound, picture, quality
-            Flickable {
+            // ---------------------------------------- sound, picture, quality, overlays
+            // One row in a wide window, two in a narrow one: see wantedHeight
+            Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: controls.implicitHeight
-                contentWidth: controls.implicitWidth
-                contentHeight: controls.implicitHeight
-                flickableDirection: Flickable.HorizontalFlick
-                boundsBehavior: Flickable.StopAtBounds
-                clip: true
+                implicitHeight: controls.implicitHeight
 
-                RowLayout {
+                Flow {
                     id: controls
+                    width: parent.width
                     spacing: 12
 
                     Card {
@@ -379,6 +402,7 @@ FocusScope {
                         }
 
                         Bar {
+                            Layout.preferredWidth: 110
                             from: 0
                             to: 128
                             stepSize: 1
@@ -508,7 +532,7 @@ FocusScope {
 
                         ComboBox {
                             id: qualityCombo
-                            Layout.preferredWidth: 230
+                            Layout.preferredWidth: 190
                             Layout.preferredHeight: 40
                             font.pixelSize: 14
                             // VideoPreset: Fast (not offered), Default, HighQuality, HighQualitySpatial,
@@ -531,7 +555,7 @@ FocusScope {
                             onClicked: menu.displaySettingsRequested()
                             KeyNavigation.up: menu.upFromControls
                             KeyNavigation.left: qualityCombo
-                            KeyNavigation.right: placeboButton.visible ? placeboButton : null
+                            KeyNavigation.right: placeboButton.visible ? placeboButton : hudPresetCombo
                         }
 
                         MenuButton {
@@ -541,6 +565,43 @@ FocusScope {
                             onClicked: menu.placeboSettingsRequested()
                             KeyNavigation.up: menu.upFromControls
                             KeyNavigation.left: displaySettingsButton
+                            KeyNavigation.right: hudPresetCombo
+                        }
+                    }
+
+                    Card {
+                        title: qsTr("OVERLAYS")
+
+                        // What is shown on the game picture: switch between the saved arrangements
+                        ComboBox {
+                            id: hudPresetCombo
+                            Layout.preferredWidth: 230
+                            Layout.preferredHeight: 40
+                            font.pixelSize: 14
+                            model: Chiaki.hud ? Chiaki.hud.presets : []
+                            currentIndex: Chiaki.hud ? Chiaki.hud.active : 0
+                            onActivated: (index) => Chiaki.hud.active = index
+                            KeyNavigation.up: menu.upFromControls
+                            KeyNavigation.left: placeboButton.visible ? placeboButton : displaySettingsButton
+                            KeyNavigation.right: arrangeButton
+                        }
+
+                        MenuButton {
+                            id: arrangeButton
+                            text: qsTr("Arrange")
+                            onClicked: menu.arrangeRequested()
+                            KeyNavigation.up: menu.upFromControls
+                            KeyNavigation.left: hudPresetCombo
+                            KeyNavigation.right: overlayMoreButton
+                        }
+
+                        MenuButton {
+                            id: overlayMoreButton
+                            // What is shown at all, on the game picture and in OBS
+                            text: qsTr("Options…")
+                            onClicked: menu.displayPanelRequested()
+                            KeyNavigation.up: menu.upFromControls
+                            KeyNavigation.left: arrangeButton
                         }
                     }
                 }

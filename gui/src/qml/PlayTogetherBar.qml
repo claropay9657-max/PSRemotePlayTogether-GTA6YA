@@ -16,10 +16,8 @@ Item {
     /** Where the up key leaves the strip to. */
     property Item upItem: null
     /** Where a key press from outside should enter the strip. */
-    readonly property Item firstItem: !active ? displayButton : (voiceOn ? micButton : voiceButton)
+    readonly property Item firstItem: voiceOn ? micButton : voiceButton
     signal closeRequested()
-    /** Open the display options (what is shown on the game picture and in OBS). */
-    signal displayRequested()
 
     readonly property var session: Chiaki.session
     readonly property bool active: !!session && session.coplayActive
@@ -140,16 +138,7 @@ Item {
                     text: qsTr("Leave voice chat")
                     onClicked: bar.session.coplayVoiceOn = false
                     KeyNavigation.left: camButton
-                    KeyNavigation.right: displayButton
-                }
-
-                BarButton {
-                    id: displayButton
-                    text: qsTr("Overlays…")
-                    tint: Qt.rgba(140 / 255, 82 / 255, 255 / 255, 0.55)
-                    onClicked: bar.displayRequested()
-                    KeyNavigation.left: bar.voiceOn ? leaveVoiceButton : camButton
-                    KeyNavigation.right: bar.hosting ? modeCombo : displayButton
+                    KeyNavigation.right: bar.hosting ? modeCombo : leaveVoiceButton
                 }
             }
 
@@ -222,9 +211,11 @@ Item {
 
             Label {
                 visible: !bar.hosting
+                Layout.maximumWidth: bar.active ? 440 : 760
+                wrapMode: Text.WordWrap
                 opacity: 0.6
                 font.pixelSize: 13
-                text: !bar.active ? qsTr("Playing alone. Overlays… sets what is shown on the game picture and in OBS.")
+                text: !bar.active ? qsTr("Off in this session, so there is nobody to talk to. To play, talk and use the webcam with friends, switch on \"Let friends join my sessions\" under Play Together before you connect to the console.")
                       : (!bar.session.coplayVideoEnabled ? qsTr("Controller only: no picture from the console")
                                                          : qsTr("Click a player for more"))
             }

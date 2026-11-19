@@ -18,7 +18,11 @@ Window {
     signal mainViewRequested()
     signal displayPanelRequested()
     signal chatRequested()
+    signal arrangeRequested()
     signal closeAnimationFinished()
+
+    /** See StreamMenuContent.wantedHeight. */
+    readonly property int wantedHeight: content.wantedHeight
 
     visible: open || closing
     flags: Qt.Tool | Qt.FramelessWindowHint
@@ -84,5 +88,6 @@ Window {
         onDisplayPanelRequested: streamMenuWindow.displayPanelRequested()
         onMainViewRequested: streamMenuWindow.mainViewRequested()
         onChatRequested: streamMenuWindow.chatRequested()
+        onArrangeRequested: streamMenuWindow.arrangeRequested()
     }
 }

@@ -16,8 +16,22 @@ Item {
     property bool sessionLoading: true
     property list<Item> restoreFocusItems
     readonly property bool useSeparateMenuWindow: Chiaki.window.runtimeRendererBackend === 1
-    // Taller while a session is shared: the players and their webcams sit above the usual controls
-    readonly property int streamMenuHeight: Chiaki.session ? 350 : 200
+    // As tall as the menu needs: more with a session (the Play Together card), and more
+    // again in a narrow window, where its controls take a second row
+    readonly property int menuWantedHeight: useSeparateMenuWindow ? separateMenuWindow.wantedHeight
+        : (inlineMenuContent.item ? inlineMenuContent.item.wantedHeight : 0)
+    // Set a moment after the menu has measured itself, not bound to it: the menu's own
+    // window takes its height and place from this
+    property int streamMenuHeight: 350
+    onMenuWantedHeightChanged: Qt.callLater(updateMenuHeight)
+
+    function updateMenuHeight() {
+        const h = Math.max(200, menuWantedHeight);
+        if (h === streamMenuHeight)
+            return;
+        streamMenuHeight = h;
+        updateSeparateMenuGeometry();
+    }
     readonly property bool streamStatsVisible: Chiaki.settings.showStreamStats && Chiaki.session && !(menuController.open || menuController.closing) && !sessionLoading && !sessionError && !(Chiaki.settings.audioVideoDisabled & 0x02)
     property int separateMenuX: 0
     property int separateMenuY: 0
@@ -98,6 +112,7 @@ Item {
     StackView.onDeactivated: Chiaki.window.keepVideo = false
 
     Component.onCompleted: {
+        updateMenuHeight();
         updateSeparateMenuGeometry();
         updateOverlayInteractionActive();
         Chiaki.window.setStatsOverlayActive(streamStatsVisible);
@@ -482,6 +497,10 @@ Item {
                 menuController.close();
                 chatPanel.open = true;
             }
+            onArrangeRequested: {
+                menuController.close();
+                streamHud.editing = true;
+            }
             onMainViewRequested: root.showMainView()
         }
     }
@@ -646,6 +665,10 @@ Item {
         onChatRequested: {
             menuController.close();
             chatPanel.open = true;
+        }
+        onArrangeRequested: {
+            menuController.close();
+            streamHud.editing = true;
         }
         onCloseAnimationFinished: {
             if (view.hostWindow)
