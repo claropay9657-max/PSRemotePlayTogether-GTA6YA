@@ -30,13 +30,46 @@ DialogView {
             }
         }
 
+        // Keyboard and controller: whatever gets the focus is scrolled into view
+        Connections {
+            target: dialog.Window.window
+            function onActiveFocusItemChanged() {
+                const item = dialog.Window.window ? dialog.Window.window.activeFocusItem : null;
+                if (!item)
+                    return;
+                let inside = false;
+                for (let p = item; p; p = p.parent) {
+                    if (p === flick.contentItem) {
+                        inside = true;
+                        break;
+                    }
+                }
+                if (!inside)
+                    return;
+                const top = item.mapToItem(flick.contentItem, 0, 0).y - 40;
+                const bottom = top + item.height + 80;
+                const max = Math.max(0, flick.contentHeight - flick.height);
+                if (top < flick.contentY)
+                    flick.contentY = Math.max(0, top);
+                else if (bottom > flick.contentY + flick.height)
+                    flick.contentY = Math.min(max, bottom - flick.height);
+            }
+        }
+
         Flickable {
             id: flick
             anchors.fill: parent
             contentWidth: width
             contentHeight: column.implicitHeight + 60
             clip: true
-            ScrollBar.vertical: ScrollBar { }
+            flickableDirection: Flickable.VerticalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            // Always there while the page is longer than the window: shows that there is
+            // more below, and can be dragged
+            ScrollBar.vertical: ScrollBar {
+                policy: flick.contentHeight > flick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                width: 12
+            }
 
             ColumnLayout {
                 id: column

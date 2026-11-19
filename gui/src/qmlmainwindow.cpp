@@ -7734,6 +7734,13 @@ bool QmlMainWindow::event(QEvent *event)
         }
         QGuiApplication::sendEvent(quick_window, event);
         break;
+    case QEvent::Wheel:
+        // Mouse wheel and trackpad scrolling for the menus and dialogs. While a game is
+        // streaming without a menu open there is nothing to scroll.
+        if (session && !grab_input)
+            return true;
+        QGuiApplication::sendEvent(quick_window, event);
+        return true;
     case QEvent::MouseButtonDblClick:
         if(!settings->GetFullscreenDoubleClickEnabled())
             break;
