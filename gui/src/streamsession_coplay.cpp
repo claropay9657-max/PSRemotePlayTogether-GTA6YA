@@ -26,6 +26,7 @@
 #include <QJsonArray>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QPointer>
 #include <QTimer>
 #include <QVariantMap>
 
@@ -1024,10 +1025,16 @@ QJsonObject StreamSession::OverlayState()
 #ifdef Q_OS_MACOS
 static void CoPlayMicPermissionCb(Authorization authorization, void *user)
 {
-	// Arrives on whatever thread the system likes
-	auto self = static_cast<StreamSession *>(user);
+	// Arrives on whatever thread the system likes, and as late as the user answers the
+	// system's question: the session may be gone by then, hence the guarded pointer,
+	// which is only looked at on the session's own thread
+	auto guard = static_cast<QPointer<StreamSession> *>(user);
 	bool granted = authorization == AUTHORIZED;
-	QMetaObject::invokeMethod(self, [self, granted] { self->CoPlayMicPermissionResult(granted); }, Qt::QueuedConnection);
+	QMetaObject::invokeMethod(qApp, [guard, granted] {
+		if(*guard)
+			(*guard)->CoPlayMicPermissionResult(granted);
+		delete guard;
+	}, Qt::QueuedConnection);
 }
 #endif
 
@@ -1143,7 +1150,7 @@ void StreamSession::SetCoPlayVoiceOn(bool on)
 	if(!coplay->mic_permission_pending)
 	{
 		coplay->mic_permission_pending = true;
-		macMicPermission(CoPlayMicPermissionCb, this);
+		macMicPermission(CoPlayMicPermissionCb, new QPointer<StreamSession>(this));
 	}
 #else
 	CoPlayMicPermissionResult(true);
