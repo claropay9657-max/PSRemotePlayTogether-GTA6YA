@@ -37,7 +37,7 @@ rm -rf dist/"$PACKAGE"
 mkdir -p dist
 python3 scripts/ci/deploy-windows.py \
 	--root "$PSRPT_WIN_ROOT" \
-	--exe "$BUILD_DIR/gui/chiaki.exe" --exe-name "$PACKAGE.exe" \
+	--exe "$BUILD_DIR/gui/$PACKAGE.exe" \
 	--search-dir "$BUILD_DIR/third-party/cpp-steam-tools" \
 	--qml-dir gui/src/qml \
 	--out "dist/$PACKAGE"

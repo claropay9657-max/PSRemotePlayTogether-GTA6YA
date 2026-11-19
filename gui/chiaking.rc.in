@@ -27,7 +27,7 @@ BEGIN
             VALUE "FileVersion", VER_FILEVERSION_STR
             VALUE "InternalName", "PSRemotePlayTogether"
             VALUE "LegalCopyright", "AGPLv3. GamerNova.net; chiaki-ng by Street Pea; Chiaki by Florian Markl"
-            VALUE "OriginalFilename", "chiaki.exe"
+            VALUE "OriginalFilename", "PSRemotePlayTogether.exe"
             VALUE "ProductName", "PSRemotePlayTogether"
             VALUE "ProductVersion", VER_PRODUCTVERSION_STR
         END

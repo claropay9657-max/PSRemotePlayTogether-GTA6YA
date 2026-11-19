@@ -1,7 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=chiaki-ng
-Comment=PlayStation Remote Play Client
-Exec=chiaki
+Name=PSRemotePlayTogether
+Comment=Play together on one PlayStation: shared Remote Play
+Exec=PSRemotePlayTogether
 Icon=chiaking
 Categories=Game;Network;RemoteAccess;
+StartupWMClass=PSRemotePlayTogether

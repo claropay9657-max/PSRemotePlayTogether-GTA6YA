@@ -51,6 +51,8 @@ Open **Play Together**, paste the invite and press **Join**. Or from the command
 PSRemotePlayTogether --name Alex join "psrpt://host.example.org:9410/…"
 ```
 
+`PSRemotePlayTogether` is the program in the download: `PSRemotePlayTogether.exe` in the Windows zip, the `.AppImage` file itself on Linux, and `PSRemotePlayTogether.app/Contents/MacOS/PSRemotePlayTogether` on macOS.
+
 Add `--controller-only` to join without picture and sound.
 
 ### Voice chat and webcam
@@ -101,6 +103,8 @@ cmake -S coplay -B build-coplay && cmake --build build-coplay && build-coplay/co
 ```
 
 For Linux and Windows see the chiaki-ng build instructions; the dependencies are the same, plus Qt Multimedia for webcam capture (optional).
+
+The downloads (Linux AppImage, Windows zip, macOS dmg) are built by the pipelines in `.forgejo/workflows/`. [docs/releasing.md](docs/releasing.md) describes them, how to publish a release, and how to run the same builds on your own machine with Docker.
 
 ### Trying it without a console
 

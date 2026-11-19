@@ -5,8 +5,8 @@ Does on Linux what windeployqt does on Windows (it only exists as a Windows
 program): copies the Qt plugins and QML modules the app uses, then follows the
 import tables of every copied binary and adds the DLLs they name.
 
-    deploy-windows.py --root /opt/psrpt-win --exe build/gui/chiaki.exe \
-        --exe-name PSRemotePlayTogether.exe --search-dir build/third-party/cpp-steam-tools \
+    deploy-windows.py --root /opt/psrpt-win --exe build/gui/PSRemotePlayTogether.exe \
+        --search-dir build/third-party/cpp-steam-tools \
         --qml-dir gui/src/qml --out dist/PSRemotePlayTogether
 """
 

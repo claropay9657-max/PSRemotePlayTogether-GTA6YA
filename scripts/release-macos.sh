@@ -128,7 +128,7 @@ STAGE="$BUILD_DIR/stage"
 APP="$STAGE/$APP_NAME.app"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-cp -a "$BUILD_DIR/gui/chiaki.app" "$APP"
+cp -a "$BUILD_DIR/gui/$APP_NAME.app" "$APP"
 
 MACDEPLOYQT="$(command -v macdeployqt || true)"
 if [ -z "$MACDEPLOYQT" ]; then
@@ -175,14 +175,14 @@ fi
 # SDL2 here is sdl2-compat, which opens SDL3 by name at run time: nothing links
 # against SDL3, so macdeployqt doesn't see it. Put both next to the executable.
 MACOS_DIR="$APP/Contents/MacOS"
-SDL2_REF="$(otool -L "$MACOS_DIR/chiaki" | awk '/libSDL2/ { print $1; exit }')"
+SDL2_REF="$(otool -L "$MACOS_DIR/$APP_NAME" | awk '/libSDL2/ { print $1; exit }')"
 cp -L "$BP/lib/libSDL3.dylib" "$MACOS_DIR/libSDL3.dylib"
 cp -L "$BP/lib/libSDL2-2.0.0.dylib" "$MACOS_DIR/libSDL2-2.0.0.dylib"
 chmod u+w "$MACOS_DIR/libSDL3.dylib" "$MACOS_DIR/libSDL2-2.0.0.dylib"
 install_name_tool -id @executable_path/libSDL3.dylib "$MACOS_DIR/libSDL3.dylib"
 install_name_tool -id @executable_path/libSDL2-2.0.0.dylib "$MACOS_DIR/libSDL2-2.0.0.dylib"
 if [ -n "$SDL2_REF" ]; then
-	install_name_tool -change "$SDL2_REF" @executable_path/libSDL2-2.0.0.dylib "$MACOS_DIR/chiaki"
+	install_name_tool -change "$SDL2_REF" @executable_path/libSDL2-2.0.0.dylib "$MACOS_DIR/$APP_NAME"
 fi
 rm -f "$APP"/Contents/Frameworks/libSDL2*.dylib
 ln -sfn libvulkan.1.dylib "$APP/Contents/Frameworks/vulkan"
@@ -201,7 +201,7 @@ codesign --force --entitlements gui/entitlements.xml --deep --sign - "$APP"
 
 echo "== Checking that the packaged app starts"
 # "list" prints the registered consoles and exits; every bundled library has to load for that
-"$APP/Contents/MacOS/chiaki" list
+"$APP/Contents/MacOS/$APP_NAME" list
 
 DMG="dist/$APP_NAME-$VERSION-macos-$ARCH.dmg"
 rm -f "$DMG"

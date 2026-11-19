@@ -153,7 +153,7 @@ int real_main(int argc, char *argv[])
 		QGuiApplication::setDesktopFileName(qEnvironmentVariable("FLATPAK_ID"));
 	else
 #endif
-		QGuiApplication::setDesktopFileName("chiaki-ng");
+		QGuiApplication::setDesktopFileName("chiaking");
 
 	qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu");
 #if defined(Q_OS_WIN)
