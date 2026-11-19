@@ -30,6 +30,31 @@ Item {
     visible: !!session
     implicitHeight: 120
 
+    // The invites of the running session: one per way a friend can reach this computer
+    readonly property string inviteLan: hosting ? (Chiaki.settings.coplayInviteLan || "") : ""
+    readonly property string invitePublic: hosting ? (Chiaki.settings.coplayInvitePublic || "") : ""
+    readonly property string inviteIPv6: hosting ? (Chiaki.settings.coplayInviteIPv6 || "") : ""
+
+    // Sharing has started: now the public address is worth asking for
+    onHostingChanged: {
+        if (hosting && Chiaki.settings.coplayLookupPublicAddress && (Chiaki.settings.coplayPublicLookupState || 0) === 0)
+            Chiaki.settings.coplayLookupPublicAddress();
+    }
+
+    // Copies any text: a text item is the one thing in QML that reaches the clipboard
+    TextEdit {
+        id: clipboard
+        visible: false
+    }
+
+    function copyText(text) {
+        clipboard.text = text;
+        clipboard.selectAll();
+        clipboard.copy();
+        clipboard.text = "";
+        inviteCopied.restart();
+    }
+
     readonly property color accent: "#8c52ff"
     readonly property color cyan: "#00f2ff"
     readonly property color green: "#34d399"
@@ -150,13 +175,43 @@ Item {
                     id: inviteButton
                     text: inviteCopied.running ? qsTr("Copied") : qsTr("Copy invite")
                     onClicked: {
-                        bar.session.coplayCopyInvite();
-                        inviteCopied.restart();
+                        // One invite: copy it. Several: ask which friend it is for.
+                        if (bar.invitePublic.length === 0 && bar.inviteIPv6.length === 0) {
+                            bar.session.coplayCopyInvite();
+                            inviteCopied.restart();
+                        } else {
+                            inviteMenu.popup();
+                        }
                     }
                     KeyNavigation.left: modeCombo
                     Timer {
                         id: inviteCopied
                         interval: 1500
+                    }
+
+                    Menu {
+                        id: inviteMenu
+
+                        MenuItem {
+                            visible: bar.inviteLan.length > 0
+                            height: visible ? implicitHeight : 0
+                            text: qsTr("For a friend in the same network")
+                            onTriggered: bar.copyText(bar.inviteLan)
+                        }
+
+                        MenuItem {
+                            visible: bar.invitePublic.length > 0
+                            height: visible ? implicitHeight : 0
+                            text: qsTr("For a friend over the internet")
+                            onTriggered: bar.copyText(bar.invitePublic)
+                        }
+
+                        MenuItem {
+                            visible: bar.inviteIPv6.length > 0
+                            height: visible ? implicitHeight : 0
+                            text: qsTr("For a friend over the internet, IPv6")
+                            onTriggered: bar.copyText(bar.inviteIPv6)
+                        }
                     }
                 }
             }
