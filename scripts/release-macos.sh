@@ -5,8 +5,9 @@
 #   scripts/release-macos.sh --upload    ... and attach it to the Forgejo release of the tag
 #
 # Needs a Mac with Homebrew and:
-#   brew install cmake ninja pkgconf nasm qtbase qtdeclarative qtsvg ffmpeg libplacebo \
+#   brew install cmake ninja pkgconf nasm qtbase qtdeclarative qtsvg qtmultimedia ffmpeg libplacebo \
 #       sdl2-compat opus openssl@3 protobuf@29 speexdsp json-c miniupnpc libevent
+# (qtmultimedia is optional: without it the app has no webcam switch)
 #
 # macOS can't be built on the Linux CI runner, so this is run by hand on a Mac
 # (or by the optional macOS job, see docs/releasing.md).

@@ -61,7 +61,7 @@ are two ways to get the `.dmg`.
 On a Mac with [Homebrew](https://brew.sh):
 
 ```bash
-brew install cmake ninja pkgconf nasm qtbase qtdeclarative qtsvg ffmpeg libplacebo sdl2-compat opus openssl@3 protobuf@29 speexdsp json-c miniupnpc libevent
+brew install cmake ninja pkgconf nasm qtbase qtdeclarative qtsvg qtmultimedia ffmpeg libplacebo sdl2-compat opus openssl@3 protobuf@29 speexdsp json-c miniupnpc libevent
 git fetch --tags && git checkout v1.0.0
 git submodule update --init --recursive test/munit third-party
 scripts/release-macos.sh
@@ -153,14 +153,25 @@ FFmpeg). The MSYS2 packages are whatever is current when the job runs.
 There is no Windows installer yet, only the portable zip. The app is not
 code-signed, so Windows SmartScreen will ask before the first start.
 
-## Not in the Linux and macOS builds
+## Webcam capture per platform
 
-- **Webcam capture on Linux.** It needs Qt Multimedia, which the Linux build
-  image doesn't contain. Adding it would make the AppImage depend on
-  PulseAudio's client library for all of its sound, so it is left out until
-  that has been tried on real Linux desktops. The app builds without it (the
-  webcam switch is then missing; other players' webcams are still shown). The
-  Windows build includes Qt Multimedia.
+Sending your own webcam needs Qt Multimedia in the build. Showing the other
+players' webcams, and voice chat, work everywhere.
+
+| Package | Qt Multimedia | Own webcam |
+| --- | --- | --- |
+| Windows zip | yes (camera through Windows Media Foundation) | yes |
+| macOS dmg | yes (Homebrew's `qtmultimedia`, if installed on the build Mac) | yes |
+| Linux AppImage | no | no |
+
+The Linux build image doesn't contain Qt Multimedia. Adding it means
+installing the module into the image's Qt at build time, leaving out its
+GStreamer plugin (the image lacks the GStreamer libraries it needs), and
+either bundling PulseAudio's client library or requiring it on every system,
+because Qt Multimedia links against it and the app's own sound would then go
+through the same copy. That has to be tried on real Linux desktops first, so
+it is left out for now; the app builds without it and simply has no webcam
+switch.
 
 ## Licence
 
