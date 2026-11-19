@@ -41,7 +41,7 @@ jobs:
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')"
           git -c "http.extraHeader=Authorization: Basic $auth" fetch -q --depth 1 origin "$GITHUB_SHA"
-          git checkout -q FETCH_HEAD
+          git checkout -q -f FETCH_HEAD
           git submodule update -q --init --recursive --depth 1 \
             test/munit third-party/nanopb third-party/jerasure third-party/gf-complete \
             third-party/curl third-party/cpp-steam-tools
@@ -90,7 +90,7 @@ jobs:
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')"
           git -c "http.extraHeader=Authorization: Basic $auth" fetch -q --depth 1 origin "$GITHUB_SHA"
-          git checkout -q FETCH_HEAD
+          git checkout -q -f FETCH_HEAD
           git submodule update -q --init --recursive --depth 1 \
             test/munit third-party/nanopb third-party/jerasure third-party/gf-complete \
             third-party/curl third-party/cpp-steam-tools
