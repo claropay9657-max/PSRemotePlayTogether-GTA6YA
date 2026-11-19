@@ -48,15 +48,12 @@ if command -v wine >/dev/null; then
 	export WINEPREFIX="${WINEPREFIX:-$(mktemp -d)/wine}"
 	# Wine's "fixme" chatter hides real problems; its errors (a DLL that fails to load) stay visible
 	export WINEDEBUG="${WINEDEBUG:-fixme-all}"
-	# The tests only need the C++ runtime next to them
-	TEST_DIR="$(mktemp -d)"
-	cp "$BUILD_DIR/coplay/coplay-tests.exe" "$TEST_DIR/"
-	cp "dist/$PACKAGE"/libc++.dll "dist/$PACKAGE"/libunwind.dll "dist/$PACKAGE"/libcrypto-*.dll "$TEST_DIR/"
-	cp "dist/$PACKAGE"/libwinpthread-1.dll "$TEST_DIR/" 2>/dev/null || true
-	( cd "$TEST_DIR" && wine coplay-tests.exe )
+	# The co-play tests, run next to the packaged DLLs they need
+	cp "$BUILD_DIR/coplay/coplay-tests.exe" "dist/$PACKAGE/"
+	( cd "dist/$PACKAGE" && wine coplay-tests.exe )
+	rm "dist/$PACKAGE/coplay-tests.exe"
 	# "list" prints the registered consoles and exits; every DLL has to load for that
 	( cd "dist/$PACKAGE" && wine "$PACKAGE.exe" list )
-	rm -rf "$TEST_DIR"
 else
 	echo "note: wine is not installed, the Windows binaries were not run"
 fi

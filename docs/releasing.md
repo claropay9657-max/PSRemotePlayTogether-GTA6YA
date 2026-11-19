@@ -7,14 +7,16 @@ how to publish a release, and how to reproduce a build on your own machine.
 
 | Platform | Built by | Result |
 | --- | --- | --- |
-| Linux x86_64 | CI job "Linux AppImage" | `PSRemotePlayTogether-<version>-linux-x86_64.AppImage` |
+| Linux x86_64 | CI job "Linux AppImage (x86_64)" | `PSRemotePlayTogether-<version>-linux-x86_64.AppImage` |
+| Linux arm64 | CI job "Linux AppImage (aarch64)" | `PSRemotePlayTogether-<version>-linux-aarch64.AppImage` |
 | Windows x64 | CI job "Windows (cross-compiled)" | `PSRemotePlayTogether-<version>-windows-x64.zip` (portable, unzip and run `PSRemotePlayTogether.exe`) |
 | macOS (Apple silicon) | `scripts/release-macos.sh` on a Mac | `PSRemotePlayTogether-<version>-macos-arm64.dmg` |
 
 Every file comes with a `.sha256` next to it.
 
-The workflows are in `.forgejo/workflows/` and run on the runner with the label
-`docker`. (The files under `.github/workflows/` belong to upstream chiaki-ng
+The workflows are in `.forgejo/workflows/` and run on the runners with the
+labels `docker` (x86_64: both Linux x86_64 and Windows) and `docker-arm`
+(arm64: the arm64 AppImage). (The files under `.github/workflows/` belong to upstream chiaki-ng
 and are not used here: Forgejo only reads `.forgejo/workflows/` when that
 folder exists.)
 
@@ -35,7 +37,7 @@ folder exists.)
    ```
 
 3. Wait for the "Build" run of the tag. The release then appears under
-   Releases with the AppImage and the Windows zip attached.
+   Releases with the AppImages and the Windows zip attached.
 4. Add the macOS build from a Mac (see below).
 5. Edit the release text on the Forgejo page if you want more than the default
    "Built from commit …".
@@ -86,7 +88,7 @@ Good to know:
 
 ### With a Mac as a runner
 
-A Mac can also do this automatically for every tag:
+A Mac can also build the dmg as part of the Forgejo pipelines:
 
 1. Install the tools from "By hand" above, plus `brew install node`.
 2. Get the runner program for macOS from
@@ -101,13 +103,14 @@ A Mac can also do this automatically for every tag:
    ```
 
    `macos:host` means jobs run directly on the Mac, not in a container.
-5. In the repository's Settings → Actions → Variables add `MACOS_RUNNER` with
-   the value `true`.
+5. Start the workflow "Build macOS" from the repository's Actions page
+   ("Run workflow"), choosing the tag to build. It builds the dmg on the Mac
+   and attaches it to that tag's release.
 
-From then on the workflow "Build macOS" runs for every tag and attaches the
-dmg to the release. Without the variable that job is skipped, so nothing waits
-for a runner that isn't there. The workflow can also be started by hand from
-the Actions page.
+To have every tag built without that click, uncomment the `push:` lines at the
+top of `.forgejo/workflows/macos.yml`. They are off by default because Forgejo
+keeps a job waiting until a runner with its label takes it: on a server
+without a Mac runner every tag would leave a run waiting forever.
 
 ## Reproducing a CI build locally
 

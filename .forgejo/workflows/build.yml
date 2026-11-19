@@ -1,6 +1,8 @@
 # Builds PSRemotePlayTogether for Linux and Windows on every push to main, and
 # publishes a release when a tag like v1.2.3 is pushed. See docs/releasing.md.
 #
+# Runner labels used: "docker" (x86_64) and "docker-arm" (arm64).
+#
 # Every job is "run one script from scripts/ci/ inside a public container
 # image", so a build can be reproduced locally with docker (the scripts say how).
 #
@@ -19,8 +21,17 @@ on:
 
 jobs:
   linux:
-    name: Linux AppImage
-    runs-on: docker
+    # One AppImage per processor type, each built on a runner of that type
+    name: Linux AppImage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: docker
+            arch: x86_64
+          - runner: docker-arm
+            arch: aarch64
     container:
       # The image upstream chiaki-ng builds its AppImage in (Ubuntu 24.04, Qt 6.9.3)
       image: docker.io/streetpea/chiaki-ng-builder:qt6.9.3
@@ -62,7 +73,7 @@ jobs:
       - name: Keep the AppImage as an artifact
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
-          name: linux-appimage
+          name: linux-appimage-${{ matrix.arch }}
           path: dist/
           if-no-files-found: error
           retention-days: 14

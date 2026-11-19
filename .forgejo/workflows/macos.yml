@@ -1,22 +1,25 @@
 # Optional: builds the macOS .dmg on a Mac registered as a Forgejo runner with
 # the label "macos". See docs/releasing.md for how to set that up.
 #
-# This is its own workflow, and the job only starts when the repository
-# variable MACOS_RUNNER is "true" (or when started by hand), so that nothing
-# waits forever for a runner that doesn't exist. Without a Mac runner the dmg
-# is built by hand with scripts/release-macos.sh --upload.
+# It only starts by hand (Actions -> Build macOS -> Run workflow, on the tag to
+# build). Forgejo leaves a job waiting until a runner with its label picks it
+# up, even when the job has an "if:" that is false, so starting this for every
+# tag would leave a run waiting forever on a server without a Mac runner.
+# Once a Mac runner exists, uncomment the "push" lines below to have every tag
+# built automatically.
+#
+# Without a Mac runner the dmg is built with scripts/release-macos.sh --upload.
 name: Build macOS
 
 on:
-  push:
-    tags:
-      - 'v*'
+  # push:
+  #   tags:
+  #     - 'v*'
   workflow_dispatch:
 
 jobs:
   macos:
     name: macOS dmg
-    if: github.event_name == 'workflow_dispatch' || vars.MACOS_RUNNER == 'true'
     runs-on: macos
     defaults:
       run:
