@@ -186,3 +186,73 @@ body.preview {
 
 /* Only names: a compact list */
 .card.no-pad { padding: 8px 12px; }
+
+/* Whoever is talking lights up */
+.talking .avatar {
+  box-shadow: 0 0 0 3px #34d399, 0 0 16px rgba(52, 211, 153, 0.7);
+}
+
+/* Microphone state next to the name: nothing for players without voice chat */
+.mic {
+  display: none;
+  flex: none;
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.08);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 15px 15px;
+}
+
+.mic.on {
+  display: block;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='2' width='6' height='12' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v4'/%3E%3C/svg%3E");
+}
+
+.talking .mic.on { background-color: rgba(52, 211, 153, 0.35); }
+
+.mic.off {
+  display: block;
+  background-color: rgba(240, 70, 110, 0.85);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 9.5V5a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.6 2.5M19 11a7 7 0 0 1-.9 3.4M5 11a7 7 0 0 0 10.6 6M12 18v4M3 3l18 18'/%3E%3C/svg%3E");
+}
+
+/* A player's webcam */
+.cam {
+  position: relative;
+  align-self: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #05050c;
+  border: 1px solid var(--gn-border);
+}
+
+.cam img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.talking .cam {
+  border-color: #34d399;
+  box-shadow: 0 0 14px rgba(52, 211, 153, 0.45);
+}
+
+/* Ordinary browsers only play sound after a click; OBS never shows this */
+.sound-hint {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  color: #fff;
+  background: var(--gn-primary);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}

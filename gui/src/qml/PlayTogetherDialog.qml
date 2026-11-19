@@ -361,6 +361,145 @@ DialogView {
                     }
                 }
 
+                // ---------------------------------------------------- voice and webcam
+
+                C.GradientText {
+                    text: qsTr("Voice chat and webcam")
+                    font.bold: true
+                    font.pixelSize: 24
+                    to: "#7c86ff"
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    opacity: 0.7
+                    text: qsTr("Everybody in a shared session can talk to and see each other, whether you host or join. Microphone and speakers are the ones chosen in the audio settings. Use headphones, otherwise the others hear themselves through your microphone. While you play, the stream menu has buttons to mute yourself and to switch the webcam on and off.")
+                }
+
+                C.CheckBox {
+                    id: voiceEnabledCheck
+                    text: qsTr("Take part in the voice chat")
+                    checked: Chiaki.settings.coplayVoiceEnabled
+                    onToggled: Chiaki.settings.coplayVoiceEnabled = checked
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    rowSpacing: 12
+                    columnSpacing: 20
+
+                    Item { }
+
+                    C.CheckBox {
+                        enabled: voiceEnabledCheck.checked
+                        opacity: enabled ? 1.0 : 0.4
+                        text: qsTr("Start with my microphone muted")
+                        checked: Chiaki.settings.coplayVoiceStartMuted
+                        onToggled: Chiaki.settings.coplayVoiceStartMuted = checked
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignRight
+                        enabled: voiceEnabledCheck.checked
+                        opacity: enabled ? 1.0 : 0.4
+                        text: qsTr("Volume of the others:")
+                    }
+
+                    RowLayout {
+                        enabled: voiceEnabledCheck.checked
+                        opacity: enabled ? 1.0 : 0.4
+                        spacing: 10
+
+                        C.Slider {
+                            Layout.preferredWidth: 300
+                            from: 0
+                            to: 200
+                            stepSize: 5
+                            value: Chiaki.settings.coplayVoiceVolume
+                            onMoved: Chiaki.settings.coplayVoiceVolume = value
+                        }
+
+                        Label {
+                            text: qsTr("%1 %").arg(Chiaki.settings.coplayVoiceVolume)
+                        }
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignRight
+                        text: qsTr("Webcam:")
+                    }
+
+                    C.ComboBox {
+                        id: cameraCombo
+                        Layout.preferredWidth: 420
+                        property var devices: Chiaki.settings.coplayCameraDevices()
+                        model: [qsTr("The system's default camera")].concat(devices)
+                        currentIndex: Math.max(0, devices.indexOf(Chiaki.settings.coplayCameraDevice) + 1)
+                        onActivated: (index) => Chiaki.settings.coplayCameraDevice = index === 0 ? "" : devices[index - 1]
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignRight
+                        text: qsTr("Webcam picture:")
+                    }
+
+                    C.ComboBox {
+                        Layout.preferredWidth: 420
+                        model: [
+                            qsTr("Small (320 × 180, about 0.4 Mbit/s)"),
+                            qsTr("Medium (480 × 270, about 1 Mbit/s)"),
+                            qsTr("Large (640 × 360, about 2.5 Mbit/s)"),
+                        ]
+                        currentIndex: Chiaki.settings.coplayCameraQuality
+                        onActivated: (index) => Chiaki.settings.coplayCameraQuality = index
+                    }
+
+                    Item { }
+
+                    ColumnLayout {
+                        spacing: 0
+
+                        C.CheckBox {
+                            text: qsTr("Switch my webcam on when a session starts")
+                            checked: Chiaki.settings.coplayCameraOnStart
+                            onToggled: Chiaki.settings.coplayCameraOnStart = checked
+                        }
+
+                        C.CheckBox {
+                            text: qsTr("Show the other players' webcams")
+                            checked: Chiaki.settings.coplayShowCams
+                            onToggled: Chiaki.settings.coplayShowCams = checked
+                        }
+                    }
+
+                    Item {
+                        visible: !Chiaki.settings.coplayCameraSupported
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: !Chiaki.settings.coplayCameraSupported
+                        wrapMode: Text.WordWrap
+                        color: Material.color(Material.Orange, Material.Shade300)
+                        text: qsTr("This build of the app cannot use cameras. You still see the other players' webcams, and the test picture works.")
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 16
+                    Layout.bottomMargin: 6
+                    height: 1
+                    opacity: 0.45
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "#8c52ff" }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
+                }
+
                 // ---------------------------------------------------- overlay
 
                 C.GradientText {
@@ -374,7 +513,7 @@ DialogView {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     opacity: 0.7
-                    text: qsTr("Shows your viewers who is playing, who is in control right now and everybody's controller, live. Add the address below to OBS as a Browser Source. It works for every player, and when you play alone it shows your own controller.")
+                    text: qsTr("Shows your viewers who is playing, who is in control right now, everybody's controller and webcam, live, and plays the players' conversation. Add the address below to OBS as a Browser Source. It works for every player, and when you play alone it shows your own controller.")
                 }
 
                 C.CheckBox {
@@ -460,6 +599,46 @@ DialogView {
                             checked: Chiaki.settings.overlayCombined
                             onToggled: Chiaki.settings.overlayCombined = checked
                         }
+
+                        C.CheckBox {
+                            text: qsTr("The players' webcams")
+                            checked: Chiaki.settings.overlayWebcams
+                            onToggled: Chiaki.settings.overlayWebcams = checked
+                        }
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignRight | Qt.AlignTop
+                        Layout.topMargin: 12
+                        text: qsTr("Sound:")
+                    }
+
+                    ColumnLayout {
+                        spacing: 0
+
+                        C.CheckBox {
+                            id: overlayVoiceCheck
+                            text: qsTr("Play what the players say")
+                            checked: Chiaki.settings.overlayVoice
+                            onToggled: Chiaki.settings.overlayVoice = checked
+                        }
+
+                        C.CheckBox {
+                            enabled: overlayVoiceCheck.checked
+                            opacity: enabled ? 1.0 : 0.4
+                            text: qsTr("Including my own microphone")
+                            checked: Chiaki.settings.overlayOwnVoice
+                            onToggled: Chiaki.settings.overlayOwnVoice = checked
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: 520
+                            Layout.leftMargin: 8
+                            wrapMode: Text.WordWrap
+                            opacity: 0.7
+                            text: qsTr("For the sound to reach your stream, tick \"Control audio via OBS\" in the Browser Source. Leave your own microphone out if OBS records it already.")
+                        }
                     }
 
                     Label {
@@ -533,7 +712,7 @@ DialogView {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         opacity: 0.7
-                        text: qsTr("To arrange your scene before a session, add ?demo=1 to the address: it shows made-up players. Several sources can show different parts, for example ?show=players or ?show=combined.")
+                        text: qsTr("To arrange your scene before a session, add ?demo=1 to the address: it shows made-up players. Several sources can show different parts, for example ?show=players, ?show=cams or ?show=combined, and &voice=0 keeps a source silent.")
                     }
                 }
             }

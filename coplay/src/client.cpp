@@ -23,6 +23,7 @@ Client::Client(const ClientConfig &config) : config(config), assembler(config.as
 	welcome_key = DeriveWelcomeKey(config.invite.secret);
 	want = static_cast<uint8_t>(config.want & kWantMask);
 	controller = static_cast<uint8_t>(config.controller);
+	media = static_cast<uint8_t>(config.media & kMediaOwnMask);
 	own_avatar = blobs.Put(config.avatar);
 }
 
@@ -65,6 +66,7 @@ bool Client::Connect(std::string *error)
 	hello.controller = ControllerKindFromWire(controller);
 	hello.name = config.name;
 	hello.avatar = own_avatar;
+	hello.media = media;
 	std::vector<uint8_t> body;
 	ByteWriter w(body);
 	WriteHello(w, hello);
@@ -233,6 +235,40 @@ void Client::SetController(ControllerKind kind)
 		ping_now = true;
 }
 
+void Client::SetMedia(uint8_t new_media)
+{
+	new_media &= kMediaOwnMask;
+	if(media.exchange(new_media) != new_media)
+		ping_now = true;
+}
+
+void Client::SendVoice(const uint8_t *data, size_t size)
+{
+	if(!data || !size || size > kMaxVoiceFrameSize || !connected || lost)
+		return;
+	std::vector<uint8_t> payload;
+	payload.reserve(size + 4);
+	ByteWriter w(payload);
+	w.U32(++voice_seq);
+	w.Bytes(data, size);
+	Send(PacketType::VoiceUp, payload);
+}
+
+void Client::SendCamFrame(const uint8_t *data, size_t size)
+{
+	if(!data || !size || size > kMaxCamFrameSize || !connected || lost)
+		return;
+	uint32_t seq = ++cam_seq;
+	uint32_t count = CamFragmentCount(size);
+	std::vector<uint8_t> fragment;
+	for(uint32_t i = 0; i < count; i++)
+	{
+		if(!BuildCamFragment(seq, data, size, i, fragment))
+			return;
+		Send(PacketType::CamUp, fragment);
+	}
+}
+
 void Client::SendPing(uint64_t now_ms)
 {
 	std::vector<uint8_t> payload;
@@ -243,6 +279,7 @@ void Client::SendPing(uint64_t now_ms)
 	uint32_t rtt = rtt_ms;
 	w.U16(static_cast<uint16_t>(rtt > 0xffff ? 0xffff : rtt));
 	w.U8(controller);
+	w.U8(media);
 	Send(PacketType::Ping, payload);
 	(void)now_ms;
 }
@@ -456,6 +493,36 @@ void Client::HandlePacket(const uint8_t *data, size_t size, const Address &from,
 			}
 			if(callbacks.on_haptics && (want & kWantHaptics))
 				callbacks.on_haptics(r.cursor(), r.remaining());
+			break;
+		}
+		case PacketType::Voice: {
+			uint8_t slot = r.U8();
+			uint32_t seq = r.U32();
+			if(!r.ok() || slot > kMaxGuests || r.remaining() == 0 || r.remaining() > kMaxVoiceFrameSize)
+				break;
+			if(!(want & kWantVoice) || !voice_in[slot].Accept(seq, now_ms))
+				break;
+			{
+				std::lock_guard<std::mutex> lock(stats_mutex);
+				stats.voice_frames++;
+			}
+			if(callbacks.on_voice)
+				callbacks.on_voice(slot, r.cursor(), r.remaining());
+			break;
+		}
+		case PacketType::Cam: {
+			uint8_t slot = r.U8();
+			CamFragmentHeader h;
+			if(!r.ok() || slot > kMaxGuests || !ReadCamFragmentHeader(r, h))
+				break;
+			if(!(want & kWantCams) || !cam_in[slot].OnFragment(h, r.cursor(), r.remaining(), now_ms))
+				break;
+			{
+				std::lock_guard<std::mutex> lock(stats_mutex);
+				stats.cam_frames++;
+			}
+			if(callbacks.on_cam_frame)
+				callbacks.on_cam_frame(slot, cam_in[slot].Frame());
 			break;
 		}
 		case PacketType::Bye: {

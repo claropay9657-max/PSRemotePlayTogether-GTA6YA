@@ -15,6 +15,7 @@
 
 #include "blob.h"
 #include "crypto.h"
+#include "media.h"
 #include "mixer.h"
 #include "protocol.h"
 #include "socket.h"
@@ -30,6 +31,8 @@ struct HostConfig
 	/** The host's picture (an image file's bytes, at most kMaxAvatarSize), or empty. */
 	std::vector<uint8_t> avatar;
 	ControllerKind controller = ControllerKind::None;
+	/** MediaFlags the host starts with; see Host::SetLocalMedia(). */
+	uint8_t media = 0;
 	size_t max_guests = 4;
 	/** A guest that was silent this long is dropped. */
 	uint32_t guest_timeout_ms = 6000;
@@ -51,6 +54,8 @@ struct GuestInfo
 	uint32_t rtt_ms = 0;
 	/** Valid once the guest's picture has arrived completely; see Host::Avatar(). */
 	BlobRef avatar;
+	/** MediaFlags: voice chat, muted, webcam, and kMediaSilenced if the host cut its microphone off. */
+	uint8_t media = 0;
 };
 
 /**
@@ -65,6 +70,10 @@ struct HostCallbacks
 	std::function<void()> on_keyframe_needed;
 	/** Someone joined, left or changed; see Guests(). */
 	std::function<void()> on_guests_changed;
+	/** One Opus frame of a guest's microphone. */
+	std::function<void(uint8_t slot, const uint8_t *data, size_t size)> on_voice;
+	/** A complete picture of a guest's webcam. */
+	std::function<void(uint8_t slot, const std::vector<uint8_t> &jpeg)> on_cam_frame;
 	std::function<void(const std::string &)> on_log;
 };
 
@@ -97,6 +106,16 @@ class Host
 		void PushAudio(const uint8_t *data, size_t size);
 		/** One frame of raw haptics PCM. */
 		void PushHaptics(const uint8_t *data, size_t size);
+
+		/** One Opus frame of the host's own microphone, for the guests. */
+		void PushVoice(const uint8_t *data, size_t size);
+		/** One picture of the host's own webcam, for the guests. */
+		void PushCamFrame(const uint8_t *data, size_t size);
+		/** What the host itself contributes: kMediaVoice, kMediaMuted, kMediaCamera. */
+		void SetLocalMedia(uint8_t media);
+		uint8_t LocalMedia();
+		/** Stops (or resumes) passing a guest's microphone on to everybody else. */
+		void SetGuestSilenced(uint8_t slot, bool silenced);
 
 		void SetRumble(uint8_t left, uint8_t right);
 		void SetTriggerEffects(uint8_t type_left, uint8_t type_right, const uint8_t left[10], const uint8_t right[10]);
@@ -156,6 +175,10 @@ class Host
 			uint32_t rtt_ms = 0;
 			BlobRef avatar;
 			std::vector<uint8_t> welcome_packet;
+			uint8_t media = 0;
+			bool silenced = false;
+			VoiceSequence voice_seq;
+			CamAssembler cam;
 		};
 
 		/** Things to do once the lock is released. */
@@ -165,6 +188,8 @@ class Host
 			bool keyframe_needed = false;
 			bool guests_changed = false;
 			std::vector<std::string> logs;
+			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, Opus frame
+			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 		};
 
 		void ThreadMain();
@@ -217,6 +242,8 @@ class Host
 		uint32_t next_frame_seq = 1;
 		uint32_t audio_seq = 0;
 		uint32_t haptics_seq = 0;
+		uint32_t voice_seq = 0;
+		uint32_t cam_seq = 0;
 		uint64_t last_keyframe_request_ms = 0;
 		bool keyframe_pending = false;
 		bool keyframe_outstanding = false;

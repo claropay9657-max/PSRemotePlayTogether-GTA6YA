@@ -19,7 +19,7 @@
   const root = document.getElementById('root');
 
   let config = {
-    players: true, pads: true, combined: true,
+    players: true, pads: true, combined: true, cams: true, voice: true,
     layout: 'row', scale: 30, skin: 'auto', skins: ['PS5'],
   };
   let state = { active: false, players: [] };
@@ -32,7 +32,9 @@
       c.players = show.includes('players');
       c.pads = show.includes('pads');
       c.combined = show.includes('combined');
+      c.cams = show.includes('cams');
     }
+    if (params.has('voice')) c.voice = params.get('voice') !== '0';
     if (params.has('layout')) c.layout = params.get('layout') === 'column' ? 'column' : 'row';
     if (params.has('scale')) c.scale = Math.max(10, Math.min(100, parseInt(params.get('scale'), 10) || c.scale));
     if (params.has('skin')) c.skin = params.get('skin');
@@ -81,9 +83,14 @@
     card.name = el('div', 'name');
     card.tags = el('div', 'tags');
     meta.append(card.name, card.tags);
-    card.who.append(card.avatar, meta);
+    card.mic = el('div', 'mic');
+    card.who.append(card.avatar, meta, card.mic);
+    card.camWrap = el('div', 'cam');
+    card.camImg = el('img');
+    card.camImg.alt = '';
+    card.camWrap.append(card.camImg);
     card.padWrap = el('div', 'pad');
-    card.el.append(card.who, card.padWrap);
+    card.el.append(card.who, card.camWrap, card.padWrap);
     cards.set(key, card);
     return card;
   }
@@ -131,8 +138,10 @@
     root.className = 'layout-' + c.layout + (state.active ? '' : ' idle');
 
     const wanted = [];
-    if (state.active && (c.players || c.pads)) {
+    if (state.active && (c.players || c.pads || c.cams)) {
       (state.players || []).forEach(function (p) {
+        // A source that shows webcams only has nothing to show for players without one
+        if (!c.players && !c.pads && !p.camera) return;
         wanted.push({ key: 'p' + p.slot, player: p });
       });
     }
@@ -157,12 +166,32 @@
       if (w.player) {
         const p = w.player;
         const showPad = c.pads;
+        const showCam = c.cams && p.camera;
         card.el.className = 'card player'
           + (p.inControl ? ' in-control' : '')
           + (!p.canControl ? ' watching' : '')
           + (oneAtATime && !p.inControl ? ' waiting' : '')
           + (p.you ? ' you' : '')
-          + (showPad ? '' : ' no-pad');
+          + (p.talking ? ' talking' : '')
+          + (showPad || showCam ? '' : ' no-pad');
+
+        // Microphone: nothing for players who are not in the voice chat
+        card.mic.className = 'mic' + (p.voice || p.muted ? (p.muted ? ' off' : ' on') : '');
+        card.mic.title = p.muted ? 'Muted' : '';
+
+        // Webcam: one never-ending picture stream per player, opened when the camera goes on
+        card.camWrap.style.display = showCam ? '' : 'none';
+        const camSrc = showCam ? '/cam/' + p.slot + '.mjpg' : '';
+        if (card.camSrc !== camSrc) {
+          card.camSrc = camSrc;
+          if (camSrc) card.camImg.src = camSrc; else card.camImg.removeAttribute('src');
+        }
+        if (showCam) {
+          // As wide as the controller below it, or a fixed size without one
+          const camWidth = showPad ? Math.round(PAD_WIDTH * c.scale / 100) : Math.round(320 * Math.max(c.scale, 40) / 60);
+          card.camWrap.style.width = camWidth + 'px';
+          card.camWrap.style.height = Math.round(camWidth * 9 / 16) + 'px';
+        }
         card.who.style.display = c.players ? '' : 'none';
         card.name.textContent = p.name || ('Player ' + (p.slot + 1));
         card.initial.textContent = (p.name || '?').trim().charAt(0).toUpperCase();
@@ -183,6 +212,8 @@
         card.pad = p.pad || null;
       } else {
         card.el.className = 'card combined';
+        card.mic.className = 'mic';
+        card.camWrap.style.display = 'none';
         card.who.style.display = c.players ? '' : 'none';
         card.name.textContent = 'Console';
         card.initial.textContent = '';
@@ -198,6 +229,92 @@
     });
   }
 
+  // ------------------------------------------------------------------ voice
+
+  // The app sends everybody's voices as one stream of raw sound (48 kHz, mono,
+  // 16 bit). Played here, OBS picks it up from the browser source.
+  const VOICE_RATE = 48000;
+  let audio = null;
+  let voiceRunning = false;
+  let playAt = 0;
+
+  function voiceWanted() {
+    return effectiveConfig().voice && params.get('demo') !== '1';
+  }
+
+  function scheduleSamples(samples) {
+    const buffer = audio.createBuffer(1, samples.length, VOICE_RATE);
+    buffer.copyToChannel(samples, 0);
+    const source = audio.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audio.destination);
+    const now = audio.currentTime;
+    // Start (or start over) a little in the future; skip ahead if we fell behind
+    if (playAt < now + 0.01 || playAt > now + 0.6) playAt = now + 0.08;
+    source.start(playAt);
+    playAt += samples.length / VOICE_RATE;
+  }
+
+  async function runVoice() {
+    if (voiceRunning) return;
+    voiceRunning = true;
+    try {
+      const response = await fetch('/voice', { cache: 'no-store' });
+      const reader = response.body.getReader();
+      let odd = null;   // a sample cut in half by the chunk boundary
+      while (voiceWanted()) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        let bytes = chunk.value;
+        if (odd) {
+          const joined = new Uint8Array(bytes.length + 1);
+          joined[0] = odd[0];
+          joined.set(bytes, 1);
+          bytes = joined;
+          odd = null;
+        }
+        if (bytes.length % 2) {
+          odd = bytes.slice(bytes.length - 1);
+          bytes = bytes.subarray(0, bytes.length - 1);
+        }
+        if (!bytes.length || audio.state !== 'running') continue;
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const samples = new Float32Array(bytes.length / 2);
+        for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(i * 2, true) / 32768;
+        scheduleSamples(samples);
+      }
+      reader.cancel().catch(function () {});
+    } catch (e) {
+      // The app went away; try again below
+    }
+    voiceRunning = false;
+    if (voiceWanted()) setTimeout(runVoice, 2000);
+  }
+
+  function updateVoice() {
+    const hint = document.getElementById('sound-hint');
+    if (!voiceWanted()) {
+      if (hint) hint.remove();
+      return;
+    }
+    if (!audio) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audio = new Ctx({ sampleRate: VOICE_RATE });
+    }
+    if (audio.state === 'suspended') {
+      audio.resume().catch(function () {});
+      // An ordinary browser wants a click first. OBS does not.
+      if (!hint && !window.obsstudio) {
+        const h = el('button', 'sound-hint', 'Click to hear the players');
+        h.id = 'sound-hint';
+        h.onclick = function () { audio.resume().then(function () { h.remove(); }); };
+        document.body.append(h);
+      }
+    } else if (hint) hint.remove();
+    runVoice();
+  }
+
   // ------------------------------------------------------------------ data
 
   function connect() {
@@ -205,6 +322,7 @@
     source.addEventListener('config', function (event) {
       config = Object.assign(config, JSON.parse(event.data));
       render();
+      updateVoice();
     });
     source.addEventListener('state', function (event) {
       state = JSON.parse(event.data);
@@ -229,6 +347,7 @@
         return {
           slot: i, name: name, host: i === 0, you: i === 0, canControl: true, inControl: active,
           controller: i === 1 ? 2 : 1, avatar: '',
+          voice: i !== 2, muted: i === 1, camera: false, talking: i === 0 && Math.floor(t / 45) % 2 === 0,
           pad: active ? {
             b: (Math.floor(t / 15) % 4 === i ? BUTTON.cross : 0) | (Math.floor(t / 40) % 3 === 0 ? BUTTON.r1 : 0),
             l2: 0, r2: Math.round(127 + 127 * Math.sin(phase / 3)),
@@ -244,6 +363,7 @@
   fetch('/config').then((r) => r.json()).then(function (c) {
     config = Object.assign(config, c);
     render();
+    updateVoice();
   }).catch(function () {});
 
   if (params.get('demo') === '1') demo();

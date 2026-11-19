@@ -1,6 +1,7 @@
 #include "qmlmainwindow.h"
 #include "qmlbackend.h"
 #include "qmlsvgprovider.h"
+#include "coplaycamera.h"
 #include "chiaki/log.h"
 #include "chiaki/time.h"
 #include "streamsession.h"
@@ -5164,6 +5165,7 @@ renderer_backend_ready:
 
     qml_engine = new QQmlEngine(this);
     qml_engine->addImageProvider(QStringLiteral("svg"), new QmlSvgProvider);
+    qml_engine->addImageProvider(QStringLiteral("coplaycam"), new CoPlayCamProvider);
     if (!qml_engine->incubationController())
         qml_engine->setIncubationController(quick_window->incubationController());
     connect(qml_engine, &QQmlEngine::quit, this, &QWindow::close);

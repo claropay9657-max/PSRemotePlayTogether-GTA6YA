@@ -9,7 +9,9 @@
 <body>
   <!--
     Stream overlay for OBS (add it as a Browser Source). Shows who is playing,
-    who is in control right now, and everybody's controller live.
+    who is in control right now, everybody's controller live and their webcams,
+    and plays what the players say to each other. For the sound to end up in
+    the stream, tick "Control audio via OBS" in the Browser Source's settings.
 
     Everything can be set in the app. To have several sources that show
     different things, override per source in the address:
@@ -17,7 +19,9 @@
       ?show=players             only the player list
       ?show=pads                only the players' controllers
       ?show=combined            only the controller the console gets
+      ?show=cams                only the players' webcams
       ?show=players,combined    any combination
+      &voice=0                  this source stays silent (or voice=1: plays the conversation)
       &layout=row|column        how the players are arranged
       &scale=30                 controller size in percent
       &skin=PS5                 one skin for everybody (default: by controller type)

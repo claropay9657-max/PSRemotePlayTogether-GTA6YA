@@ -16,7 +16,8 @@ Item {
     property bool sessionLoading: true
     property list<Item> restoreFocusItems
     readonly property bool useSeparateMenuWindow: Chiaki.window.runtimeRendererBackend === 1
-    readonly property int streamMenuHeight: 200
+    // Taller while a session is shared: the players and their webcams sit above the usual controls
+    readonly property int streamMenuHeight: Chiaki.session && Chiaki.session.coplayActive ? 350 : 200
     readonly property bool streamStatsVisible: Chiaki.settings.showStreamStats && Chiaki.session && !(menuController.open || menuController.closing) && !sessionLoading && !sessionError && !(Chiaki.settings.audioVideoDisabled & 0x02)
     property int separateMenuX: 0
     property int separateMenuY: 0
@@ -471,6 +472,33 @@ Item {
                 }
             }
 
+            // Play Together: players, webcams, microphone and webcam switches
+            Rectangle {
+                visible: coplayBar.visible
+                anchors {
+                    fill: coplayBar
+                    margins: -10
+                }
+                radius: 16
+                color: Qt.rgba(0.04, 0.04, 0.08, 0.72)
+                border.color: Qt.rgba(1, 1, 1, 0.1)
+            }
+
+            PlayTogetherBar {
+                id: coplayBar
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    leftMargin: 30
+                    rightMargin: 30
+                    topMargin: 16
+                }
+                height: 124
+                downItem: closeButton
+                onCloseRequested: menuController.close()
+            }
+
             RowLayout {
                 anchors {
                     left: parent.left
@@ -494,6 +522,7 @@ Item {
                             root.showMainView();
                     }
                     KeyNavigation.right: volumeSlider
+                    KeyNavigation.up: coplayBar.visible ? coplayBar.firstItem : null
                     Keys.onReturnPressed: clicked()
                     Keys.onEscapePressed: menuController.close()
                 }
@@ -779,7 +808,8 @@ Item {
                 id: consoleNameLabel
                 anchors {
                     right: parent.right
-                    verticalCenter: parent.verticalCenter
+                    bottom: parent.bottom
+                    bottomMargin: coplayBar.visible ? 150 : 88
                     rightMargin: 30
                 }
                 text: {

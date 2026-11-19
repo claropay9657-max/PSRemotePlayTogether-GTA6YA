@@ -23,6 +23,7 @@ add_library(coplay STATIC
 	include/coplay/crypto.h
 	include/coplay/host.h
 	include/coplay/invite.h
+	include/coplay/media.h
 	include/coplay/mixer.h
 	include/coplay/protocol.h
 	include/coplay/socket.h
@@ -32,6 +33,7 @@ add_library(coplay STATIC
 	src/crypto.cpp
 	src/host.cpp
 	src/invite.cpp
+	src/media.cpp
 	src/mixer.cpp
 	src/protocol.cpp
 	src/socket.cpp

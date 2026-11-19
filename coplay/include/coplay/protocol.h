@@ -4,12 +4,16 @@
 #define COPLAY_PROTOCOL_H
 
 /*
- * Co-play wire protocol, version 1.
+ * Co-play wire protocol, version 2.
  *
  * One host is connected to the console through Remote Play. Guests connect to
  * the host over UDP, receive the console's video, audio and controller
  * feedback from it, and send their controller state back. The host merges all
  * controller states into the single Remote Play controller.
+ *
+ * Everybody can also talk to and see each other: each player's microphone
+ * (Opus) and webcam (JPEG pictures) go to the host, which passes them on to
+ * the other players.
  *
  * Every datagram is:
  *
@@ -38,7 +42,7 @@
 
 namespace coplay {
 
-constexpr uint8_t kProtocolVersion = 1;
+constexpr uint8_t kProtocolVersion = 2;
 constexpr uint16_t kDefaultPort = 9410;
 
 constexpr size_t kHeaderSize = 14;
@@ -58,6 +62,14 @@ constexpr size_t kMaxPayload = kMaxDatagram - kHeaderSize - kTagSize;
 constexpr size_t kMaxNameLength = 32;
 constexpr size_t kMaxGuests = 8;
 
+/** Upper bound for one Opus frame of a player's microphone. */
+constexpr size_t kMaxVoiceFrameSize = 1000;
+/** Webcam picture bytes per fragment; every fragment but the last is exactly this long. */
+constexpr size_t kCamFragmentSize = 1150;
+constexpr size_t kCamFragmentHeaderSize = 12;
+/** Upper bound for a single webcam picture. */
+constexpr size_t kMaxCamFrameSize = 256 * 1024;
+
 enum class PacketType : uint8_t
 {
 	Hello = 0x01,           // guest -> host
@@ -67,6 +79,8 @@ enum class PacketType : uint8_t
 	Input = 0x10,           // guest -> host
 	Ping = 0x11,            // guest -> host
 	Pong = 0x12,            // host -> guest
+	VoiceUp = 0x13,         // guest -> host
+	CamUp = 0x14,           // guest -> host
 
 	Video = 0x20,           // host -> guest
 	Audio = 0x21,           // host -> guest
@@ -74,6 +88,8 @@ enum class PacketType : uint8_t
 	State = 0x23,           // host -> guest
 	VideoConfig = 0x24,     // host -> guest
 	Inputs = 0x25,          // host -> guest
+	Voice = 0x26,           // host -> guest
+	Cam = 0x27,             // host -> guest
 
 	Nack = 0x30,            // guest -> host
 	KeyframeRequest = 0x31, // guest -> host
@@ -104,8 +120,24 @@ enum WantFlags : uint8_t
 	kWantHaptics = 1 << 2,
 	/** What every player is pressing right now, for a stream overlay. */
 	kWantInputs = 1 << 3,
+	/** The other players' microphones. */
+	kWantVoice = 1 << 4,
+	/** The other players' webcams. */
+	kWantCams = 1 << 5,
 	kWantAll = kWantVideo | kWantAudio | kWantHaptics,
-	kWantMask = kWantAll | kWantInputs
+	kWantMask = kWantAll | kWantInputs | kWantVoice | kWantCams
+};
+
+/** What a player contributes to the conversation. */
+enum MediaFlags : uint8_t
+{
+	kMediaVoice = 1 << 0,    // takes part in the voice chat (has a microphone open)
+	kMediaMuted = 1 << 1,    // ... but has muted it
+	kMediaCamera = 1 << 2,   // webcam is on
+	/** Set by the host only: this player's microphone is not passed on to the others. */
+	kMediaSilenced = 1 << 3,
+	/** What a player may say about itself. */
+	kMediaOwnMask = kMediaVoice | kMediaMuted | kMediaCamera
 };
 
 /**
@@ -284,6 +316,7 @@ struct Participant
 	std::string name;
 	BlobRef avatar;
 	ControllerKind controller = ControllerKind::None;
+	uint8_t media = 0; // MediaFlags
 };
 
 /** Buttons, triggers and sticks of one player, without touch and motion. */
@@ -364,6 +397,7 @@ struct HelloPayload
 	ControllerKind controller = ControllerKind::None;
 	std::string name;
 	BlobRef avatar;
+	uint8_t media = 0; // MediaFlags the guest starts with
 };
 
 void WriteHello(ByteWriter &w, const HelloPayload &h);
@@ -423,6 +457,26 @@ constexpr uint16_t kNackWholeFrame = 0xffff;
 /** Appends as many entries as fit into one packet; returns how many were written. */
 size_t WriteNack(ByteWriter &w, const std::vector<NackEntry> &entries, size_t first, size_t max_payload);
 bool ReadNack(ByteReader &r, std::vector<NackEntry> &entries);
+
+/**
+ * One piece of a webcam picture. Pictures do not depend on each other, so a
+ * lost one is simply skipped; nothing is sent again.
+ */
+struct CamFragmentHeader
+{
+	uint32_t frame_seq = 0;
+	uint16_t frag_index = 0;
+	uint16_t frag_count = 0;
+	uint32_t total_size = 0;
+};
+
+void WriteCamFragmentHeader(ByteWriter &w, const CamFragmentHeader &h);
+bool ReadCamFragmentHeader(ByteReader &r, CamFragmentHeader &h);
+
+inline uint32_t CamFragmentCount(size_t total_size)
+{
+	return total_size == 0 ? 0 : static_cast<uint32_t>((total_size + kCamFragmentSize - 1) / kCamFragmentSize);
+}
 
 } // namespace coplay
 

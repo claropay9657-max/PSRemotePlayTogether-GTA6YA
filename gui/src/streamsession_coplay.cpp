@@ -11,6 +11,8 @@
 //        controller code a console session uses.
 
 #include <streamsession.h>
+#include <coplaycamera.h>
+#include <voicechat.h>
 
 #include <chiaki/video.h>
 
@@ -20,9 +22,11 @@
 
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QHash>
 #include <QJsonArray>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QTimer>
 #include <QVariantMap>
 
 #include <atomic>
@@ -65,7 +69,40 @@ struct CoPlayState
 	std::vector<uint8_t> own_avatar;
 	coplay::BlobRef own_avatar_ref;
 	std::atomic<int> own_controller{0};
+
+	// Talking to and seeing each other. The voice engine lives as long as the session,
+	// so the network threads can always hand it what they receive.
+	std::unique_ptr<VoiceChat> voice;
+	CoPlayCamera *camera = nullptr; // owned by the session object
+	QTimer *media_timer = nullptr;
+	bool media_started = false;
+	bool voice_wanted = true;
+	bool camera_on_start = false;
+	bool show_cams = true;
+	QString mic_device;
+	QString speaker_device;
+	QString camera_device;
+	int camera_quality = 1;
+	std::atomic<bool> voice_on{false};
+	std::atomic<bool> mic_muted{false};
+	std::atomic<bool> deafened{false};
+	std::atomic<bool> camera_on{false};
+	bool mic_permission_pending = false;
+	QVariantMap talking;
+	QMutex cam_mutex; // cam_jpeg, cam_serial
+	QHash<int, QByteArray> cam_jpeg;
+	QHash<int, quint64> cam_serial;
+	std::atomic<int> cam_serial_total{0};
 };
+
+/** What a player's flags say, for the player list. */
+static void MediaToMap(QVariantMap &m, uint8_t media)
+{
+	m["voice"] = (media & coplay::kMediaVoice) != 0;
+	m["muted"] = (media & coplay::kMediaMuted) != 0;
+	m["camera"] = (media & coplay::kMediaCamera) != 0;
+	m["silenced"] = (media & coplay::kMediaSilenced) != 0;
+}
 
 static QString AvatarId(const coplay::BlobRef &ref)
 {
@@ -199,6 +236,17 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 		coplay->own_avatar_ref = coplay::MakeBlobRef(coplay->own_avatar);
 	}
 
+	coplay->voice = std::make_unique<VoiceChat>(GetChiakiLog());
+	coplay->voice->SetVolume(connect_info.coplay_voice_volume);
+	coplay->voice_wanted = connect_info.coplay_voice_enabled;
+	coplay->mic_muted = connect_info.coplay_voice_start_muted;
+	coplay->camera_on_start = connect_info.coplay_camera_on_start;
+	coplay->show_cams = connect_info.coplay_show_cams;
+	coplay->camera_device = connect_info.coplay_camera_device;
+	coplay->camera_quality = connect_info.coplay_camera_quality;
+	coplay->mic_device = connect_info.audio_in_device;
+	coplay->speaker_device = connect_info.audio_out_device;
+
 	coplay->client = connect_info.coplay_client;
 	if(coplay->client)
 	{
@@ -230,6 +278,12 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	};
 	callbacks.on_guests_changed = [this] {
 		QMetaObject::invokeMethod(this, [this] { CoPlayUpdatePlayers(); }, Qt::QueuedConnection);
+	};
+	callbacks.on_voice = [this](uint8_t slot, const uint8_t *data, size_t size) {
+		CoPlayOnVoice(slot, data, size);
+	};
+	callbacks.on_cam_frame = [this](uint8_t slot, const std::vector<uint8_t> &jpeg) {
+		CoPlayOnCamFrame(slot, QByteArray(reinterpret_cast<const char *>(jpeg.data()), static_cast<int>(jpeg.size())));
 	};
 	ChiakiLog *session_log = GetChiakiLog();
 	callbacks.on_log = [session_log](const std::string &line) {
@@ -264,6 +318,11 @@ void StreamSession::CoPlayStopThreads()
 {
 	if(!coplay)
 		return;
+	// First what sends through them: the microphone (its audio thread) and the camera
+	if(coplay->voice)
+		coplay->voice->CloseMicrophone();
+	if(coplay->camera)
+		coplay->camera->Stop();
 	// Both calls return only after the respective thread has ended, so that none of
 	// its callbacks runs while the rest of the session is taken apart
 	coplay->hosting = false;
@@ -271,13 +330,21 @@ void StreamSession::CoPlayStopThreads()
 		coplay->host->Stop();
 	if(coplay->client)
 		coplay->client->Stop();
+	if(coplay->voice)
+		coplay->voice->CloseSpeakers();
 }
 
 void StreamSession::CoPlayFini()
 {
 	CoPlayStopThreads();
+	CoPlayCamProvider::ClearAll();
 	delete coplay;
 	coplay = nullptr;
+}
+
+bool StreamSession::IsCoPlayActive() const
+{
+	return IsCoPlayGuest() || IsCoPlayHosting();
 }
 
 bool StreamSession::IsCoPlayGuest() const
@@ -339,8 +406,8 @@ void StreamSession::SetCoPlayVideoEnabled(bool enabled)
 		return;
 	coplay->video_enabled = enabled;
 	// Controller only: no picture and no sound, but still rumble, haptics and triggers
-	uint8_t inputs = coplay->client->Want() & coplay::kWantInputs;
-	coplay->client->SetWant(static_cast<uint8_t>((enabled ? coplay::kWantAll : coplay::kWantHaptics) | inputs));
+	uint8_t others = coplay->client->Want() & (coplay::kWantInputs | coplay::kWantVoice | coplay::kWantCams);
+	coplay->client->SetWant(static_cast<uint8_t>((enabled ? coplay::kWantAll : coplay::kWantHaptics) | others));
 	emit CoPlayChanged();
 }
 
@@ -405,6 +472,8 @@ void StreamSession::CoPlayUpdatePlayers()
 		me["controller"] = coplay->own_controller.load();
 		me["avatar"] = AvatarId(coplay->own_avatar_ref);
 		me["avatarUrl"] = AvatarUrl(coplay->host->Avatar(coplay->own_avatar_ref.hash));
+		MediaToMap(me, coplay->host->LocalMedia());
+		me["mutedHere"] = false;
 		players.append(me);
 		for(const coplay::GuestInfo &g : coplay->host->Guests())
 		{
@@ -421,6 +490,8 @@ void StreamSession::CoPlayUpdatePlayers()
 			p["controller"] = static_cast<int>(g.controller);
 			p["avatar"] = AvatarId(g.avatar);
 			p["avatarUrl"] = g.avatar.Valid() ? AvatarUrl(coplay->host->Avatar(g.avatar.hash)) : QString();
+			MediaToMap(p, g.media);
+			p["mutedHere"] = coplay->voice->PlayerMuted(g.slot);
 			players.append(p);
 		}
 	}
@@ -429,6 +500,7 @@ void StreamSession::CoPlayUpdatePlayers()
 		coplay->players = players;
 		coplay->mix_mode = static_cast<int>(coplay->host->GetMixMode());
 	}
+	CoPlaySyncPlayers(players);
 	emit CoPlayChanged();
 }
 
@@ -445,6 +517,7 @@ void StreamSession::CoPlayOnEvent(ChiakiEvent *event)
 			{
 				coplay->hosting = true;
 				CHIAKI_LOGI(GetChiakiLog(), "Play Together: sharing this session on UDP port %u", host->Port());
+				QMetaObject::invokeMethod(this, [this] { CoPlayStartMedia(); }, Qt::QueuedConnection);
 			}
 			else
 			{
@@ -630,6 +703,8 @@ void StreamSession::CoPlayStartGuest()
 			coplay::BlobData data = p.avatar.Valid() ? coplay->client->Avatar(p.avatar.hash) : nullptr;
 			m["avatar"] = data ? AvatarId(p.avatar) : QString();
 			m["avatarUrl"] = AvatarUrl(data);
+			MediaToMap(m, p.media);
+			m["mutedHere"] = coplay->voice->PlayerMuted(p.slot);
 			players.append(m);
 		}
 		bool changed;
@@ -640,7 +715,10 @@ void StreamSession::CoPlayStartGuest()
 			coplay->mix_mode = mix_mode;
 		}
 		if(changed)
+		{
+			QMetaObject::invokeMethod(this, [this, players] { CoPlaySyncPlayers(players); }, Qt::QueuedConnection);
 			emit CoPlayChanged();
+		}
 	};
 	callbacks.on_state = [this, rebuild_players](const coplay::SessionState &s) {
 		// Sound format, once the host knows it
@@ -731,6 +809,12 @@ void StreamSession::CoPlayStartGuest()
 		coplay->guest_inputs = inputs;
 		coplay->have_guest_inputs = true;
 	};
+	callbacks.on_voice = [this](uint8_t slot, const uint8_t *data, size_t size) {
+		CoPlayOnVoice(slot, data, size);
+	};
+	callbacks.on_cam_frame = [this](uint8_t slot, const std::vector<uint8_t> &jpeg) {
+		CoPlayOnCamFrame(slot, QByteArray(reinterpret_cast<const char *>(jpeg.data()), static_cast<int>(jpeg.size())));
+	};
 	callbacks.on_disconnected = [this](coplay::DisconnectReason reason) {
 		switch(reason)
 		{
@@ -758,6 +842,7 @@ void StreamSession::CoPlayStartGuest()
 	memset(&event, 0, sizeof(event));
 	event.type = CHIAKI_EVENT_CONNECTED;
 	Event(&event);
+	CoPlayStartMedia();
 }
 
 void StreamSession::CoPlayStopGuest()
@@ -902,6 +987,15 @@ QJsonObject StreamSession::OverlayState()
 		o["inControl"] = p.value("inControl").toBool();
 		o["controller"] = p.value("controller").toInt();
 		o["avatar"] = p.value("avatar").toString();
+		o["voice"] = p.value("voice").toBool();
+		o["muted"] = p.value("muted").toBool() || p.value("silenced").toBool();
+		o["camera"] = p.value("camera").toBool();
+		bool you = p.value("you").toBool();
+		o["talking"] = you ? coplay->voice->OwnSpeaking() : coplay->voice->Level(slot) > 12;
+		{
+			QMutexLocker cam_locker(&coplay->cam_mutex);
+			o["cam"] = static_cast<qint64>(coplay->cam_serial.value(slot, 0));
+		}
 		QJsonObject pad = PadJson(coplay::PadState());
 		if(p.value("you").toBool())
 			pad = PadJson(local); // our own without the detour over the host
@@ -923,4 +1017,394 @@ QJsonObject StreamSession::OverlayState()
 	state["players"] = list;
 	state["combined"] = have_inputs ? PadJson(inputs.combined) : PadJson(local);
 	return state;
+}
+
+// ------------------------------------------------------------------ voice and webcams
+
+#ifdef Q_OS_MACOS
+static void CoPlayMicPermissionCb(Authorization authorization, void *user)
+{
+	// Arrives on whatever thread the system likes
+	auto self = static_cast<StreamSession *>(user);
+	bool granted = authorization == AUTHORIZED;
+	QMetaObject::invokeMethod(self, [self, granted] { self->CoPlayMicPermissionResult(granted); }, Qt::QueuedConnection);
+}
+#endif
+
+int StreamSession::CoPlayOwnSlot() const
+{
+	return IsCoPlayGuest() ? coplay->client->Welcome().slot : 0;
+}
+
+void StreamSession::CoPlayStartMedia()
+{
+	if(!coplay || coplay->media_started || !IsCoPlayActive())
+		return;
+	coplay->media_started = true;
+
+	coplay->voice->SetSendCallback([this](const uint8_t *data, size_t size) {
+		// On the microphone's thread; both ends outlive the microphone (see CoPlayStopThreads)
+		if(coplay->client)
+			coplay->client->SendVoice(data, size);
+		else if(coplay->host && coplay->hosting)
+			coplay->host->PushVoice(data, size);
+	});
+
+	coplay->camera = new CoPlayCamera(this);
+	connect(coplay->camera, &CoPlayCamera::Frame, this, [this](const QByteArray &jpeg, const QImage &image) {
+		if(!coplay || !coplay->camera_on)
+			return;
+		const uint8_t *data = reinterpret_cast<const uint8_t *>(jpeg.constData());
+		if(coplay->client)
+			coplay->client->SendCamFrame(data, static_cast<size_t>(jpeg.size()));
+		else if(coplay->host && coplay->hosting)
+			coplay->host->PushCamFrame(data, static_cast<size_t>(jpeg.size()));
+		// And into our own tile, without decoding what we just encoded
+		int slot = CoPlayOwnSlot();
+		{
+			QMutexLocker locker(&coplay->cam_mutex);
+			coplay->cam_jpeg[slot] = jpeg;
+			coplay->cam_serial[slot]++;
+		}
+		CoPlayCamProvider::Set(slot, image);
+		coplay->cam_serial_total++;
+		emit CoPlayCamChanged();
+	});
+	connect(coplay->camera, &CoPlayCamera::Failed, this, [this](const QString &message) {
+		if(!coplay)
+			return;
+		coplay->camera_on = false;
+		CoPlayUpdateMedia();
+		emit CoPlayNotice(tr("Webcam: %1").arg(message));
+	});
+
+	coplay->media_timer = new QTimer(this);
+	coplay->media_timer->setInterval(100);
+	connect(coplay->media_timer, &QTimer::timeout, this, &StreamSession::CoPlayMediaTick);
+	coplay->media_timer->start();
+
+	// For trying things out without a camera (and without its permission prompt)
+	if(qEnvironmentVariableIsSet("COPLAY_TEST_CAMERA"))
+	{
+		coplay->camera_device = CoPlayCamera::TestDevice();
+		coplay->camera_on_start = true;
+	}
+
+	if(coplay->voice_wanted)
+		SetCoPlayVoiceOn(true);
+	if(coplay->camera_on_start)
+		SetCoPlayCameraOn(true);
+	CoPlayUpdateMedia();
+}
+
+bool StreamSession::GetCoPlayVoiceOn() const
+{
+	return coplay && coplay->voice_on;
+}
+
+void StreamSession::SetCoPlayVoiceOn(bool on)
+{
+	if(!coplay || !coplay->media_started || coplay->voice_on == on)
+		return;
+	if(!on)
+	{
+		coplay->voice_on = false;
+		coplay->voice->CloseMicrophone();
+		coplay->voice->CloseSpeakers();
+		for(int slot = 0; slot < VoiceChat::kMaxPlayers; slot++)
+			coplay->voice->ForgetPlayer(slot);
+		if(coplay->client)
+			coplay->client->SetWant(static_cast<uint8_t>(coplay->client->Want() & ~coplay::kWantVoice));
+		CoPlayUpdateMedia();
+		return;
+	}
+
+	QString error;
+	if(!coplay->voice->OpenSpeakers(coplay->speaker_device, &error))
+	{
+		CHIAKI_LOGE(GetChiakiLog(), "Voice chat: cannot open the speakers: %s", qPrintable(error));
+		emit CoPlayNotice(tr("Voice chat: the audio output could not be opened (%1).").arg(error));
+		return;
+	}
+	coplay->voice->SetDeafened(coplay->deafened);
+	coplay->voice->SetMuted(coplay->mic_muted);
+	coplay->voice_on = true;
+	if(coplay->client)
+		coplay->client->SetWant(static_cast<uint8_t>(coplay->client->Want() | coplay::kWantVoice));
+	CoPlayUpdateMedia();
+
+	// Listening works from here on; talking needs the microphone, and on macOS the user's consent
+	if(qEnvironmentVariableIsSet("COPLAY_TEST_VOICE"))
+	{
+		CoPlayMicPermissionResult(true);
+		return;
+	}
+#ifdef Q_OS_MACOS
+	if(!coplay->mic_permission_pending)
+	{
+		coplay->mic_permission_pending = true;
+		macMicPermission(CoPlayMicPermissionCb, this);
+	}
+#else
+	CoPlayMicPermissionResult(true);
+#endif
+}
+
+void StreamSession::CoPlayMicPermissionResult(bool granted)
+{
+	if(!coplay)
+		return;
+	coplay->mic_permission_pending = false;
+	if(!coplay->voice_on)
+		return;
+	if(!granted)
+	{
+		emit CoPlayNotice(tr("Voice chat: this app is not allowed to use the microphone, so you can listen but not talk. You can change that in the system's privacy settings."));
+		CoPlayUpdateMedia();
+		return;
+	}
+	CoPlayOpenMicrophone();
+}
+
+void StreamSession::CoPlayOpenMicrophone()
+{
+	QString error;
+	QString device = qEnvironmentVariableIsSet("COPLAY_TEST_VOICE") ? QStringLiteral("test") : coplay->mic_device;
+	if(!coplay->voice->OpenMicrophone(device, &error))
+	{
+		CHIAKI_LOGE(GetChiakiLog(), "Voice chat: cannot open the microphone: %s", qPrintable(error));
+		emit CoPlayNotice(tr("Voice chat: the microphone could not be opened (%1). You can listen but not talk.").arg(error));
+	}
+	CoPlayUpdateMedia();
+}
+
+bool StreamSession::GetCoPlayMicMuted() const
+{
+	return coplay && coplay->mic_muted;
+}
+
+void StreamSession::SetCoPlayMicMuted(bool muted)
+{
+	if(!coplay || coplay->mic_muted == muted)
+		return;
+	coplay->mic_muted = muted;
+	coplay->voice->SetMuted(muted);
+	CoPlayUpdateMedia();
+}
+
+bool StreamSession::GetCoPlayDeafened() const
+{
+	return coplay && coplay->deafened;
+}
+
+void StreamSession::SetCoPlayDeafened(bool deafened)
+{
+	if(!coplay || coplay->deafened == deafened)
+		return;
+	coplay->deafened = deafened;
+	coplay->voice->SetDeafened(deafened);
+	emit CoPlayMediaChanged();
+}
+
+bool StreamSession::GetCoPlayCameraSupported() const
+{
+	return CoPlayCamera::Supported();
+}
+
+bool StreamSession::GetCoPlayCameraOn() const
+{
+	return coplay && coplay->camera_on;
+}
+
+void StreamSession::SetCoPlayCameraOn(bool on)
+{
+	if(!coplay || !coplay->media_started || !coplay->camera || coplay->camera_on == on)
+		return;
+	coplay->camera_on = on;
+	if(on)
+		coplay->camera->Start(coplay->camera_device, coplay->camera_quality); // reports back through Failed
+	else
+	{
+		coplay->camera->Stop();
+		int slot = CoPlayOwnSlot();
+		{
+			QMutexLocker locker(&coplay->cam_mutex);
+			coplay->cam_jpeg.remove(slot);
+			coplay->cam_serial.remove(slot);
+		}
+		CoPlayCamProvider::Clear(slot);
+		coplay->cam_serial_total++;
+		emit CoPlayCamChanged();
+	}
+	CoPlayUpdateMedia();
+}
+
+void StreamSession::CoPlayUpdateMedia()
+{
+	if(!coplay)
+		return;
+	uint8_t media = 0;
+	if(coplay->voice_on && coplay->voice->MicrophoneOpen())
+		media |= coplay::kMediaVoice;
+	if(coplay->voice_on && coplay->mic_muted)
+		media |= coplay::kMediaMuted;
+	if(coplay->camera_on)
+		media |= coplay::kMediaCamera;
+	if(coplay->client)
+		coplay->client->SetMedia(media);
+	else if(coplay->host)
+	{
+		coplay->host->SetLocalMedia(media);
+		CoPlayUpdatePlayers();
+	}
+	emit CoPlayMediaChanged();
+}
+
+void StreamSession::coplaySetPlayerMuted(int slot, bool muted)
+{
+	if(!coplay || slot < 0 || slot >= VoiceChat::kMaxPlayers)
+		return;
+	coplay->voice->SetPlayerMuted(slot, muted);
+	{
+		QMutexLocker locker(&coplay->mutex);
+		for(QVariant &entry : coplay->players)
+		{
+			QVariantMap m = entry.toMap();
+			if(m.value("slot").toInt() == slot)
+			{
+				m["mutedHere"] = muted;
+				entry = m;
+			}
+		}
+	}
+	emit CoPlayChanged();
+}
+
+void StreamSession::coplaySetSilenced(int slot, bool silenced)
+{
+	if(!coplay || !coplay->host || slot < 1 || slot > 255)
+		return;
+	coplay->host->SetGuestSilenced(static_cast<uint8_t>(slot), silenced);
+}
+
+void StreamSession::CoPlayOnVoice(int slot, const uint8_t *data, size_t size)
+{
+	// On a network thread
+	if(coplay->voice_on)
+		coplay->voice->PushVoice(slot, data, size);
+}
+
+void StreamSession::CoPlayOnCamFrame(int slot, const QByteArray &jpeg)
+{
+	// On a network thread; decoding the picture is work for ours
+	if(!coplay->show_cams)
+		return;
+	QMetaObject::invokeMethod(this, [this, slot, jpeg] {
+		if(!coplay)
+			return;
+		QImage image = QImage::fromData(jpeg, "JPEG");
+		if(image.isNull())
+			return;
+		{
+			QMutexLocker locker(&coplay->cam_mutex);
+			coplay->cam_jpeg[slot] = jpeg;
+			coplay->cam_serial[slot]++;
+		}
+		CoPlayCamProvider::Set(slot, image);
+		coplay->cam_serial_total++;
+		emit CoPlayCamChanged();
+	}, Qt::QueuedConnection);
+}
+
+void StreamSession::CoPlaySyncPlayers(const QVariantList &players)
+{
+	// Whoever left or switched the webcam off must not stay on screen as a frozen picture,
+	// and whoever takes over a place must not inherit the old voice
+	if(!coplay)
+		return;
+	bool present[VoiceChat::kMaxPlayers] = {};
+	bool camera[VoiceChat::kMaxPlayers] = {};
+	for(const QVariant &entry : players)
+	{
+		QVariantMap m = entry.toMap();
+		int slot = m.value("slot").toInt();
+		if(slot < 0 || slot >= VoiceChat::kMaxPlayers)
+			continue;
+		present[slot] = true;
+		camera[slot] = m.value("camera").toBool();
+	}
+	bool cams_changed = false;
+	for(int slot = 0; slot < VoiceChat::kMaxPlayers; slot++)
+	{
+		if(!present[slot])
+			coplay->voice->ForgetPlayer(slot);
+		if(!camera[slot])
+		{
+			QMutexLocker locker(&coplay->cam_mutex);
+			if(coplay->cam_jpeg.remove(slot))
+			{
+				coplay->cam_serial.remove(slot);
+				CoPlayCamProvider::Clear(slot);
+				cams_changed = true;
+			}
+		}
+	}
+	if(cams_changed)
+	{
+		coplay->cam_serial_total++;
+		emit CoPlayCamChanged();
+	}
+}
+
+void StreamSession::CoPlayMediaTick()
+{
+	if(!coplay)
+		return;
+	QVariantMap talking;
+	int own = CoPlayOwnSlot();
+	if(coplay->voice_on)
+	{
+		for(int slot = 0; slot < VoiceChat::kMaxPlayers; slot++)
+		{
+			bool on = slot == own ? coplay->voice->OwnSpeaking() : coplay->voice->Level(slot) > 12;
+			if(on)
+				talking[QString::number(slot)] = true;
+		}
+	}
+	if(talking != coplay->talking)
+	{
+		coplay->talking = talking;
+		emit CoPlayTalkingChanged();
+	}
+}
+
+QVariantMap StreamSession::GetCoPlayTalking() const
+{
+	return coplay ? coplay->talking : QVariantMap();
+}
+
+int StreamSession::GetCoPlayCamSerial() const
+{
+	return coplay ? coplay->cam_serial_total.load() : 0;
+}
+
+QByteArray StreamSession::CoPlayCamJpeg(int slot, quint64 *serial)
+{
+	if(!coplay)
+		return QByteArray();
+	QMutexLocker locker(&coplay->cam_mutex);
+	if(serial)
+		*serial = coplay->cam_serial.value(slot, 0);
+	return coplay->cam_jpeg.value(slot);
+}
+
+void StreamSession::CoPlaySetOverlayAudio(bool enabled, bool include_own)
+{
+	if(coplay)
+		coplay->voice->SetTap(enabled, include_own);
+}
+
+QByteArray StreamSession::CoPlayReadOverlayAudio()
+{
+	return coplay ? coplay->voice->ReadTap() : QByteArray();
 }
