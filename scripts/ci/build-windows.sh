@@ -46,7 +46,8 @@ cp COPYING "dist/$PACKAGE/LICENSE.txt"
 if command -v wine >/dev/null; then
 	echo "== Running the Windows binaries with wine"
 	export WINEPREFIX="${WINEPREFIX:-$(mktemp -d)/wine}"
-	export WINEDEBUG="${WINEDEBUG:--all}"
+	# Wine's "fixme" chatter hides real problems; its errors (a DLL that fails to load) stay visible
+	export WINEDEBUG="${WINEDEBUG:-fixme-all}"
 	# The tests only need the C++ runtime next to them
 	TEST_DIR="$(mktemp -d)"
 	cp "$BUILD_DIR/coplay/coplay-tests.exe" "$TEST_DIR/"
