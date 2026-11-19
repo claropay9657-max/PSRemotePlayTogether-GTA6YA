@@ -13,6 +13,8 @@ Item {
 
     /** Where the down key leaves the strip to. */
     property Item downItem: null
+    /** Where the up key leaves the strip to. */
+    property Item upItem: null
     /** Where a key press from outside should enter the strip. */
     readonly property Item firstItem: !active ? displayButton : (voiceOn ? micButton : voiceButton)
     signal closeRequested()
@@ -73,6 +75,7 @@ Item {
         Keys.onReturnPressed: clicked()
         Keys.onEscapePressed: bar.closeRequested()
         KeyNavigation.down: bar.downItem
+        KeyNavigation.up: bar.upItem
         background: Rectangle {
             radius: 10
             color: sw.tint.a > 0 ? sw.tint : Qt.rgba(1, 1, 1, sw.hovered || sw.activeFocus ? 0.18 : 0.09)
@@ -169,6 +172,7 @@ Item {
                     KeyNavigation.left: bar.voiceOn ? leaveVoiceButton : camButton
                     KeyNavigation.right: inviteButton
                     KeyNavigation.down: bar.downItem
+                    KeyNavigation.up: bar.upItem
                 }
 
                 BarButton {
@@ -218,7 +222,8 @@ Item {
 
             Label {
                 visible: !bar.hosting
-                opacity: 0.7
+                opacity: 0.6
+                font.pixelSize: 13
                 text: !bar.active ? qsTr("Playing alone. Overlays… sets what is shown on the game picture and in OBS.")
                       : (!bar.session.coplayVideoEnabled ? qsTr("Controller only: no picture from the console")
                                                          : qsTr("Click a player for more"))
