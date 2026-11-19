@@ -1741,27 +1741,32 @@ void QmlBackend::connectToHost(int index, QString nickname)
         wakeup_nickname = nickname;
     }
 
+    // Controller only: there is no picture to fill the screen with, and whoever plays on the TV
+    // needs this computer's screen for other things (OBS, the chat), so the window stays as it is
+    const bool picture_off = (settings->GetAudioVideoDisabled() & CHIAKI_VIDEO_DISABLED) != 0;
     bool fullscreen = false, zoom = false, stretch = false;
-    switch (settings->GetWindowType()) {
-    case WindowType::SelectedResolution:
-        break;
-    case WindowType::CustomResolution:
-        break;
-    case WindowType::AdjustableResolution:
-        break;
-    case WindowType::Fullscreen:
-        fullscreen = true;
-        break;
-    case WindowType::Zoom:
-        zoom = true;
-        break;
-    case WindowType::Stretch:
-        stretch = true;
-        break;
-    default:
-        break;
+    if (!picture_off) {
+        switch (settings->GetWindowType()) {
+        case WindowType::SelectedResolution:
+            break;
+        case WindowType::CustomResolution:
+            break;
+        case WindowType::AdjustableResolution:
+            break;
+        case WindowType::Fullscreen:
+            fullscreen = true;
+            break;
+        case WindowType::Zoom:
+            zoom = true;
+            break;
+        case WindowType::Stretch:
+            stretch = true;
+            break;
+        default:
+            break;
+        }
+        emit windowTypeUpdated(settings->GetWindowType());
     }
-    emit windowTypeUpdated(settings->GetWindowType());
 
     resume_session = false;
     if(server.duid.isEmpty())

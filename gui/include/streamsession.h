@@ -207,6 +207,10 @@ class StreamSession : public QObject
 	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
 	Q_PROPERTY(int coplayMixMode READ GetCoPlayMixMode WRITE SetCoPlayMixMode NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayVideoEnabled READ GetCoPlayVideoEnabled WRITE SetCoPlayVideoEnabled NOTIFY CoPlayChanged)
+	// This computer shows no picture / plays no sound of the console in this session: the host plays
+	// on the TV (controller only), or a guest joined with the controller only
+	Q_PROPERTY(bool pictureOff READ GetPictureOff NOTIFY CoPlayChanged)
+	Q_PROPERTY(bool soundOff READ GetSoundOff NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayActive READ IsCoPlayActive NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayVoiceOn READ GetCoPlayVoiceOn WRITE SetCoPlayVoiceOn NOTIFY CoPlayMediaChanged)
 	Q_PROPERTY(bool coplayMicMuted READ GetCoPlayMicMuted WRITE SetCoPlayMicMuted NOTIFY CoPlayMediaChanged)
@@ -310,6 +314,14 @@ class StreamSession : public QObject
 		std::atomic<bool> stop_requested{false};
 		std::atomic<bool> video_stalled{false};
 		std::atomic<uint64_t> last_video_ms{0};
+		// What the user switched off for this computer (Settings::GetAudioVideoDisabled()) in a
+		// console session. Where friends can join, the console still sends both for them and only
+		// this computer leaves them out (local_*_off); otherwise the library does not take them
+		// from the console in the first place.
+		bool console_video_off = false;
+		bool console_audio_off = false;
+		std::atomic<bool> local_video_off{false};
+		std::atomic<bool> local_audio_off{false};
 		void CheckVideoStalled();
 
 		ChiakiFfmpegDecoder *ffmpeg_decoder;
@@ -488,6 +500,8 @@ class StreamSession : public QObject
 		void SetCoPlayMixMode(int mode);
 		bool GetCoPlayVideoEnabled() const;
 		void SetCoPlayVideoEnabled(bool enabled);
+		bool GetPictureOff() const;
+		bool GetSoundOff() const;
 		/** A guest that lost the host and is joining again by itself. */
 		bool IsCoPlayReconnecting() const;
 		/** What to tell the user while that goes on. */

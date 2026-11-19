@@ -534,6 +534,17 @@ bool StreamSession::GetCoPlayVideoEnabled() const
 	return !coplay || coplay->video_enabled;
 }
 
+bool StreamSession::GetPictureOff() const
+{
+	return IsCoPlayGuest() ? !coplay->video_enabled : console_video_off;
+}
+
+bool StreamSession::GetSoundOff() const
+{
+	// A guest without the picture has no sound either (SetCoPlayVideoEnabled)
+	return IsCoPlayGuest() ? !coplay->video_enabled : console_audio_off;
+}
+
 void StreamSession::SetCoPlayVideoEnabled(bool enabled)
 {
 	if(!IsCoPlayGuest() || coplay->video_enabled == enabled)
@@ -735,6 +746,9 @@ bool StreamSession::CoPlayVideoSampleCb(uint8_t *buf, size_t buf_size, int32_t f
 	// Before decoding: the guests get the stream exactly as the console sent it
 	if(self->coplay && self->coplay->host)
 		self->coplay->host->PushVideo(buf, buf_size, frames_lost, frame_recovered);
+	// Controller only: the picture is for the guests, this computer shows none
+	if(self->local_video_off)
+		return true;
 #if CHIAKI_LIB_ENABLE_PI_DECODER
 	if(self->pi_decoder)
 		return chiaki_pi_decoder_video_sample_cb(buf, buf_size, self->pi_decoder);
@@ -756,6 +770,9 @@ void StreamSession::CoPlayAudioHeaderCb(ChiakiAudioHeader *header, void *user)
 		h.unknown = header->unknown;
 		self->coplay->host->SetAudioHeader(h);
 	}
+	// Controller only: the sound is for the guests; no output device is opened here
+	if(self->local_audio_off)
+		return;
 	self->coplay->opus_sink.header_cb(header, self->coplay->opus_sink.user);
 }
 
@@ -764,6 +781,8 @@ void StreamSession::CoPlayAudioFrameCb(uint8_t *buf, size_t buf_size, void *user
 	auto self = static_cast<StreamSession *>(user);
 	if(self->coplay->host && self->coplay->hosting)
 		self->coplay->host->PushAudio(buf, buf_size);
+	if(self->local_audio_off)
+		return;
 	self->coplay->opus_sink.frame_cb(buf, buf_size, self->coplay->opus_sink.user);
 }
 

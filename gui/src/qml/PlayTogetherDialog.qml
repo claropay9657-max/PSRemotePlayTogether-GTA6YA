@@ -336,6 +336,23 @@ DialogView {
                         onToggled: Chiaki.settings.coplayHostEnabled = checked
                     }
 
+                    // For a host who plays on the TV: the same setting as "Picture and sound"
+                    // under Settings, where the two can also be switched off one by one
+                    C.CheckBox {
+                        text: qsTr("Controller only: I play on the TV")
+                        checked: (Chiaki.settings.audioVideoDisabled & 0x02) !== 0
+                        onToggled: Chiaki.settings.audioVideoDisabled = checked ? 3 : 0
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 4
+                        wrapMode: Text.WordWrap
+                        opacity: 0.6
+                        font.pixelSize: 13
+                        text: qsTr("No picture or sound on this computer when you connect to your console. It sends your controller and feeds the overlays, for example the one in OBS. Friends who join still get picture and sound.")
+                    }
+
                     // The invites: one per way a friend can reach this computer
                     ColumnLayout {
                         id: invites

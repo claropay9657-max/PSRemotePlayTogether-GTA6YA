@@ -653,7 +653,7 @@ DialogView {
 
                             C.SettingRow {
                                 title: qsTr("Picture and sound")
-                                description: qsTr("Switch off what you do not need, for example to only send your controller.")
+                                description: qsTr("Switch off what you do not need on this computer, for example to play on the TV and only send your controller. Friends who join your session still get both.")
                                 hint: qsTr("(Audio and Video Enabled)")
 
                                 C.ComboBox {

@@ -14,7 +14,7 @@ Free and open source, for Windows, Linux and macOS. Powered by [GamerNova.net](h
 - **Any controller.** DualSense (with haptics and adaptive triggers when connected by cable), DualShock 4, Xbox and other controllers. Rumble, trigger effects and the light bar reach every player.
 - **Voice chat and webcams.** Everybody can talk to and see each other. Mute yourself, mute somebody just for you, switch the webcam on and off during play. The host can mute a guest for everyone or remove them.
 - **Text chat.** Write to everybody in the session while you play: clickable links with a preview, emoji, and new messages shown on the game picture and, if you like, in your OBS overlay.
-- **Controller only.** Sit next to each other, or watch the host's own stream: join without picture and sound and only send your controller.
+- **Controller only.** Play on the TV and let the computer only send your controller and feed the overlays, for example for your stream in OBS; friends who join still get picture and sound. Guests can join that way too, when you sit next to each other.
 - **Everybody on the game picture.** Players, who is talking, webcams, each player's controller live and the controller the console gets, on top of the game while you play. Show what you want, drag every piece where you want it, and keep several arrangements as presets.
 - **Stream overlay for OBS.** The same for your viewers, as a browser source: who is playing, who is in control, every controller live, webcams, controller battery, and the conversation so it ends up in your stream. Transparent by default, arranged by dragging, with presets. Every player gets the overlay, not only the host.
 - **Player profiles.** A name and a picture for each player, shown in the app and in the overlay.
@@ -42,6 +42,8 @@ Guests need no PlayStation account and no access to the console. The invite cont
 2. Open **Play Together**, switch on **Let friends join my sessions** and choose how the controller is shared.
 3. Copy the invite and send it to your friends.
 4. Connect to your console. Friends can join as long as you are connected.
+
+**Playing on the TV.** Switch on **Controller only** (on the start page, or under **Play Together**) before you connect: the computer then shows no picture and plays no sound, and its window stays as it is instead of going full screen. Your controller goes to the console through the computer, the overlays keep working, and friends who join get picture and sound as usual. With **Let friends join my sessions** off, the console is also asked for the smallest picture, since nobody looks at it. The console may show the game on the TV in the resolution of the Remote Play stream while you are connected.
 
 Friends in your own network can join right away. For friends elsewhere, forward UDP port **9410** to your computer in your router and put your public address (or a DNS name) into the invite's address field.
 

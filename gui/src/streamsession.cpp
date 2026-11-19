@@ -501,7 +501,24 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	chiaki_connect_info.enable_dualsense = connect_info.enable_dualsense;
 	chiaki_connect_info.packet_loss_max = connect_info.packet_loss_max;
 	chiaki_connect_info.auto_regist = connect_info.auto_regist;
-	chiaki_connect_info.audio_video_disabled = connect_info.audio_video_disabled;
+	// Controller only, for a host who plays on the TV: no picture and no sound on this computer.
+	// The library does that by asking the console for the smallest picture and throwing away
+	// what arrives. A session that friends can join has to keep both for them, so there the
+	// console sends as usual and this computer just does not decode or play it
+	// (CoPlayVideoSampleCb, CoPlayAudioFrameCb).
+	if(!connect_info.coplay_client)
+	{
+		console_video_off = (connect_info.audio_video_disabled & CHIAKI_VIDEO_DISABLED) != 0;
+		console_audio_off = (connect_info.audio_video_disabled & CHIAKI_AUDIO_DISABLED) != 0;
+	}
+	if(connect_info.coplay_host_enabled && !connect_info.coplay_client)
+	{
+		local_video_off = console_video_off;
+		local_audio_off = console_audio_off;
+		chiaki_connect_info.audio_video_disabled = CHIAKI_NONE_DISABLED;
+	}
+	else
+		chiaki_connect_info.audio_video_disabled = connect_info.audio_video_disabled;
 
 	dpad_touch_shortcut1 = connect_info.dpad_touch_shortcut1;
 	dpad_touch_shortcut2 = connect_info.dpad_touch_shortcut2;
@@ -616,7 +633,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 		// such a one back is not done here
 		console_auto_reconnect = connect_info.auto_reconnect && connect_info.duid.isEmpty() && !connect_info.auto_regist;
 		// Nothing but the picture tells that a console which stays connected has gone quiet
-		if(console_auto_reconnect && !(connect_info.audio_video_disabled & CHIAKI_VIDEO_DISABLED))
+		if(console_auto_reconnect && !(chiaki_connect_info.audio_video_disabled & CHIAKI_VIDEO_DISABLED))
 		{
 			auto stall_timer = new QTimer(this);
 			stall_timer->setInterval(1000);

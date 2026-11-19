@@ -16,6 +16,15 @@ Item {
     property bool sessionLoading: true
     property list<Item> restoreFocusItems
     readonly property bool useSeparateMenuWindow: Chiaki.window.runtimeRendererBackend === 1
+    // No picture of the console on this computer in this session: a host who plays on the TV
+    // (controller only), or a guest who joined with the controller only. The session says so;
+    // the setting behind it may have changed since it started and does not apply to guests.
+    readonly property bool pictureOff: !!Chiaki.session && Chiaki.session.pictureOff
+    readonly property bool soundOff: !!Chiaki.session && Chiaki.session.soundOff
+    /** The same as pictureOff, for handlers that run before that binding has caught up. */
+    function sessionPictureOff() {
+        return !!Chiaki.session && Chiaki.session.pictureOff;
+    }
     // As tall as the menu needs: more with a session (the Play Together card), and more
     // again in a narrow window, where its controls take a second row
     readonly property int menuWantedHeight: useSeparateMenuWindow ? separateMenuWindow.wantedHeight
@@ -32,7 +41,7 @@ Item {
         streamMenuHeight = h;
         updateSeparateMenuGeometry();
     }
-    readonly property bool streamStatsVisible: Chiaki.settings.showStreamStats && Chiaki.session && !(menuController.open || menuController.closing) && !sessionLoading && !sessionError && !(Chiaki.settings.audioVideoDisabled & 0x02)
+    readonly property bool streamStatsVisible: Chiaki.settings.showStreamStats && Chiaki.session && !(menuController.open || menuController.closing) && !sessionLoading && !sessionError && !view.pictureOff
     property int separateMenuX: 0
     property int separateMenuY: 0
     property int separateMenuWidth: 0
@@ -109,7 +118,7 @@ Item {
         sessionError = false;
         errorTitleLabel.text = "";
         errorTextLabel.text = "";
-        sessionLoading = !(Chiaki.window.loadingTransitionComplete || (Chiaki.settings.audioVideoDisabled & 0x02));
+        sessionLoading = !(Chiaki.window.loadingTransitionComplete || view.sessionPictureOff());
     }
     StackView.onDeactivated: Chiaki.window.keepVideo = false
 
@@ -173,7 +182,7 @@ Item {
         id: loadingView
         anchors.fill: parent
         color: "black"
-        opacity: sessionError || sessionLoading || (Chiaki.settings.audioVideoDisabled & 0x02) ? 1.0 : 0.0
+        opacity: sessionError || sessionLoading || view.pictureOff ? 1.0 : 0.0
         visible: opacity
 
         Behavior on opacity { NumberAnimation { duration: 250 } }
@@ -204,15 +213,15 @@ Item {
                 text: {
                     if(Chiaki.settings.dpadTouchEnabled)
                     {
-                        if(Chiaki.settings.audioVideoDisabled == 0x01)
-                            qsTr("Audio Disabled in settings\n") + qsTr("Press %1 to open stream menu").arg(Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : "Ctrl+O") + "\n" + qsTr("Press %1 to toggle between regular dpad and dpad touch").arg(Chiaki.settings.stringForDpadShortcut())
+                        if(view.soundOff && !view.pictureOff)
+                            qsTr("Sound is switched off for this computer\n") + qsTr("Press %1 to open stream menu").arg(Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : "Ctrl+O") + "\n" + qsTr("Press %1 to toggle between regular dpad and dpad touch").arg(Chiaki.settings.stringForDpadShortcut())
                         else
                             qsTr("Press %1 to open stream menu").arg(Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : "Ctrl+O") + "\n" + qsTr("Press %1 to toggle between regular dpad and dpad touch").arg(Chiaki.settings.stringForDpadShortcut())
                     }
                     else
                     {
-                        if(Chiaki.settings.audioVideoDisabled == 0x01)
-                            qsTr("Audio Disabled in settings\n") + qsTr("Press %1 to open stream menu").arg(Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : "Ctrl+O")
+                        if(view.soundOff && !view.pictureOff)
+                            qsTr("Sound is switched off for this computer\n") + qsTr("Press %1 to open stream menu").arg(Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : "Ctrl+O")
                         else
                             qsTr("Press %1 to open stream menu").arg(Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : "Ctrl+O")
                     }
@@ -226,9 +235,9 @@ Item {
                     bottom: spinner.top
                     horizontalCenter: spinner.horizontalCenter
                 }
-                text: (Chiaki.settings.audioVideoDisabled & 0x01) ? qsTr("Audio and Video Disabled") : qsTr("Video Disabled")
+                text: view.soundOff ? qsTr("Controller only") : qsTr("Picture off")
                 font.pixelSize: 24
-                visible: !sessionLoading && !sessionError && (Chiaki.settings.audioVideoDisabled & 0x02)
+                visible: !sessionLoading && !sessionError && view.pictureOff
             }
 
             Label {
@@ -240,8 +249,16 @@ Item {
                 }
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: 20
-                text: (Chiaki.settings.audioVideoDisabled & 0x01) ? qsTr("You have disabled audio and video in your settings.\nTo re-enable change Audio/Video to Audio and Video Enabled in the General tab of the settings.") : qsTr("You have disabled video in your settings.\nTo re-enable change Audio/Video to Audio and Video Enabled in the General tab of the settings.")
-                visible: !sessionLoading && !sessionError && (Chiaki.settings.audioVideoDisabled & 0x02)
+                text: {
+                    const menu = qsTr("Press %1 for the stream menu.").arg(Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : (Qt.platform.os === "osx" ? "⌘O" : "Ctrl+O"));
+                    if (Chiaki.session && Chiaki.session.coplayGuest)
+                        return qsTr("You joined without picture and sound. Your controller plays along.") + "\n" + menu;
+                    const what = view.soundOff ? qsTr("The game is on your TV. This computer sends your controller and feeds the overlays.")
+                                               : qsTr("The picture is switched off for this computer.");
+                    const friends = Chiaki.session && Chiaki.session.coplayActive ? "\n" + qsTr("Friends who join still get picture and sound.") : "";
+                    return what + friends + "\n" + menu + "\n" + qsTr("To get picture and sound back, switch off \"Controller only\" under Play Together before you connect.");
+                }
+                visible: !sessionLoading && !sessionError && view.pictureOff
             }
 
             Label {
@@ -1044,7 +1061,7 @@ Item {
                 sessionError = false;
                 errorTitleLabel.text = "";
                 errorTextLabel.text = "";
-                sessionLoading = !(Chiaki.window.loadingTransitionComplete || (Chiaki.settings.audioVideoDisabled & 0x02));
+                sessionLoading = !(Chiaki.window.loadingTransitionComplete || view.sessionPictureOff());
             }
         }
 
@@ -1088,7 +1105,7 @@ Item {
                 Chiaki.window.noteLoadingTransitionComplete();
                 Chiaki.window.requestOverlayUpdate();
             } else if (Chiaki.session) {
-                sessionLoading = !(Chiaki.settings.audioVideoDisabled & 0x02);
+                sessionLoading = !view.sessionPictureOff();
             }
         }
 
@@ -1117,7 +1134,7 @@ Item {
         target: Chiaki.session
 
         function onConnectedChanged() {
-            if (Chiaki.settings.audioVideoDisabled & 0x02)
+            if (view.sessionPictureOff())
                 sessionLoading = false;
         }
     }

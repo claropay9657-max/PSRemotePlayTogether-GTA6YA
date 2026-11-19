@@ -876,6 +876,38 @@ Pane {
                         }
                     }
 
+                    // For a host who plays on the TV; see "Controller only" in PlayTogetherDialog
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Label {
+                                font.pixelSize: 14
+                                font.bold: true
+                                text: qsTr("Controller only")
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                opacity: 0.6
+                                font.pixelSize: 12
+                                text: (Chiaki.settings.audioVideoDisabled & 0x02)
+                                      ? qsTr("You play on the TV: no picture or sound on this computer.")
+                                      : qsTr("Off: picture and sound on this computer.")
+                            }
+                        }
+
+                        Switch {
+                            focusPolicy: Qt.NoFocus
+                            checked: (Chiaki.settings.audioVideoDisabled & 0x02) !== 0
+                            onToggled: Chiaki.settings.audioVideoDisabled = checked ? 3 : 0
+                        }
+                    }
+
                     PageButton {
                         Layout.fillWidth: true
                         text: qsTr("Profile, voice, webcam & overlays…")
