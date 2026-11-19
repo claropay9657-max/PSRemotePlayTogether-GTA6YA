@@ -167,13 +167,16 @@ if(APPLE)
 endif()
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fanalyzer")
+# The CMake target keeps upstream's name; the program people start is PSRemotePlayTogether
+# (PSRemotePlayTogether.exe, PSRemotePlayTogether.app, usr/bin/PSRemotePlayTogether)
 set_target_properties(chiaki PROPERTIES
+		OUTPUT_NAME PSRemotePlayTogether
 		MACOSX_BUNDLE TRUE
 		MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/MacOSXBundleInfo.plist.in"
 		MACOSX_BUNDLE_BUNDLE_NAME PSRemotePlayTogether
 		MACOSX_BUNDLE_BUNDLE_VERSION ${CHIAKI_VERSION}
 		MACOSX_BUNDLE_COPYRIGHT "GamerNova.net, Street Pea, thestr4ng3r (AGPLv3)"
-		MACOSX_BUNDLE_GUI_IDENTIFIER "org.streetpea.chiaking"
+		MACOSX_BUNDLE_GUI_IDENTIFIER "net.gamernova.psremoteplaytogether"
 		MACOSX_BUNDLE_ICON_FILE chiaking.icns
 		RESOURCE "${RESOURCE_FILES}")
 

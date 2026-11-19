@@ -72,4 +72,4 @@ if grep -q '^coplay' <(cmake --build "$BUILD_DIR" --target help 2>/dev/null | se
 	fi
 fi
 
-echo "Built: $BUILD_DIR/gui/chiaki.app"
+echo "Built: $BUILD_DIR/gui/PSRemotePlayTogether.app"
