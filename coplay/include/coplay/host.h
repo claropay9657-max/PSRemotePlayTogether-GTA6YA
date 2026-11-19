@@ -31,6 +31,8 @@ struct HostConfig
 	/** The host's picture (an image file's bytes, at most kMaxAvatarSize), or empty. */
 	std::vector<uint8_t> avatar;
 	ControllerKind controller = ControllerKind::None;
+	/** Charge of the host's controller: 0..100, kBatteryWired or kBatteryUnknown. */
+	uint8_t battery = kBatteryUnknown;
 	/** MediaFlags the host starts with; see Host::SetLocalMedia(). */
 	uint8_t media = 0;
 	size_t max_guests = 4;
@@ -56,6 +58,8 @@ struct GuestInfo
 	BlobRef avatar;
 	/** MediaFlags: voice chat, muted, webcam, and kMediaSilenced if the host cut its microphone off. */
 	uint8_t media = 0;
+	/** 0..100, kBatteryWired or kBatteryUnknown. */
+	uint8_t battery = kBatteryUnknown;
 };
 
 /**
@@ -94,6 +98,12 @@ class Host
 		bool Start(std::string *error);
 		/** Tells the guests the session is over and stops. */
 		void Stop();
+		/**
+		 * Stops like Stop(), but tells the guests that the host is getting its
+		 * console back and will share again in a moment, so that they wait and
+		 * join again instead of leaving.
+		 */
+		void StopForReconnect();
 		bool IsRunning() const { return running; }
 		uint16_t Port() const;
 
@@ -132,6 +142,8 @@ class Host
 
 		/** The kind of controller the host itself holds. */
 		void SetController(ControllerKind kind);
+		/** Charge of the host's own controller: 0..100, kBatteryWired or kBatteryUnknown. */
+		void SetBattery(uint8_t battery);
 		void SetMixMode(MixMode mode);
 		MixMode GetMixMode();
 		void SetGuestCanControl(uint8_t slot, bool allowed);
@@ -167,6 +179,8 @@ class Host
 			uint64_t last_state_ms = 0;
 			uint8_t want = kWantAll;
 			ControllerKind controller = ControllerKind::None;
+			uint8_t battery = kBatteryUnknown;
+			uint64_t player_id = 0;
 			bool can_control = true;
 			bool in_control = false;
 			bool awaiting_key = true;
@@ -192,6 +206,7 @@ class Host
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 		};
 
+		void StopWith(ByeReason reason);
 		void ThreadMain();
 		void HandlePacket(const uint8_t *data, size_t size, const Address &from, uint64_t now_ms, Deferred &d);
 		void HandleHello(const uint8_t *data, size_t size, const PacketHeader &header, const Address &from, uint64_t now_ms, Deferred &d);

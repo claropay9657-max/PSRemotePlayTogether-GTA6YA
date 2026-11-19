@@ -309,6 +309,7 @@ void WriteSessionState(ByteWriter &w, const SessionState &s)
 		WriteBlobRef(w, p.avatar);
 		w.U8(static_cast<uint8_t>(p.controller));
 		w.U8(p.media);
+		w.U8(p.battery);
 	}
 }
 
@@ -337,6 +338,7 @@ bool ReadSessionState(ByteReader &r, SessionState &s)
 			return false;
 		p.controller = ControllerKindFromWire(r.U8());
 		p.media = r.U8();
+		p.battery = r.U8();
 		s.participants.push_back(std::move(p));
 	}
 	return r.ok();
@@ -350,6 +352,8 @@ void WriteHello(ByteWriter &w, const HelloPayload &h)
 	w.Str8(h.name.substr(0, kMaxNameLength));
 	WriteBlobRef(w, h.avatar);
 	w.U8(h.media);
+	w.U8(h.battery);
+	w.U64(h.player_id);
 }
 
 bool ReadHello(ByteReader &r, HelloPayload &h)
@@ -361,6 +365,8 @@ bool ReadHello(ByteReader &r, HelloPayload &h)
 	if(!r.ok() || h.name.size() > kMaxNameLength || !ReadBlobRef(r, h.avatar))
 		return false;
 	h.media = r.U8() & kMediaOwnMask;
+	h.battery = r.U8();
+	h.player_id = r.U64();
 	if(!r.ok())
 		return false;
 	h.controller = ControllerKindFromWire(controller);

@@ -1107,12 +1107,13 @@ struct TestGuest
 	~TestGuest() { client->Stop(); } // callbacks use the members below
 
 	TestGuest(const Invite &invite, const std::string &name, uint8_t want = kWantAll, uint32_t connect_timeout_ms = 3000,
-		const std::vector<uint8_t> &avatar = {})
+		const std::vector<uint8_t> &avatar = {}, uint64_t player_id = 0)
 	{
 		ClientConfig config;
 		config.invite = invite;
 		config.name = name;
 		config.avatar = avatar;
+		config.player_id = player_id;
 		config.want = want;
 		config.controller = ControllerKind::Xbox;
 		config.connect_timeout_ms = connect_timeout_ms;
@@ -1933,6 +1934,98 @@ TEST(net_pictures_reach_everyone)
 	CHECK(WaitFor([&] { return carl.LastState().participants.size() == 4; }, 2000));
 	CHECK(!carl.LastState().participants[3].avatar.Valid());
 	CHECK(!carl.client->OwnAvatar().Valid());
+}
+
+TEST(net_battery_levels_reach_everyone)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "Alice", 0);
+	TestGuest b(h.MakeInvite(), "Bob", 0);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return b.LastState().participants.size() == 3; }, 2000));
+	// nobody said anything yet
+	for(const Participant &p : b.LastState().participants)
+		CHECK(p.battery == kBatteryUnknown);
+
+	h.host->SetBattery(kBatteryWired);
+	a.client->SetBattery(37);
+	CHECK(WaitFor([&] {
+		SessionState s = b.LastState();
+		return s.participants.size() == 3 && s.participants[0].battery == kBatteryWired && s.participants[1].battery == 37;
+	}, 2000));
+	CHECK(b.LastState().participants[2].battery == kBatteryUnknown);
+	auto guests = h.host->Guests();
+	CHECK(guests.size() == 2 && guests[0].battery == 37);
+
+	// it drains
+	a.client->SetBattery(12);
+	CHECK(WaitFor([&] { return b.LastState().participants[1].battery == 12; }, 2000));
+}
+
+TEST(net_player_who_joins_again_gets_the_same_place)
+{
+	TestHost h;
+	const uint64_t alice_id = 0x1122334455667788ull;
+	auto alice = std::make_unique<TestGuest>(h.MakeInvite(), "Alice", 0, 3000, std::vector<uint8_t>(), alice_id);
+	TestGuest bob(h.MakeInvite(), "Bob", 0, 3000, std::vector<uint8_t>(), 42);
+	CHECK(alice->Connect());
+	CHECK(bob.Connect());
+	CHECK(alice->client->Welcome().slot == 1 && bob.client->Welcome().slot == 2);
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+
+	// Alice's connection breaks: nothing she sends arrives, and she does not say goodbye
+	alice->client->SetInput(Pad(kButtonCross));
+	CHECK(WaitFor([&] { return h.host->MixedInput().buttons == kButtonCross; }, 1000));
+	alice->client->SetSimulatedLoss(1.0);
+
+	// She joins again right away. The host still has her old connection, which
+	// would only time out after seconds; she must not show up twice.
+	TestGuest again(h.MakeInvite(), "Alice", 0, 3000, std::vector<uint8_t>(), alice_id);
+	CHECK(again.Connect());
+	CHECK(again.client->Welcome().slot == 1);
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 1000));
+	auto guests = h.host->Guests();
+	CHECK(guests.size() == 2);
+	if(guests.size() == 2)
+		CHECK(guests[0].slot == 1 && guests[0].name == "Alice" && guests[1].slot == 2);
+	// and the button the broken connection was holding is released
+	CHECK(WaitFor([&] { return h.host->MixedInput().buttons == 0; }, 1000));
+	CHECK(WaitFor([&] { return bob.LastState().participants.size() == 3; }, 1000));
+
+	// Somebody else (another id, or none) gets a place of their own
+	TestGuest carl(h.MakeInvite(), "Carl", 0);
+	CHECK(carl.Connect());
+	CHECK(carl.client->Welcome().slot == 3);
+	alice.reset();
+}
+
+TEST(net_host_says_when_it_is_coming_back)
+{
+	TestHost h;
+	TestGuest g(h.MakeInvite(), "Friend", 0);
+	CHECK(g.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+	uint16_t port = h.host->Port();
+
+	// The host lost its console and will share again once it has it back
+	h.host->StopForReconnect();
+	CHECK(WaitFor([&] { return g.disconnects == 1; }, 1000));
+	CHECK(g.reason == DisconnectReason::HostReconnecting);
+
+	// It comes back on the same port with the same invite, and the guest can join again
+	HostConfig config = h.config;
+	config.port = port;
+	Host back(config, HostCallbacks());
+	std::string error;
+	CHECK(back.Start(&error));
+	Invite invite;
+	invite.host = "127.0.0.1";
+	invite.port = port;
+	invite.secret = config.secret;
+	TestGuest again(invite, "Friend", 0);
+	CHECK(again.Connect());
+	CHECK(WaitFor([&] { return back.Guests().size() == 1; }, 2000));
 }
 
 TEST(net_replayed_packets_are_ignored)

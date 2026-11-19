@@ -65,6 +65,16 @@ bool Host::Start(std::string *error)
 
 void Host::Stop()
 {
+	StopWith(ByeReason::HostEnded);
+}
+
+void Host::StopForReconnect()
+{
+	StopWith(ByeReason::Reconnecting);
+}
+
+void Host::StopWith(ByeReason reason)
+{
 	if(!running)
 		return;
 	{
@@ -73,8 +83,8 @@ void Host::Stop()
 		{
 			if(entry.second->confirmed)
 			{
-				SendBye(*entry.second, ByeReason::HostEnded);
-				SendBye(*entry.second, ByeReason::HostEnded);
+				SendBye(*entry.second, reason);
+				SendBye(*entry.second, reason);
 			}
 		}
 	}
@@ -270,6 +280,22 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	if(std::find(seen_nonces.begin(), seen_nonces.end(), hello.guest_nonce) != seen_nonces.end())
 		return;
 
+	// The same player joining again (its connection broke, or the host came back):
+	// it takes its old place over instead of sitting next to its own ghost
+	uint8_t previous_slot = 0;
+	if(hello.player_id)
+	{
+		for(auto &entry : guests)
+		{
+			if(entry.second->player_id == hello.player_id)
+			{
+				previous_slot = entry.second->slot;
+				RemoveGuest(entry.first, d, "is joining again");
+				break;
+			}
+		}
+	}
+
 	if(guests.size() >= config.max_guests)
 	{
 		reject(hello.guest_nonce.data(), RejectReason::Full);
@@ -277,13 +303,12 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	}
 
 	auto g = std::make_unique<Guest>();
-	for(uint8_t slot = 1; slot <= config.max_guests; slot++)
+	if(previous_slot && !FindBySlot(previous_slot))
+		g->slot = previous_slot;
+	for(uint8_t slot = 1; !g->slot && slot <= config.max_guests; slot++)
 	{
 		if(!FindBySlot(slot))
-		{
 			g->slot = slot;
-			break;
-		}
 	}
 	if(g->slot == 0)
 		return;
@@ -304,6 +329,8 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	g->last_rx_ms = now_ms;
 	g->want = hello.want;
 	g->controller = hello.controller;
+	g->battery = hello.battery;
+	g->player_id = hello.player_id;
 	g->avatar = hello.avatar;
 	g->media = hello.media & kMediaOwnMask;
 
@@ -400,11 +427,13 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 				break;
 			ControllerKind kind = ControllerKindFromWire(r.U8());
 			uint8_t media = r.U8() & kMediaOwnMask;
+			uint8_t battery = r.U8();
 			if(!r.ok())
 				break;
 			g.rtt_ms = rtt;
-			if(kind != g.controller || media != g.media)
+			if(kind != g.controller || media != g.media || battery != g.battery)
 			{
+				g.battery = battery;
 				if((g.media & kMediaCamera) && !(media & kMediaCamera))
 					g.cam.Reset();
 				g.controller = kind;
@@ -643,6 +672,7 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 	host.name = config.name;
 	host.avatar = own_avatar;
 	host.controller = config.controller;
+	host.battery = config.battery;
 	host.media = config.media;
 	s.participants.push_back(host);
 	for(auto &entry : guests)
@@ -655,6 +685,7 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 		p.flags = static_cast<uint8_t>((other.can_control ? kParticipantCanControl : 0) | (other.in_control ? kParticipantInControl : 0));
 		p.name = other.name;
 		p.controller = other.controller;
+		p.battery = other.battery;
 		p.media = static_cast<uint8_t>(other.media | (other.silenced ? kMediaSilenced : 0));
 		// Only once it is here completely, or the others would ask for it in vain
 		if(blobs.Has(other.avatar))
@@ -1007,6 +1038,16 @@ void Host::SetController(ControllerKind kind)
 	BroadcastState(NowMs());
 }
 
+void Host::SetBattery(uint8_t battery)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	if(config.battery == battery)
+		return;
+	config.battery = battery;
+	state_seq++;
+	BroadcastState(NowMs());
+}
+
 void Host::SetMixMode(MixMode mode)
 {
 	Deferred d;
@@ -1079,6 +1120,7 @@ std::vector<GuestInfo> Host::Guests()
 		info.address = g.addr.ToString();
 		info.want = g.want;
 		info.controller = g.controller;
+		info.battery = g.battery;
 		info.can_control = g.can_control;
 		info.in_control = g.in_control;
 		info.rtt_ms = g.rtt_ms;

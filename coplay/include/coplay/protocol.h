@@ -42,7 +42,7 @@
 
 namespace coplay {
 
-constexpr uint8_t kProtocolVersion = 2;
+constexpr uint8_t kProtocolVersion = 3;
 constexpr uint16_t kDefaultPort = 9410;
 
 constexpr size_t kHeaderSize = 14;
@@ -109,8 +109,16 @@ enum class ByeReason : uint8_t
 {
 	Quit = 0,     // the sender left on purpose
 	Kicked = 1,   // host removed the guest
-	HostEnded = 2 // the host's console session ended
+	HostEnded = 2, // the host's console session ended
+	/** The host lost its console and is getting it back: keep trying to join again. */
+	Reconnecting = 3
 };
+
+/**
+ * Charge of a player's controller: 0..100 percent, or one of these.
+ */
+constexpr uint8_t kBatteryUnknown = 0xff; // no controller, or it does not say
+constexpr uint8_t kBatteryWired = 0xfe;   // on a cable
 
 /** Streams a guest asks the host to send. Controller feedback is always sent. */
 enum WantFlags : uint8_t
@@ -317,6 +325,7 @@ struct Participant
 	BlobRef avatar;
 	ControllerKind controller = ControllerKind::None;
 	uint8_t media = 0; // MediaFlags
+	uint8_t battery = kBatteryUnknown;
 };
 
 /** Buttons, triggers and sticks of one player, without touch and motion. */
@@ -398,6 +407,13 @@ struct HelloPayload
 	std::string name;
 	BlobRef avatar;
 	uint8_t media = 0; // MediaFlags the guest starts with
+	uint8_t battery = kBatteryUnknown;
+	/**
+	 * Random, the same for as long as the app runs. A guest that joins again
+	 * (after a connection loss, say) takes the place it had instead of
+	 * appearing twice until the old one times out. 0 = none.
+	 */
+	uint64_t player_id = 0;
 };
 
 void WriteHello(ByteWriter &w, const HelloPayload &h);

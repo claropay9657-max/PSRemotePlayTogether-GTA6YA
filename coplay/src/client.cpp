@@ -23,6 +23,7 @@ Client::Client(const ClientConfig &config) : config(config), assembler(config.as
 	welcome_key = DeriveWelcomeKey(config.invite.secret);
 	want = static_cast<uint8_t>(config.want & kWantMask);
 	controller = static_cast<uint8_t>(config.controller);
+	battery = config.battery;
 	media = static_cast<uint8_t>(config.media & kMediaOwnMask);
 	own_avatar = blobs.Put(config.avatar);
 }
@@ -67,6 +68,8 @@ bool Client::Connect(std::string *error)
 	hello.name = config.name;
 	hello.avatar = own_avatar;
 	hello.media = media;
+	hello.battery = battery;
+	hello.player_id = config.player_id;
 	std::vector<uint8_t> body;
 	ByteWriter w(body);
 	WriteHello(w, hello);
@@ -235,6 +238,12 @@ void Client::SetController(ControllerKind kind)
 		ping_now = true;
 }
 
+void Client::SetBattery(uint8_t level)
+{
+	if(battery.exchange(level) != level)
+		ping_now = true;
+}
+
 void Client::SetMedia(uint8_t new_media)
 {
 	new_media &= kMediaOwnMask;
@@ -280,6 +289,7 @@ void Client::SendPing(uint64_t now_ms)
 	w.U16(static_cast<uint16_t>(rtt > 0xffff ? 0xffff : rtt));
 	w.U8(controller);
 	w.U8(media);
+	w.U8(battery);
 	Send(PacketType::Ping, payload);
 	(void)now_ms;
 }
@@ -529,8 +539,14 @@ void Client::HandlePacket(const uint8_t *data, size_t size, const Address &from,
 			uint8_t reason = r.U8();
 			lost = true;
 			if(callbacks.on_disconnected)
-				callbacks.on_disconnected(reason == static_cast<uint8_t>(ByeReason::Kicked)
-					? DisconnectReason::Kicked : DisconnectReason::HostEnded);
+			{
+				DisconnectReason why = DisconnectReason::HostEnded;
+				if(reason == static_cast<uint8_t>(ByeReason::Kicked))
+					why = DisconnectReason::Kicked;
+				else if(reason == static_cast<uint8_t>(ByeReason::Reconnecting))
+					why = DisconnectReason::HostReconnecting;
+				callbacks.on_disconnected(why);
+			}
 			break;
 		}
 		default:

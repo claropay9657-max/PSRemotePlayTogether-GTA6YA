@@ -29,6 +29,9 @@ struct ClientConfig
 	std::vector<uint8_t> avatar;
 	uint8_t want = kWantAll;
 	ControllerKind controller = ControllerKind::None;
+	uint8_t battery = kBatteryUnknown;
+	/** Random and the same across reconnects; lets the host give us our place back. 0 = none. */
+	uint64_t player_id = 0;
 	/** MediaFlags we start with; see Client::SetMedia(). */
 	uint8_t media = 0;
 	uint32_t connect_timeout_ms = 5000;
@@ -41,7 +44,9 @@ enum class DisconnectReason
 {
 	HostEnded, // the host stopped sharing or its console session ended
 	Kicked,
-	Timeout
+	Timeout,
+	/** The host lost its console and is getting it back; joining again will work in a moment. */
+	HostReconnecting
 };
 
 /**
@@ -112,6 +117,8 @@ class Client
 		uint8_t Want() const { return want; }
 		/** Tells the others which kind of controller we hold (it can change during a session). */
 		void SetController(ControllerKind kind);
+		/** Charge of our controller: 0..100, kBatteryWired or kBatteryUnknown. */
+		void SetBattery(uint8_t battery);
 		/** What we contribute: kMediaVoice, kMediaMuted, kMediaCamera. */
 		void SetMedia(uint8_t media);
 		uint8_t Media() const { return media; }
@@ -164,6 +171,7 @@ class Client
 		std::atomic<uint8_t> want{kWantAll};
 		std::atomic<bool> ping_now{false};
 		std::atomic<uint8_t> controller{0};
+		std::atomic<uint8_t> battery{kBatteryUnknown};
 		std::atomic<uint8_t> media{0};
 		std::atomic<uint32_t> voice_seq{0};
 		std::atomic<uint32_t> cam_seq{0};

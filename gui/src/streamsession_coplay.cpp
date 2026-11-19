@@ -828,6 +828,9 @@ void StreamSession::CoPlayStartGuest()
 			case coplay::DisconnectReason::Timeout:
 				emit CoPlayNotice(tr("The connection to the host was lost."));
 				break;
+			case coplay::DisconnectReason::HostReconnecting:
+				emit CoPlayNotice(tr("The host lost the connection to its console."));
+				break;
 		}
 		if(coplay->guest_quit_sent.exchange(true))
 			return;
