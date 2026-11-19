@@ -277,6 +277,9 @@ class Settings : public QObject
 		/** File with the player's picture, already scaled down. */
 		QString GetCoPlayAvatar() const			{ return settings.value("coplay/avatar").toString(); }
 		void SetCoPlayAvatar(const QString &p)	{ settings.setValue("coplay/avatar", p); }
+		/** Get a lost connection back without asking: the console's, or as a guest the host's. */
+		bool GetCoPlayAutoReconnect() const		{ return settings.value("coplay/auto_reconnect", true).toBool(); }
+		void SetCoPlayAutoReconnect(bool on)	{ settings.setValue("coplay/auto_reconnect", on); }
 
 		// Play Together: talking to and seeing each other
 		bool GetCoPlayVoiceEnabled() const		{ return settings.value("coplay/voice_enabled", true).toBool(); }

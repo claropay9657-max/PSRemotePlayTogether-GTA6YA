@@ -87,6 +87,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(QVariantList hiddenHosts READ hiddenHosts NOTIFY hiddenHostsChanged)
     Q_PROPERTY(bool autoConnect READ autoConnect NOTIFY autoConnectChanged)
     Q_PROPERTY(bool coplayJoining READ coplayJoining NOTIFY coplayJoiningChanged)
+    Q_PROPERTY(bool reconnecting READ reconnecting NOTIFY reconnectingChanged)
+    Q_PROPERTY(QString reconnectStatus READ reconnectStatus NOTIFY reconnectingChanged)
     Q_PROPERTY(QString chiakiVersion READ chiakiVersion CONSTANT)
     Q_PROPERTY(QString overlayUrl READ overlayUrl NOTIFY overlayStateChanged)
     Q_PROPERTY(QString overlayError READ overlayError NOTIFY overlayStateChanged)
@@ -204,6 +206,15 @@ public:
     void initOverlay();
     /** Joins a session somebody else shares. Answers with coplayJoinFinished. */
     Q_INVOKABLE void joinCoPlay(const QString &invite, const QString &name, bool controller_only);
+    /**
+     * The connection (to the console, or as a guest to the host of a shared session) was
+     * lost and the app is getting it back by itself. The stream view stays on screen.
+     */
+    bool reconnecting() const;
+    /** A short text for the user while that goes on. */
+    QString reconnectStatus() const;
+    /** Gives up on getting the connection back: the session ends. */
+    Q_INVOKABLE void cancelReconnect();
     Q_INVOKABLE void sessionGoHome();
     Q_INVOKABLE void enterPin(const QString &pin);
     Q_INVOKABLE QUrl psnLoginUrl() const;
@@ -235,6 +246,9 @@ public:
 
 signals:
     void sessionChanged(StreamSession *session);
+    /** A session that was running is over for good, as opposed to lost and being reconnected. */
+    void sessionEnded();
+    void reconnectingChanged();
     void psnConnect(StreamSession *session, const QString &duid, const bool &ps5);
     void showPsnView();
     void connectStateChanged();
@@ -300,6 +314,11 @@ private:
     void updateStreamShortcut();
     QString getExecutable();
     void teardownSession();
+    void finishSession();
+    // Getting a lost console session back, see qmlbackend.cpp
+    bool scheduleConsoleReconnect();
+    void consoleReconnectAttempt();
+    void stopConsoleReconnect();
 
     Settings *settings = {};
     QmlSettings *settings_qml = {};
@@ -348,7 +367,18 @@ private:
     bool controller_mapping_in_progress = false;
     bool enable_analog_stick_mapping = false;
     bool resume_session = false;
+    // The console session was lost and is being replaced by a new one. In between attempts
+    // `session` is the lost one: it stays until its successor takes its place, so that the
+    // stream view never sees a time without a session.
+    bool console_reconnecting = false;
+    bool console_reconnect_waiting = false;
+    int console_reconnect_attempt = 0;
+    QElapsedTimer console_reconnect_clock;
+    QElapsedTimer console_reconnect_stable;
+    QTimer *console_reconnect_timer = {};
     bool coplay_joining = false;
+    /** Names this player to a host for as long as the app runs, see coplay::ClientConfig. */
+    quint64 coplay_player_id = 0;
     class OverlayServer *overlay = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};

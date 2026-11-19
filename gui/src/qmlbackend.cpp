@@ -357,6 +357,9 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     wakeup_start_timer->setSingleShot(true);
     wakeup_resend_timer = new QTimer(this);
     wakeup_resend_timer->setInterval(WAKEUP_RESEND_MS);
+    console_reconnect_timer = new QTimer(this);
+    console_reconnect_timer->setSingleShot(true);
+    connect(console_reconnect_timer, &QTimer::timeout, this, &QmlBackend::consoleReconnectAttempt);
     if(autoConnect() && !auto_connect_nickname.isEmpty())
     {
         connect(psn_auto_connect_timer, &QTimer::timeout, this, [this]
@@ -571,6 +574,17 @@ void QmlBackend::updateAudioVolume()
 void QmlBackend::goToSleep()
 {
     qCInfo(chiakiGui) << "About to sleep";
+    if (session && console_reconnecting) {
+        // The console is gone already; getting it back is for after waking up
+        const bool waiting = console_reconnect_waiting;
+        stopConsoleReconnect();
+        resume_session = true;
+        if (waiting)
+            finishSession();
+        else
+            session->Stop();
+        return;
+    }
     if (session) {
         if (this->settings->GetSuspendAction() == SuspendAction::Sleep)
             session->GoToBed();
@@ -933,7 +947,9 @@ void QmlBackend::startSession(bool emit_session_changed)
     if (window)
         window->armVerbosePlaceboQuietWindow();
 
-    applyStartupWindowSizing();
+    // A session that takes the place of a lost one finds the window as the user left it
+    if (!console_reconnecting)
+        applyStartupWindowSizing();
     if (emit_session_changed)
         prepareStartupPresentation(true);
 
@@ -953,7 +969,146 @@ void QmlBackend::startSession(bool emit_session_changed)
     if (emit_session_changed)
         emit sessionChanged(session);
 
-    sleep_inhibit->inhibit();
+    // Still held from the session that was lost
+    if (!console_reconnecting)
+        sleep_inhibit->inhibit();
+}
+
+// ------------------------------------------------------------------ reconnecting
+//
+// A console session that was lost (an error after it had been connected, or no picture for a
+// while, see StreamSession::ReconnectWanted()) is replaced by a new one made from the same
+// session_info. The lost session object stays in place until its successor is created, so
+// that the window and the stream view go from one session straight to the next. A guest of
+// a shared session joins again inside its session object, see streamsession_coplay.cpp.
+
+/** Everything from losing the console to having it back must fit into this. */
+static const int CONSOLE_RECONNECT_BUDGET_MS = 60 * 1000;
+/** Wait before each attempt. The console can say "Remote Play already in use" for some seconds. */
+static const int CONSOLE_RECONNECT_DELAYS_MS[] = { 1500, 2500, 4000, 6000, 8000 };
+/** A session lost again this soon after it came back goes on with the time that was left. */
+static const int CONSOLE_RECONNECT_STABLE_MS = 20 * 1000;
+
+bool QmlBackend::reconnecting() const
+{
+    return console_reconnecting || (session && session->IsCoPlayReconnecting());
+}
+
+QString QmlBackend::reconnectStatus() const
+{
+    if (console_reconnecting)
+        return tr("Connection lost — reconnecting…");
+    if (session && session->IsCoPlayReconnecting())
+        return session->CoPlayReconnectStatus();
+    return QString();
+}
+
+void QmlBackend::cancelReconnect()
+{
+    if (!session)
+        return;
+    if (session->IsCoPlayReconnecting()) {
+        // A guest: its session ends the usual way
+        session->Stop();
+        return;
+    }
+    if (!console_reconnecting)
+        return;
+    qCInfo(chiakiGui) << "Reconnecting to the console cancelled";
+    const bool waiting = console_reconnect_waiting;
+    stopConsoleReconnect();
+    if (waiting)
+        finishSession(); // nothing runs that could still report a quit
+    else
+        session->Stop();
+}
+
+/** The session was lost: schedules the next attempt, or says that the time is up. */
+bool QmlBackend::scheduleConsoleReconnect()
+{
+    if (!console_reconnecting) {
+        const bool lost_again = console_reconnect_clock.isValid() && console_reconnect_stable.isValid()
+                && console_reconnect_stable.elapsed() < CONSOLE_RECONNECT_STABLE_MS;
+        if (!lost_again) {
+            console_reconnect_clock.start();
+            console_reconnect_attempt = 0;
+        }
+    }
+    const int delay_count = sizeof(CONSOLE_RECONNECT_DELAYS_MS) / sizeof(CONSOLE_RECONNECT_DELAYS_MS[0]);
+    const int delay = CONSOLE_RECONNECT_DELAYS_MS[qMin(console_reconnect_attempt, delay_count - 1)];
+    if (console_reconnect_clock.elapsed() + delay > CONSOLE_RECONNECT_BUDGET_MS) {
+        qCWarning(chiakiGui) << "Giving up on getting the console back after" << console_reconnect_attempt << "attempts";
+        return false;
+    }
+    console_reconnect_attempt++;
+    console_reconnect_stable.invalidate();
+    console_reconnect_waiting = true;
+    console_reconnect_timer->start(delay);
+    qCInfo(chiakiGui) << "Connection to the console lost, attempt" << console_reconnect_attempt << "to get it back in" << delay << "ms";
+    if (!console_reconnecting) {
+        console_reconnecting = true;
+        emit reconnectingChanged();
+    }
+    return true;
+}
+
+void QmlBackend::consoleReconnectAttempt()
+{
+    if (!console_reconnecting || !console_reconnect_waiting)
+        return;
+    console_reconnect_waiting = false;
+
+    // The lost session goes, and its successor takes its place before anybody looks
+    teardownSession();
+    // Straight to the console: it was awake a moment ago
+    wakeup_nickname.clear();
+    // A log of its own, the lost session's stays as it is
+    session_info.log_file = CreateLogFilename();
+    bool announced = false;
+    auto connection = connect(this, &QmlBackend::sessionChanged, this, [&announced]() { announced = true; });
+    createSession(session_info);
+    disconnect(connection);
+    if (session)
+        return;
+
+    // Could not even be set up, and createSession() has said why
+    stopConsoleReconnect();
+    if (!announced)
+        emit sessionChanged(nullptr);
+    sleep_inhibit->release();
+    setDiscoveryEnabled(true);
+    emit sessionEnded();
+}
+
+void QmlBackend::stopConsoleReconnect()
+{
+    console_reconnect_timer->stop();
+    console_reconnect_waiting = false;
+    console_reconnect_clock.invalidate();
+    console_reconnect_stable.invalidate();
+    if (!console_reconnecting)
+        return;
+    console_reconnecting = false;
+    emit reconnectingChanged();
+}
+
+/** The current session is over for good: takes it apart and tells everybody. */
+void QmlBackend::finishSession()
+{
+    pending_recovered_frame.storeRelaxed(0);
+    {
+        QMutexLocker locker(&hw_transfer_state_mutex);
+        logged_hw_transfer_formats.clear();
+        logged_hw_transfer_failures.clear();
+    }
+
+    teardownSession();
+    emit sessionChanged(session);
+    emit reconnectingChanged();
+
+    sleep_inhibit->release();
+    setDiscoveryEnabled(true);
+    emit sessionEnded();
 }
 
 void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
@@ -1160,10 +1315,21 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
         });
     });
 
+    // An attempt to get a lost session back: this side decides about the next one
+    if (console_reconnecting)
+        session->SetReconnectAttempt(true);
+
     StreamSession *session_for_connections = session;
     connect(session, &StreamSession::SessionQuit, this, [this, session_for_connections](ChiakiQuitReason reason, const QString &reason_str) {
         if (session != session_for_connections)
             return;
+
+        // Lost rather than ended: the session object and the stream view stay while a
+        // new session is made, see consoleReconnectAttempt()
+        if (session_for_connections->ReconnectWanted() && !session_for_connections->StopRequested()
+                && scheduleConsoleReconnect())
+            return;
+        stopConsoleReconnect();
 
         if (chiaki_quit_reason_is_error(reason)) {
             QString m = tr("Chiaki Session has quit") + ":\n" + chiaki_quit_reason_string(reason);
@@ -1172,21 +1338,7 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
             emit sessionError(tr("Session has quit"), m);
         }
 
-        chiaki_log_mutex.lock();
-        chiaki_log_ctx = nullptr;
-        chiaki_log_mutex.unlock();
-        pending_recovered_frame.storeRelaxed(0);
-        {
-            QMutexLocker locker(&hw_transfer_state_mutex);
-            logged_hw_transfer_formats.clear();
-            logged_hw_transfer_failures.clear();
-        }
-
-        teardownSession();
-        emit sessionChanged(session);
-
-        sleep_inhibit->release();
-        setDiscoveryEnabled(true);
+        finishSession();
 #ifdef Q_OS_WINDOWS
         qCInfo(chiakiGui) << "Checking sleep state: ";
         if(windows_wake_sleep->getWakeState() == WindowsWakeState::Awake)
@@ -1224,9 +1376,20 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
         if (session != session_for_connections)
             return;
 
-        if (session_for_connections->IsConnected())
-            setDiscoveryEnabled(false);
+        if (!session_for_connections->IsConnected())
+            return;
+        setDiscoveryEnabled(false);
+        if (console_reconnecting) {
+            qCInfo(chiakiGui) << "Connected to the console again after" << console_reconnect_clock.elapsed() << "ms";
+            // The clock runs on: a session that is lost again at once does not get all the time anew
+            console_reconnecting = false;
+            console_reconnect_stable.start();
+            emit reconnectingChanged();
+        }
     });
+
+    // A guest that lost the host joins again inside its session
+    connect(session, &StreamSession::CoPlayReconnectingChanged, this, &QmlBackend::reconnectingChanged);
     chiaki_log_mutex.lock();
     chiaki_log_ctx = session->GetChiakiLog();
     chiaki_log_mutex.unlock();
@@ -1262,6 +1425,12 @@ bool QmlBackend::closeRequested()
 {
     if (!session)
         return true;
+
+    if (reconnecting()) {
+        // Nothing is connected that could be asked to stop or sent to sleep
+        cancelReconnect();
+        return false;
+    }
 
     bool stop = true;
     if (session->IsConnected()) {
@@ -1670,6 +1839,12 @@ void QmlBackend::stopSession(bool sleep)
             waking_sleeping_nicknames.removeOne(session_info.nickname);
             emit hostsChanged();
         });
+    }
+
+    if (console_reconnecting) {
+        // There is no console to tell; this ends what is left of the session
+        cancelReconnect();
+        return;
     }
 
     if (sleep)

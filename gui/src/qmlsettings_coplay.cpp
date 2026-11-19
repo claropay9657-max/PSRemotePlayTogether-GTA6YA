@@ -102,6 +102,17 @@ void QmlSettings::setCoplayControllerOnly(bool enabled)
     emit coplayChanged();
 }
 
+bool QmlSettings::coplayAutoReconnect() const
+{
+    return settings->GetCoPlayAutoReconnect();
+}
+
+void QmlSettings::setCoplayAutoReconnect(bool enabled)
+{
+    settings->SetCoPlayAutoReconnect(enabled);
+    emit coplayChanged();
+}
+
 QString QmlSettings::coplayLocalAddress() const
 {
     return QString::fromStdString(coplay::GuessLocalAddress());

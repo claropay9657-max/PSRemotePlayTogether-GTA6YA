@@ -534,7 +534,8 @@ Item {
         target: Chiaki
 
         function onSessionChanged() {
-            if (Chiaki.session)
+            // A session that takes the place of a lost one finds its stream view on screen
+            if (Chiaki.session && !Chiaki.reconnecting)
                 root.showStreamView();
         }
 

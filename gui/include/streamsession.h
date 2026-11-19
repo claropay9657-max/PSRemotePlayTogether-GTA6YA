@@ -32,6 +32,7 @@
 #include "controllermanager.h"
 #include "settings.h"
 
+#include <atomic>
 #include <memory>
 
 #include <QObject>
@@ -55,8 +56,9 @@
 class QKeyEvent;
 class Settings;
 
-namespace coplay { class Client; }
+namespace coplay { class Client; struct ClientConfig; enum class DisconnectReason; }
 struct CoPlayState;
+struct CoPlayRejoin;
 
 class ChiakiException: public Exception
 {
@@ -151,6 +153,10 @@ class SdeckHapticsWorker;
 		// Joining somebody else's session instead of connecting to a console.
 		// The client has already completed its handshake with the host.
 		std::shared_ptr<coplay::Client> coplay_client;
+		/** What the client was made from, for joining again after a connection loss. */
+		std::shared_ptr<const coplay::ClientConfig> coplay_client_config;
+		/** Get a lost connection back without asking: the console's, or as a guest the host's. */
+		bool auto_reconnect = false;
 
 	StreamSessionConnectInfo() {}
 	StreamSessionConnectInfo(
@@ -201,6 +207,7 @@ class StreamSession : public QObject
 	Q_PROPERTY(bool coplayCameraSupported READ GetCoPlayCameraSupported CONSTANT)
 	Q_PROPERTY(QVariantMap coplayTalking READ GetCoPlayTalking NOTIFY CoPlayTalkingChanged)
 	Q_PROPERTY(int coplayCamSerial READ GetCoPlayCamSerial NOTIFY CoPlayCamChanged)
+	Q_PROPERTY(bool coplayReconnecting READ IsCoPlayReconnecting NOTIFY CoPlayReconnectingChanged)
 
 	private:
 		SessionLog log;
@@ -285,6 +292,16 @@ class StreamSession : public QObject
 		bool start_mic_unmuted;
 		bool session_started;
 
+		// Getting a lost console back is the work of whoever owns the session (see QmlBackend);
+		// the session says when that is worth a try
+		bool console_auto_reconnect = false;
+		bool reconnect_attempt = false;
+		std::atomic<bool> reconnect_wanted{false};
+		std::atomic<bool> stop_requested{false};
+		std::atomic<bool> video_stalled{false};
+		std::atomic<uint64_t> last_video_ms{0};
+		void CheckVideoStalled();
+
 		ChiakiFfmpegDecoder *ffmpeg_decoder;
 		void TriggerFfmpegFrameAvailable();
 #if CHIAKI_LIB_ENABLE_PI_DECODER
@@ -363,6 +380,12 @@ class StreamSession : public QObject
 		void CoPlayFini();
 		void CoPlayStartGuest();
 		void CoPlayStopGuest();
+		void CoPlayStopHost();
+		void CoPlayGuestLost(coplay::DisconnectReason reason);
+		void CoPlayGuestQuit();
+		void CoPlayBeginRejoin(coplay::DisconnectReason reason);
+		void CoPlayRejoinFinished(const std::shared_ptr<CoPlayRejoin> &job, const std::shared_ptr<coplay::Client> &client, const QString &error);
+		void CoPlayCancelRejoin();
 		void CoPlayOnEvent(ChiakiEvent *event);
 		void CoPlayOnHaptics(uint8_t *buf, size_t buf_size);
 		void CoPlayUpdatePlayers();
@@ -432,6 +455,22 @@ class StreamSession : public QObject
 		void SetCoPlayMixMode(int mode);
 		bool GetCoPlayVideoEnabled() const;
 		void SetCoPlayVideoEnabled(bool enabled);
+		/** A guest that lost the host and is joining again by itself. */
+		bool IsCoPlayReconnecting() const;
+		/** What to tell the user while that goes on. */
+		QString CoPlayReconnectStatus() const;
+		/**
+		 * This session is an attempt to get a lost one back: if it cannot connect it says so
+		 * at once instead of trying again by itself. Call before Start().
+		 */
+		void SetReconnectAttempt(bool attempt)	{ reconnect_attempt = attempt; }
+		/**
+		 * Valid from SessionQuit on: the connection to the console was lost (rather than ended)
+		 * and connecting again is worth a try. Guests of a shared session are told to wait.
+		 */
+		bool ReconnectWanted() const	{ return reconnect_wanted; }
+		/** Stop() or GoToBed() was called: whatever ends the session now, the user wanted it to end. */
+		bool StopRequested() const	{ return stop_requested; }
 		Q_INVOKABLE void coplayKick(int slot);
 		Q_INVOKABLE void coplaySetCanControl(int slot, bool allowed);
 		Q_INVOKABLE void coplayCopyInvite();
@@ -511,6 +550,7 @@ class StreamSession : public QObject
 		void CoPlayMediaChanged();
 		void CoPlayTalkingChanged();
 		void CoPlayCamChanged();
+		void CoPlayReconnectingChanged();
 		/** Something the user should be told, e.g. that the port for sharing is taken. */
 		void CoPlayNotice(const QString &text);
 

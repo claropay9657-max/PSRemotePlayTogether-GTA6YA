@@ -1003,6 +1003,78 @@ Item {
         }
     }
 
+    // The connection was lost and the app is getting it back by itself (Chiaki.reconnecting).
+    // A window of its own like the webcams, so that it shows with every renderer. It leaves
+    // the keyboard and the controller to the game; the stream menu's close button ends the
+    // session during this time as well.
+    Window {
+        id: reconnectBanner
+        transientParent: view.hostWindow
+        flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.NoDropShadowWindowHint
+        color: "transparent"
+        width: reconnectRow.implicitWidth + 32
+        height: 44
+        x: view.streamGlobalX + Math.round((view.width - width) / 2)
+        y: view.streamGlobalY + 20 + (camStrip.visible ? camStrip.height + 12 : 0)
+        visible: Chiaki.reconnecting
+                 && Chiaki.window.visibility !== Window.Hidden
+                 && Chiaki.window.visibility !== Window.Minimized
+                 && view.StackView.status === StackView.Active
+
+        Rectangle {
+            anchors.fill: parent
+            radius: height / 2
+            color: Qt.rgba(0.04, 0.04, 0.08, 0.88)
+            border.color: Qt.rgba(1, 1, 1, 0.18)
+
+            RowLayout {
+                id: reconnectRow
+                anchors.centerIn: parent
+                spacing: 10
+
+                BusyIndicator {
+                    Layout.preferredWidth: 24
+                    Layout.preferredHeight: 24
+                    padding: 0
+                    running: reconnectBanner.visible
+                    Material.accent: "white"
+                }
+
+                Label {
+                    text: Chiaki.reconnectStatus
+                    color: "white"
+                    font.pixelSize: 14
+                }
+
+                Rectangle {
+                    Layout.leftMargin: 6
+                    implicitWidth: reconnectCancelLabel.implicitWidth + 24
+                    implicitHeight: 28
+                    radius: height / 2
+                    color: reconnectCancelArea.pressed ? Qt.rgba(1, 1, 1, 0.32)
+                         : reconnectCancelArea.containsMouse ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
+
+                    Label {
+                        id: reconnectCancelLabel
+                        anchors.centerIn: parent
+                        text: Chiaki.session && Chiaki.session.coplayGuest ? qsTr("Leave") : qsTr("Cancel")
+                        color: "white"
+                        font.pixelSize: 13
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        id: reconnectCancelArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Chiaki.cancelReconnect()
+                    }
+                }
+            }
+        }
+    }
+
     StreamMenuWindow {
         id: separateMenuWindow
         transientParent: view.hostWindow

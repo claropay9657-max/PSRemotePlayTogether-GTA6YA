@@ -37,6 +37,8 @@
 #define PS5_TOUCHPAD_MAX_X 1919.0f
 #define PS5_TOUCHPAD_MAX_Y 1079.0f
 #define SESSION_RETRY_SECONDS 20
+// A console that is connected but sent no picture for this long counts as lost
+#define VIDEO_STALL_MS 8000
 #define HAPTIC_RUMBLE_MIN_STRENGTH 100
 
 #define MICROPHONE_SAMPLES 480
@@ -358,6 +360,7 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	this->coplay_camera_quality = settings->GetCoPlayCameraQuality();
 	this->coplay_camera_on_start = settings->GetCoPlayCameraOnStart();
 	this->coplay_show_cams = settings->GetCoPlayShowCams();
+	this->auto_reconnect = settings->GetCoPlayAutoReconnect();
 }
 
 static void AudioSettingsCb(uint32_t channels, uint32_t rate, void *user);
@@ -606,6 +609,18 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 		chiaki_session_set_video_sample_cb(&session, CoPlayVideoSampleCb, this);
 
 		chiaki_session_set_event_cb(&session, EventCb, this);
+
+		// A session over PSN is set up through Sony's servers before it is started; getting
+		// such a one back is not done here
+		console_auto_reconnect = connect_info.auto_reconnect && connect_info.duid.isEmpty() && !connect_info.auto_regist;
+		// Nothing but the picture tells that a console which stays connected has gone quiet
+		if(console_auto_reconnect && !(connect_info.audio_video_disabled & CHIAKI_VIDEO_DISABLED))
+		{
+			auto stall_timer = new QTimer(this);
+			stall_timer->setInterval(1000);
+			connect(stall_timer, &QTimer::timeout, this, &StreamSession::CheckVideoStalled);
+			stall_timer->start();
+		}
 	}
 #if CHIAKI_GUI_ENABLE_STEAMDECK_NATIVE
 	if (connect_info.enable_steamdeck_haptics)
@@ -871,6 +886,7 @@ void StreamSession::Start()
 
 void StreamSession::Stop()
 {
+	stop_requested = true;
 	mic_active.storeRelaxed(false);
 	if(IsCoPlayGuest())
 	{
@@ -880,8 +896,30 @@ void StreamSession::Stop()
 	chiaki_session_stop(&session);
 }
 
+void StreamSession::CheckVideoStalled()
+{
+	// Once a second, on the session's own thread
+	uint64_t now = chiaki_time_now_monotonic_ms();
+	if(!connected || cant_display)
+	{
+		// Not expected to send: the time counts from when it is
+		last_video_ms = now;
+		return;
+	}
+	uint64_t last = last_video_ms; // may be a moment ahead of now
+	if(video_stalled || stop_requested || last >= now || now - last < VIDEO_STALL_MS)
+		return;
+	CHIAKI_LOGW(GetChiakiLog(), "No video from the console for %d seconds, treating the connection as lost", VIDEO_STALL_MS / 1000);
+	// Ends the session like Stop() does; Event() turns that into a lost connection
+	video_stalled = true;
+	mic_active.storeRelaxed(false);
+	chiaki_session_stop(&session);
+}
+
 void StreamSession::GoToBed()
 {
+	// Whatever ends the session after this, the user wanted it to end
+	stop_requested = true;
 	if(IsCoPlayGuest())
 	{
 		// Only the host may put its console to sleep; a guest just leaves
@@ -2439,20 +2477,41 @@ void StreamSession::PushHapticsFrame(uint8_t *buf, size_t buf_size)
 
 void StreamSession::Event(ChiakiEvent *event)
 {
+	if(event->type == CHIAKI_EVENT_QUIT)
+	{
+		// A session that CheckVideoStalled() ended was lost, not stopped
+		if(video_stalled && !stop_requested && !chiaki_quit_reason_is_error(event->quit.reason))
+		{
+			event->quit.reason = CHIAKI_QUIT_REASON_STREAM_CONNECTION_UNKNOWN;
+			event->quit.reason_str = "The console stopped sending video";
+		}
+		// Lost rather than ended: whoever owns the session may get it back (see ReconnectWanted()),
+		// and the guests of a shared one are told to wait. A session that never connected is only
+		// worth another try if it is itself an attempt to get one back.
+		reconnect_wanted = console_auto_reconnect && !stop_requested
+			&& (connected || reconnect_attempt)
+			&& chiaki_quit_reason_is_error(event->quit.reason)
+			&& event->quit.reason != CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_VERSION_MISMATCH;
+	}
 	CoPlayOnEvent(event);
 	switch(event->type)
 	{
 		case CHIAKI_EVENT_CONNECTED:
 			connect_timer.invalidate();
+			last_video_ms = chiaki_time_now_monotonic_ms();
 			connected = true;
 			emit ConnectedChanged();
 			break;
 		case CHIAKI_EVENT_QUIT:
-			if(!connected && !holepunch_session && chiaki_quit_reason_is_error(event->quit.reason) && connect_timer.elapsed() < SESSION_RETRY_SECONDS * 1000)
+			// The session's own retries are for the first connection; an attempt to get a lost
+			// session back is repeated by whoever started it
+			if(!connected && !reconnect_attempt && !holepunch_session && chiaki_quit_reason_is_error(event->quit.reason) && connect_timer.elapsed() < SESSION_RETRY_SECONDS * 1000)
 			{
 				QTimer::singleShot(SESSION_RETRY_SECONDS / 3, this, &StreamSession::Start);
 				return;
 			}
+			// The object may stay around for a while (see QmlBackend), with nothing to send to
+			mic_active.storeRelaxed(false);
 			connected = false;
 			emit ConnectedChanged();
 			emit SessionQuit(event->quit.reason, event->quit.reason_str ? QString::fromUtf8(event->quit.reason_str) : QString());

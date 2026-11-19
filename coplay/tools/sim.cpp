@@ -37,6 +37,16 @@ static void OnSignal(int)
 	g_quit = true;
 }
 
+#ifdef SIGUSR1
+static std::atomic<bool> g_coming_back{false};
+
+static void OnComingBackSignal(int)
+{
+	g_coming_back = true;
+	g_quit = true;
+}
+#endif
+
 static void Usage()
 {
 	std::printf(
@@ -57,6 +67,9 @@ static void Usage()
 		"      --seconds N         stop after N seconds\n"
 		"      --voice             the host talks: a short tone every two seconds (needs Opus)\n"
 		"      --cam A.jpg,B.jpg   the host has a webcam: these pictures in turn, 8 per second\n"
+		"    Ends on SIGINT or SIGTERM like a host that stops sharing. On SIGUSR1 it ends like\n"
+		"    one that lost its console and is getting it back, so that the guests wait for it;\n"
+		"    killed (SIGKILL) it just goes silent.\n"
 		"\n"
 		"coplay-sim guest <invite> [options]\n"
 		"    Joins a session without showing anything and prints statistics.\n"
@@ -647,6 +660,14 @@ static int RunHost(const Options &o)
 	if(voice_opus)
 		opus_encoder_destroy(voice_opus);
 #endif
+#ifdef SIGUSR1
+	if(g_coming_back)
+	{
+		std::printf("Stopping like a host that is getting its console back\n");
+		host.StopForReconnect();
+		return 0;
+	}
+#endif
 	host.Stop();
 	return 0;
 }
@@ -780,6 +801,9 @@ int main(int argc, char **argv)
 	}
 	std::signal(SIGINT, OnSignal);
 	std::signal(SIGTERM, OnSignal);
+#ifdef SIGUSR1
+	std::signal(SIGUSR1, OnComingBackSignal);
+#endif
 	Options o;
 	if(!ParseOptions(argc, argv, o))
 	{
