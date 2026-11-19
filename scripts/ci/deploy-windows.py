@@ -66,6 +66,73 @@ def llvm_version(text):
     return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
 
 
+# The C++ runtime. All of it has to come from one place.
+RUNTIME_DLLS = ("libc++.dll", "libunwind.dll", "libwinpthread-1.dll")
+
+
+def pe_tables(objdump, path):
+    """Returns (imports, exports) of a Windows binary: {dll name: set of symbols}, set of symbols."""
+    text = subprocess.run([objdump, "-p", path], check=True, capture_output=True, text=True).stdout
+    imports = {}
+    exports = set()
+    current = None
+    in_exports = False
+    for line in text.splitlines():
+        m = re.match(r"\s*DLL Name:\s*(\S+)", line)
+        if m:
+            current = imports.setdefault(m.group(1).lower(), set())
+            in_exports = False
+            continue
+        if re.match(r"\s*Ordinal\s+RVA\s+Name", line):
+            in_exports = True
+            current = None
+            continue
+        if in_exports:
+            # "     12   0x3f2a0  name" and, for a forwarded one, "     12        0  name (forwarded to ...)"
+            m = re.match(r"\s*\d+\s+(?:0x)?[0-9a-fA-F]+\s+(\S+)", line)
+            if m:
+                exports.add(m.group(1))
+            elif line.strip() and not line.startswith(" "):
+                in_exports = False
+            continue
+        if current is not None:
+            # "     283  CreateEventA"; imports by number have no name to check
+            m = re.match(r"\s+\d+\s+([A-Za-z_?@$.][^\s]*)\s*$", line)
+            if m:
+                current.add(m.group(1))
+            elif not line.strip():
+                current = None
+    return imports, exports
+
+
+def unresolved_imports(objdump, out):
+    """Every function a packaged binary imports from a packaged DLL that this DLL does not have.
+
+    Windows refuses to start a program over a single one of these ("the procedure
+    entry point ... could not be located"), and nothing at build time notices:
+    the linker only saw the import library, not the DLL that ends up in the package.
+    """
+    binaries = []
+    for dirpath, _dirs, files in os.walk(out):
+        binaries += [os.path.join(dirpath, f) for f in files if is_pe(f)]
+    tables = {path: pe_tables(objdump, path) for path in binaries}
+    exports = {}
+    for path, (_imports, exported) in tables.items():
+        if os.path.dirname(path) == out:
+            exports[os.path.basename(path).lower()] = exported
+    # Without this the check would pass by not understanding the tool's output
+    if not any(exports.values()):
+        raise SystemExit("error: could not read the export table of any packaged DLL")
+    problems = []
+    for path, (imports, _exported) in sorted(tables.items()):
+        for dll, symbols in sorted(imports.items()):
+            if dll not in exports:
+                continue  # part of Windows
+            for symbol in sorted(symbols - exports[dll]):
+                problems.append((os.path.relpath(path, out), dll, symbol))
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=os.environ.get("PSRPT_WIN_ROOT", "/opt/psrpt-win"))
@@ -86,9 +153,12 @@ def main():
     msys_bin = os.path.join(root, "msys2/clang64/bin")
     msys_runtime = os.path.join(root, "msys2/runtime-bin")
 
-    # libc++/libunwind/winpthread exist twice: the toolchain's and MSYS2's (which
-    # MSYS2's C++ libraries were built against). Only one copy can be loaded, and
-    # the newer one works for both, so take whichever is newer.
+    # libc++/libunwind/winpthread exist twice: the toolchain's and MSYS2's, and only
+    # one copy can be loaded. They are not interchangeable even at the same version:
+    # MSYS2's libc++.dll also carries the unwinder (_Unwind_Resume and friends), and
+    # MSYS2's C++ libraries (SPIRV-Cross, for one) import it from there, while
+    # llvm-mingw keeps it in libunwind.dll alone. MSYS2's pair serves both ways of
+    # importing, so it comes first; which one really fits is checked after packaging.
     toolchain_llvm = llvm_version(
         subprocess.run([os.path.join(root, "llvm-mingw/bin/clang"), "--version"], capture_output=True, text=True).stdout
     )
@@ -98,12 +168,9 @@ def main():
             msys_llvm = llvm_version(json.load(f).get("libc++"))
     except OSError:
         pass
-    if msys_llvm > toolchain_llvm and os.path.isdir(msys_runtime):
-        runtime_dirs = [msys_runtime, toolchain_bin]
-    else:
-        runtime_dirs = [toolchain_bin, msys_runtime]
-    print("C++ runtime: toolchain LLVM %s, MSYS2 LLVM %s -> %s" % (
-        ".".join(map(str, toolchain_llvm)), ".".join(map(str, msys_llvm)), runtime_dirs[0]))
+    runtime_dirs = [d for d in (msys_runtime, toolchain_bin) if os.path.isdir(d)]
+    print("C++ runtime: toolchain LLVM %s, MSYS2 LLVM %s" % (
+        ".".join(map(str, toolchain_llvm)), ".".join(map(str, msys_llvm))))
 
     search_dirs = (
         [os.path.abspath(d) for d in args.search_dir]
@@ -231,6 +298,25 @@ def main():
         for name, user in sorted(unknown.items()):
             print("error: %s (needed by %s) was not found and is not a known part of Windows" % (name, user))
         raise SystemExit(1)
+
+    # Does every packaged binary find every function it imports in the packaged DLLs?
+    # If not with the first C++ runtime, try the other one before giving up.
+    problems = []
+    for runtime_dir in runtime_dirs:
+        for name in RUNTIME_DLLS:
+            src = os.path.join(runtime_dir, name)
+            if os.path.isfile(src) and os.path.isfile(os.path.join(out, name)):
+                copy_file(src, os.path.join(out, name))
+        problems = unresolved_imports(objdump, out)
+        if not problems:
+            print("C++ runtime taken from %s: all imports resolve" % runtime_dir)
+            break
+        print("With the C++ runtime from %s, %d imports do not resolve, e.g. %s needs %s from %s" % (
+            (runtime_dir, len(problems)) + problems[0]))
+    if problems:
+        for user, dll, symbol in problems[:40]:
+            print("error: %s imports %s from %s, which does not have it" % (user, symbol, dll))
+        raise SystemExit("error: the package would not start on Windows")
 
     total = 0
     count = 0
