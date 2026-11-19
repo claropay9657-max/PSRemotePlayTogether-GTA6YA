@@ -14,6 +14,7 @@
 #include "blob.h"
 #include "crypto.h"
 #include "invite.h"
+#include "media.h"
 #include "protocol.h"
 #include "socket.h"
 #include "video.h"
@@ -28,6 +29,8 @@ struct ClientConfig
 	std::vector<uint8_t> avatar;
 	uint8_t want = kWantAll;
 	ControllerKind controller = ControllerKind::None;
+	/** MediaFlags we start with; see Client::SetMedia(). */
+	uint8_t media = 0;
 	uint32_t connect_timeout_ms = 5000;
 	/** The session counts as lost after this long without a packet from the host. */
 	uint32_t host_timeout_ms = 6000;
@@ -58,6 +61,10 @@ struct ClientCallbacks
 	std::function<void(const InputsSnapshot &)> on_inputs;
 	/** A player's picture has arrived; fetch it with Client::Avatar(). */
 	std::function<void(const BlobRef &)> on_avatar;
+	/** One Opus frame of another player's microphone. Needs kWantVoice. */
+	std::function<void(uint8_t slot, const uint8_t *, size_t)> on_voice;
+	/** A complete picture of another player's webcam. Needs kWantCams. */
+	std::function<void(uint8_t slot, const std::vector<uint8_t> &jpeg)> on_cam_frame;
 	/** Not called after Stop(). */
 	std::function<void(DisconnectReason)> on_disconnected;
 };
@@ -69,6 +76,8 @@ struct ClientStats
 	uint64_t bytes_received = 0;
 	uint64_t audio_frames = 0;
 	uint64_t haptics_frames = 0;
+	uint64_t voice_frames = 0;
+	uint64_t cam_frames = 0;
 	FrameAssembler::Stats video;
 };
 
@@ -103,6 +112,13 @@ class Client
 		uint8_t Want() const { return want; }
 		/** Tells the others which kind of controller we hold (it can change during a session). */
 		void SetController(ControllerKind kind);
+		/** What we contribute: kMediaVoice, kMediaMuted, kMediaCamera. */
+		void SetMedia(uint8_t media);
+		uint8_t Media() const { return media; }
+		/** One Opus frame of our microphone. */
+		void SendVoice(const uint8_t *data, size_t size);
+		/** One picture of our webcam. */
+		void SendCamFrame(const uint8_t *data, size_t size);
 		ClientStats Stats();
 		BlobRef OwnAvatar() const { return own_avatar; }
 		/** A player's picture, or null if it is not (yet) here. */
@@ -148,6 +164,9 @@ class Client
 		std::atomic<uint8_t> want{kWantAll};
 		std::atomic<bool> ping_now{false};
 		std::atomic<uint8_t> controller{0};
+		std::atomic<uint8_t> media{0};
+		std::atomic<uint32_t> voice_seq{0};
+		std::atomic<uint32_t> cam_seq{0};
 		std::atomic<uint32_t> rtt_ms{0};
 		double loss_probability = 0.0;
 		uint32_t loss_seed = 1;
@@ -177,6 +196,10 @@ class Client
 		bool have_inputs = false;
 		uint32_t last_inputs_seq = 0;
 		uint64_t last_blob_poll_ms = 0;
+
+		// Network thread only; one entry per slot
+		VoiceSequence voice_in[kMaxGuests + 1];
+		CamAssembler cam_in[kMaxGuests + 1];
 };
 
 } // namespace coplay

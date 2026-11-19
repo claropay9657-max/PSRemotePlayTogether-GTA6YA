@@ -55,6 +55,8 @@ static void Usage()
 		"      --mode together|last-active|host-only\n"
 		"      --loss PERCENT      drop this share of outgoing packets\n"
 		"      --seconds N         stop after N seconds\n"
+		"      --voice             the host talks: a short tone every two seconds (needs Opus)\n"
+		"      --cam A.jpg,B.jpg   the host has a webcam: these pictures in turn, 8 per second\n"
 		"\n"
 		"coplay-sim guest <invite> [options]\n"
 		"    Joins a session without showing anything and prints statistics.\n"
@@ -83,6 +85,8 @@ struct Options
 	int seconds = 0;
 	bool no_video = false;
 	bool press = false;
+	bool voice = false;
+	std::string cam;
 };
 
 static bool ParseOptions(int argc, char **argv, Options &o)
@@ -109,6 +113,8 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--port") { if(!value(v)) return false; o.port = std::atoi(v.c_str()); }
 		else if(a == "--loss") { if(!value(v)) return false; o.loss = std::atof(v.c_str()) / 100.0; }
 		else if(a == "--seconds") { if(!value(v)) return false; o.seconds = std::atoi(v.c_str()); }
+		else if(a == "--cam") { if(!value(o.cam)) return false; }
+		else if(a == "--voice") o.voice = true;
 		else if(a == "--no-video") o.no_video = true;
 		else if(a == "--press") o.press = true;
 		else if(!a.empty() && a[0] == '-') return false;
@@ -349,6 +355,27 @@ static int RunHost(const Options &o)
 	cb.on_keyframe_needed = [&] { want_key = true; };
 	cb.on_input_changed = [&] { input_changed = true; };
 	cb.on_guests_changed = [&] { guests_changed = true; };
+	// What the guests say and show, counted per player
+	std::atomic<uint32_t> voice_frames[kMaxGuests + 1];
+	std::atomic<uint32_t> cam_frames[kMaxGuests + 1];
+	std::atomic<uint32_t> cam_bytes[kMaxGuests + 1];
+	for(size_t i = 0; i <= kMaxGuests; i++)
+	{
+		voice_frames[i] = 0;
+		cam_frames[i] = 0;
+		cam_bytes[i] = 0;
+	}
+	cb.on_voice = [&](uint8_t slot, const uint8_t *, size_t) {
+		if(slot <= kMaxGuests)
+			voice_frames[slot]++;
+	};
+	cb.on_cam_frame = [&](uint8_t slot, const std::vector<uint8_t> &jpeg) {
+		if(slot <= kMaxGuests)
+		{
+			cam_frames[slot]++;
+			cam_bytes[slot] = static_cast<uint32_t>(jpeg.size());
+		}
+	};
 	cb.on_log = [&](const std::string &line) {
 		std::lock_guard<std::mutex> lock(print_mutex);
 		std::printf("[host] %s\n", line.c_str());
@@ -384,6 +411,43 @@ static int RunHost(const Options &o)
 	invite.secret = config.secret;
 	std::printf("Sharing on UDP port %u. Invite:\n\n    %s\n\n", host.Port(), EncodeInvite(invite).c_str());
 	std::fflush(stdout);
+
+	// The host's own webcam and voice
+	std::vector<std::vector<uint8_t>> cam_pictures;
+	{
+		size_t start = 0;
+		while(start < o.cam.size())
+		{
+			size_t comma = o.cam.find(',', start);
+			std::string file = o.cam.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+			start = comma == std::string::npos ? o.cam.size() : comma + 1;
+			std::vector<uint8_t> picture = ReadFile(file);
+			if(picture.empty() || picture.size() > kMaxCamFrameSize)
+			{
+				std::fprintf(stderr, "--cam: cannot use %s (missing, empty or larger than %zu bytes)\n", file.c_str(), kMaxCamFrameSize);
+				return 2;
+			}
+			cam_pictures.push_back(std::move(picture));
+		}
+	}
+	uint8_t media = cam_pictures.empty() ? 0 : kMediaCamera;
+	size_t cam_index = 0;
+	uint64_t voice_sample = 0;
+#ifdef COPLAY_SIM_OPUS
+	OpusEncoder *voice_opus = nullptr;
+	if(o.voice)
+	{
+		int voice_error = 0;
+		voice_opus = opus_encoder_create(48000, 1, OPUS_APPLICATION_VOIP, &voice_error);
+		if(voice_opus)
+			media |= kMediaVoice;
+	}
+#else
+	if(o.voice)
+		std::fprintf(stderr, "--voice: built without Opus, the host stays silent\n");
+#endif
+	host.SetLocalMedia(media);
+	(void)voice_sample;
 
 #ifdef COPLAY_SIM_OPUS
 	int opus_error = 0;
@@ -474,6 +538,53 @@ static int RunHost(const Options &o)
 			}
 			host.PushHaptics(reinterpret_cast<const uint8_t *>(pcm), sizeof(pcm));
 
+			// Webcam: the next picture every 120 ms
+			if(!cam_pictures.empty() && ticks_10ms % 12 == 0)
+			{
+				const std::vector<uint8_t> &picture = cam_pictures[cam_index++ % cam_pictures.size()];
+				host.PushCamFrame(picture.data(), picture.size());
+			}
+#ifdef COPLAY_SIM_OPUS
+			// Voice: 20 ms frames; half a second of a tone every two seconds, silence is not sent
+			if(voice_opus && ticks_10ms % 2 == 0)
+			{
+				int16_t samples[960];
+				bool talking = std::fmod(voice_sample / 48000.0, 2.0) < 0.5;
+				for(int i = 0; i < 960; i++)
+				{
+					double t = (voice_sample + i) / 48000.0;
+					samples[i] = talking ? static_cast<int16_t>(9000 * std::sin(2 * kPi * 520 * t)) : 0;
+				}
+				voice_sample += 960;
+				if(talking)
+				{
+					uint8_t packet[600];
+					int len = opus_encode(voice_opus, samples, 960, packet, sizeof(packet));
+					if(len > 2)
+						host.PushVoice(packet, static_cast<size_t>(len));
+				}
+			}
+#endif
+			// Once per second: what arrived from the guests' microphones and webcams
+			if(ticks_10ms % 100 == 0)
+			{
+				std::string line;
+				for(size_t slot = 1; slot <= kMaxGuests; slot++)
+				{
+					uint32_t v = voice_frames[slot].exchange(0);
+					uint32_t c = cam_frames[slot].exchange(0);
+					if(v || c)
+						line += "  #" + std::to_string(slot) + ": " + std::to_string(v) + " voice frames, " + std::to_string(c)
+							+ " webcam pictures (" + std::to_string(cam_bytes[slot].load()) + " bytes)";
+				}
+				if(!line.empty())
+				{
+					std::lock_guard<std::mutex> lock(print_mutex);
+					std::printf("[host hears/sees]%s\n", line.c_str());
+					std::fflush(stdout);
+				}
+			}
+
 #ifdef COPLAY_SIM_OPUS
 			if(opus)
 			{
@@ -520,8 +631,9 @@ static int RunHost(const Options &o)
 			std::lock_guard<std::mutex> lock(print_mutex);
 			std::printf("[host] %zu guest(s):", guests.size());
 			for(auto &g : guests)
-				std::printf("  #%u %s (%s%s, %u ms)", g.slot, g.name.c_str(), (g.want & kWantVideo) ? "video" : "controller only",
-					g.in_control ? ", in control" : "", g.rtt_ms);
+				std::printf("  #%u %s (%s%s%s%s%s, %u ms)", g.slot, g.name.c_str(), (g.want & kWantVideo) ? "video" : "controller only",
+					g.in_control ? ", in control" : "", (g.media & kMediaVoice) ? ", voice" : "",
+					(g.media & kMediaMuted) ? " muted" : "", (g.media & kMediaCamera) ? ", webcam" : "", g.rtt_ms);
 			std::printf("\n");
 			std::fflush(stdout);
 		}
@@ -532,6 +644,8 @@ static int RunHost(const Options &o)
 #ifdef COPLAY_SIM_OPUS
 	if(opus)
 		opus_encoder_destroy(opus);
+	if(voice_opus)
+		opus_encoder_destroy(voice_opus);
 #endif
 	host.Stop();
 	return 0;

@@ -308,6 +308,7 @@ void WriteSessionState(ByteWriter &w, const SessionState &s)
 		w.Str8(p.name.substr(0, kMaxNameLength));
 		WriteBlobRef(w, p.avatar);
 		w.U8(static_cast<uint8_t>(p.controller));
+		w.U8(p.media);
 	}
 }
 
@@ -335,6 +336,7 @@ bool ReadSessionState(ByteReader &r, SessionState &s)
 		if(!r.ok() || p.name.size() > kMaxNameLength || !ReadBlobRef(r, p.avatar))
 			return false;
 		p.controller = ControllerKindFromWire(r.U8());
+		p.media = r.U8();
 		s.participants.push_back(std::move(p));
 	}
 	return r.ok();
@@ -347,6 +349,7 @@ void WriteHello(ByteWriter &w, const HelloPayload &h)
 	w.U8(static_cast<uint8_t>(h.controller));
 	w.Str8(h.name.substr(0, kMaxNameLength));
 	WriteBlobRef(w, h.avatar);
+	w.U8(h.media);
 }
 
 bool ReadHello(ByteReader &r, HelloPayload &h)
@@ -356,6 +359,9 @@ bool ReadHello(ByteReader &r, HelloPayload &h)
 	uint8_t controller = r.U8();
 	h.name = r.Str8();
 	if(!r.ok() || h.name.size() > kMaxNameLength || !ReadBlobRef(r, h.avatar))
+		return false;
+	h.media = r.U8() & kMediaOwnMask;
+	if(!r.ok())
 		return false;
 	h.controller = ControllerKindFromWire(controller);
 	return true;
@@ -453,6 +459,30 @@ bool ReadNack(ByteReader &r, std::vector<NackEntry> &entries)
 		entries.push_back(std::move(e));
 	}
 	return r.ok();
+}
+
+void WriteCamFragmentHeader(ByteWriter &w, const CamFragmentHeader &h)
+{
+	w.U32(h.frame_seq);
+	w.U16(h.frag_index);
+	w.U16(h.frag_count);
+	w.U32(h.total_size);
+}
+
+bool ReadCamFragmentHeader(ByteReader &r, CamFragmentHeader &h)
+{
+	h.frame_seq = r.U32();
+	h.frag_index = r.U16();
+	h.frag_count = r.U16();
+	h.total_size = r.U32();
+	if(!r.ok() || h.total_size == 0 || h.total_size > kMaxCamFrameSize)
+		return false;
+	if(h.frag_count != CamFragmentCount(h.total_size) || h.frag_index >= h.frag_count)
+		return false;
+	// Every fragment but the last is full, the last one carries the rest
+	size_t expected = h.frag_index + 1 == h.frag_count
+		? h.total_size - static_cast<size_t>(h.frag_index) * kCamFragmentSize : kCamFragmentSize;
+	return r.remaining() == expected;
 }
 
 } // namespace coplay

@@ -21,14 +21,14 @@ BEGIN
     BEGIN
         BLOCK "080904b0"
         BEGIN
-            VALUE "Comments", "next-generation of Chiaki"
-            VALUE "CompanyName", "Stret Pea"
-            VALUE "FileDescription", "Open-Source PlayStation Remote Play App"
+            VALUE "Comments", "Play together on one PlayStation: shared Remote Play, built on chiaki-ng"
+            VALUE "CompanyName", "GamerNova.net"
+            VALUE "FileDescription", "PSRemotePlayTogether"
             VALUE "FileVersion", VER_FILEVERSION_STR
-            VALUE "InternalName", "chiaki-ng"
-            VALUE "LegalCopyright", "AGPLv3 Stret Pea 2022"
+            VALUE "InternalName", "PSRemotePlayTogether"
+            VALUE "LegalCopyright", "AGPLv3. GamerNova.net; chiaki-ng by Street Pea; Chiaki by Florian Markl"
             VALUE "OriginalFilename", "chiaki.exe"
-            VALUE "ProductName", "chiaki-ng"
+            VALUE "ProductName", "PSRemotePlayTogether"
             VALUE "ProductVersion", VER_PRODUCTVERSION_STR
         END
     END

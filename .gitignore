@@ -40,3 +40,6 @@ chiaki.conf
 .cache/
 *.vscode
 site/
+
+# Claude Code session data
+.claude/

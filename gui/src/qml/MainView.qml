@@ -17,7 +17,7 @@ Pane {
         {
             root.initialAsk = true;
             if(Chiaki.settings.addSteamShortcutAsk && (typeof Chiaki.createSteamShortcut === "function"))
-                root.showRemindDialog(qsTr("Official Steam artwork + controller layout"), qsTr("Would you like to either create a new non-Steam game for chiaki-ng\nor update an existing non-Steam game with the official artwork and controller layout?") + "\n\n" + qsTr("(Note: If you select no now and want to do this later, click the button or press R3 from the main menu.)"), false, () => root.showSteamShortcutDialog(true));
+                root.showRemindDialog(qsTr("Official Steam artwork + controller layout"), qsTr("Would you like to either create a new non-Steam game for PSRemotePlayTogether\nor update an existing non-Steam game with the official artwork and controller layout?") + "\n\n" + qsTr("(Note: If you select no now and want to do this later, click the button or press R3 from the main menu.)"), false, () => root.showSteamShortcutDialog(true));
             else if(Chiaki.settings.remotePlayAsk)
             {
                 if(!Chiaki.settings.psnRefreshToken || !Chiaki.settings.psnAuthToken || !Chiaki.settings.psnAuthTokenExpiry || !Chiaki.settings.psnAccountId)
@@ -86,10 +86,26 @@ Pane {
         background: C.GlassBar { }
 
         RowLayout {
+            id: toolRow
             anchors {
                 fill: parent
                 leftMargin: 10
                 rightMargin: 10
+            }
+
+            // What the buttons need at their full size. The name only shows when there is
+            // room left for it, and in a narrow window the buttons shrink instead of
+            // pushing the last one out of the window.
+            readonly property real buttonsWidth: {
+                let w = 0;
+                for (let i = 0; i < children.length; i++) {
+                    const c = children[i];
+                    if (c === wordmark || c === toolSpacer || !c.visible)
+                        continue;
+                    w += (c.Layout.maximumWidth < 10000 ? c.Layout.maximumWidth : c.Layout.preferredWidth)
+                        + c.Layout.leftMargin + c.Layout.rightMargin + spacing;
+                }
+                return w;
             }
 
             Button {
@@ -104,20 +120,27 @@ Pane {
             }
 
             C.GradientText {
+                id: wordmark
                 Layout.alignment: Qt.AlignVCenter
                 Layout.leftMargin: 6
                 // Makes room for the buttons in a narrow window
-                visible: toolBar.width >= 1400
+                visible: toolRow.width >= toolRow.buttonsWidth + implicitWidth + 24
                 text: "PSRemotePlayTogether"
                 font.pixelSize: 26
                 font.bold: true
             }
 
-            Item { Layout.fillWidth: true }
+            Item {
+                id: toolSpacer
+                Layout.fillWidth: true
+            }
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 270
+                Layout.fillWidth: true
+                Layout.minimumWidth: 110
+                Layout.preferredWidth: 240
+                Layout.maximumWidth: 240
                 flat: true
                 font.pixelSize: 17
                 text: "Create Steam Shortcut"
@@ -140,7 +163,10 @@ Pane {
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 250
+                Layout.fillWidth: true
+                Layout.minimumWidth: 110
+                Layout.preferredWidth: 220
+                Layout.maximumWidth: 220
                 flat: true
                 font.pixelSize: 17
                 text: "Refresh PSN Hosts"
@@ -149,16 +175,6 @@ Pane {
                 onClicked: Chiaki.refreshPsnToken();
                 Material.roundedScale: Material.SmallScale
                 visible: Chiaki.settings.psnAuthToken
-            }
-
-            Button {
-                Layout.fillHeight: true
-                Layout.preferredWidth: 250
-                flat: true
-                font.pixelSize: 17
-                focusPolicy: Qt.NoFocus
-                Material.roundedScale: Material.SmallScale
-                visible: !Chiaki.settings.psnAuthToken
             }
 
             Button {
@@ -179,7 +195,10 @@ Pane {
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 240
+                Layout.fillWidth: true
+                Layout.minimumWidth: 110
+                Layout.preferredWidth: 220
+                Layout.maximumWidth: 220
                 flat: true
                 font.pixelSize: 17
                 text: "Add Manual Host"

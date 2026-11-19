@@ -8,6 +8,7 @@
 #include <coplay/socket.h>
 
 #include "overlayserver.h"
+#include "coplaycamera.h"
 
 #include <QApplication>
 #include <QBuffer>
@@ -291,4 +292,137 @@ void QmlSettings::setOverlayLayout(const QString &layout)
 QStringList QmlSettings::overlaySkins() const
 {
     return OverlayServer::Skins();
+}
+
+// ------------------------------------------------------------------ voice and webcam
+
+bool QmlSettings::coplayVoiceEnabled() const
+{
+    return settings->GetCoPlayVoiceEnabled();
+}
+
+void QmlSettings::setCoplayVoiceEnabled(bool on)
+{
+    settings->SetCoPlayVoiceEnabled(on);
+    emit coplayChanged();
+}
+
+bool QmlSettings::coplayVoiceStartMuted() const
+{
+    return settings->GetCoPlayVoiceStartMuted();
+}
+
+void QmlSettings::setCoplayVoiceStartMuted(bool on)
+{
+    settings->SetCoPlayVoiceStartMuted(on);
+    emit coplayChanged();
+}
+
+int QmlSettings::coplayVoiceVolume() const
+{
+    return qBound(0, settings->GetCoPlayVoiceVolume(), 200);
+}
+
+void QmlSettings::setCoplayVoiceVolume(int percent)
+{
+    settings->SetCoPlayVoiceVolume(qBound(0, percent, 200));
+    emit coplayChanged();
+}
+
+QString QmlSettings::coplayCameraDevice() const
+{
+    return settings->GetCoPlayCameraDevice();
+}
+
+void QmlSettings::setCoplayCameraDevice(const QString &device)
+{
+    settings->SetCoPlayCameraDevice(device);
+    emit coplayChanged();
+}
+
+int QmlSettings::coplayCameraQuality() const
+{
+    return qBound(0, settings->GetCoPlayCameraQuality(), 2);
+}
+
+void QmlSettings::setCoplayCameraQuality(int quality)
+{
+    settings->SetCoPlayCameraQuality(qBound(0, quality, 2));
+    emit coplayChanged();
+}
+
+bool QmlSettings::coplayCameraOnStart() const
+{
+    return settings->GetCoPlayCameraOnStart();
+}
+
+void QmlSettings::setCoplayCameraOnStart(bool on)
+{
+    settings->SetCoPlayCameraOnStart(on);
+    emit coplayChanged();
+}
+
+bool QmlSettings::coplayShowCams() const
+{
+    return settings->GetCoPlayShowCams();
+}
+
+void QmlSettings::setCoplayShowCams(bool on)
+{
+    settings->SetCoPlayShowCams(on);
+    emit coplayChanged();
+}
+
+bool QmlSettings::coplayCamsOnStream() const
+{
+    return settings->GetCoPlayCamsOnStream();
+}
+
+void QmlSettings::setCoplayCamsOnStream(bool on)
+{
+    settings->SetCoPlayCamsOnStream(on);
+    emit coplayChanged();
+}
+
+bool QmlSettings::coplayCameraSupported() const
+{
+    return CoPlayCamera::Supported();
+}
+
+QStringList QmlSettings::coplayCameraDevices() const
+{
+    return CoPlayCamera::Devices();
+}
+
+bool QmlSettings::overlayWebcams() const
+{
+    return settings->GetOverlayWebcams();
+}
+
+void QmlSettings::setOverlayWebcams(bool on)
+{
+    settings->SetOverlayWebcams(on);
+    emit overlayChanged();
+}
+
+bool QmlSettings::overlayVoice() const
+{
+    return settings->GetOverlayVoice();
+}
+
+void QmlSettings::setOverlayVoice(bool on)
+{
+    settings->SetOverlayVoice(on);
+    emit overlayChanged();
+}
+
+bool QmlSettings::overlayOwnVoice() const
+{
+    return settings->GetOverlayOwnVoice();
+}
+
+void QmlSettings::setOverlayOwnVoice(bool on)
+{
+    settings->SetOverlayOwnVoice(on);
+    emit overlayChanged();
 }

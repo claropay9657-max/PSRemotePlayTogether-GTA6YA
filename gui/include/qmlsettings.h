@@ -93,6 +93,15 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString coplayInvite READ coplayInvite NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayLocalAddress READ coplayLocalAddress CONSTANT)
     Q_PROPERTY(QString coplayAvatarUrl READ coplayAvatarUrl NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayVoiceEnabled READ coplayVoiceEnabled WRITE setCoplayVoiceEnabled NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayVoiceStartMuted READ coplayVoiceStartMuted WRITE setCoplayVoiceStartMuted NOTIFY coplayChanged)
+    Q_PROPERTY(int coplayVoiceVolume READ coplayVoiceVolume WRITE setCoplayVoiceVolume NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayCameraDevice READ coplayCameraDevice WRITE setCoplayCameraDevice NOTIFY coplayChanged)
+    Q_PROPERTY(int coplayCameraQuality READ coplayCameraQuality WRITE setCoplayCameraQuality NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayCameraOnStart READ coplayCameraOnStart WRITE setCoplayCameraOnStart NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayShowCams READ coplayShowCams WRITE setCoplayShowCams NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayCamsOnStream READ coplayCamsOnStream WRITE setCoplayCamsOnStream NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayCameraSupported READ coplayCameraSupported CONSTANT)
     // Stream overlay for OBS
     Q_PROPERTY(bool overlayEnabled READ overlayEnabled WRITE setOverlayEnabled NOTIFY overlayChanged)
     Q_PROPERTY(int overlayPort READ overlayPort WRITE setOverlayPort NOTIFY overlayChanged)
@@ -102,6 +111,9 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString overlaySkin READ overlaySkin WRITE setOverlaySkin NOTIFY overlayChanged)
     Q_PROPERTY(int overlayScale READ overlayScale WRITE setOverlayScale NOTIFY overlayChanged)
     Q_PROPERTY(QString overlayLayout READ overlayLayout WRITE setOverlayLayout NOTIFY overlayChanged)
+    Q_PROPERTY(bool overlayWebcams READ overlayWebcams WRITE setOverlayWebcams NOTIFY overlayChanged)
+    Q_PROPERTY(bool overlayVoice READ overlayVoice WRITE setOverlayVoice NOTIFY overlayChanged)
+    Q_PROPERTY(bool overlayOwnVoice READ overlayOwnVoice WRITE setOverlayOwnVoice NOTIFY overlayChanged)
     Q_PROPERTY(QStringList overlaySkins READ overlaySkins CONSTANT)
     Q_PROPERTY(bool dpadTouchEnabled READ dpadTouchEnabled WRITE setDpadTouchEnabled NOTIFY dpadTouchEnabledChanged)
     Q_PROPERTY(bool iDROnFECFailureEnabled READ iDROnFECFailureEnabled WRITE setIDROnFECFailureEnabled NOTIFY iDROnFECFailureEnabledChanged)
@@ -597,6 +609,26 @@ public:
     Q_INVOKABLE void coplayChooseAvatar();
     Q_INVOKABLE void coplayClearAvatar();
 
+    bool coplayVoiceEnabled() const;
+    void setCoplayVoiceEnabled(bool on);
+    bool coplayVoiceStartMuted() const;
+    void setCoplayVoiceStartMuted(bool on);
+    int coplayVoiceVolume() const;
+    void setCoplayVoiceVolume(int percent);
+    QString coplayCameraDevice() const;
+    void setCoplayCameraDevice(const QString &device);
+    int coplayCameraQuality() const;
+    void setCoplayCameraQuality(int quality);
+    bool coplayCameraOnStart() const;
+    void setCoplayCameraOnStart(bool on);
+    bool coplayShowCams() const;
+    void setCoplayShowCams(bool on);
+    bool coplayCamsOnStream() const;
+    void setCoplayCamsOnStream(bool on);
+    bool coplayCameraSupported() const;
+    /** The cameras to choose from, the system's default first. */
+    Q_INVOKABLE QStringList coplayCameraDevices() const;
+
     bool overlayEnabled() const;
     void setOverlayEnabled(bool enabled);
     int overlayPort() const;
@@ -614,6 +646,12 @@ public:
     QString overlayLayout() const;
     void setOverlayLayout(const QString &layout);
     QStringList overlaySkins() const;
+    bool overlayWebcams() const;
+    void setOverlayWebcams(bool on);
+    bool overlayVoice() const;
+    void setOverlayVoice(bool on);
+    bool overlayOwnVoice() const;
+    void setOverlayOwnVoice(bool on);
 
     bool dpadTouchEnabled() const;
     void setDpadTouchEnabled(bool enabled);

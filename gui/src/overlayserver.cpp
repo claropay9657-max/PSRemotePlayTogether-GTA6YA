@@ -30,7 +30,9 @@ OverlayServer::OverlayServer(Settings *settings, QObject *parent)
 
 OverlayServer::~OverlayServer()
 {
-	for(QTcpSocket *socket : std::as_const(event_clients))
+	// abort() reports the disconnect right away, which edits the lists: walk copies
+	const QList<QTcpSocket *> sockets = event_clients + voice_clients + cam_clients.keys();
+	for(QTcpSocket *socket : sockets)
 		socket->abort();
 	server.close();
 }
@@ -56,7 +58,8 @@ void OverlayServer::ApplySettings()
 
 	if(server.isListening() && (!enabled || server.serverPort() != port))
 	{
-		for(QTcpSocket *socket : std::as_const(event_clients))
+		const QList<QTcpSocket *> sockets = event_clients + voice_clients + cam_clients.keys();
+		for(QTcpSocket *socket : sockets)
 			socket->disconnectFromHost();
 		server.close();
 		timer.stop();
@@ -77,12 +80,39 @@ void OverlayServer::ApplySettings()
 		for(QTcpSocket *socket : std::as_const(event_clients))
 			SendEvent(socket, "config", config);
 	}
+	UpdateVoiceTap();
 	emit StateChanged();
 }
 
 void OverlayServer::SetSession(StreamSession *new_session)
 {
 	session = new_session;
+	UpdateVoiceTap();
+}
+
+void OverlayServer::UpdateVoiceTap()
+{
+	// The session copies the conversation for us only while a page is listening
+	bool on = !voice_clients.isEmpty() && settings->GetOverlayVoice();
+	bool own = settings->GetOverlayOwnVoice();
+	if(session == tap_session && on == tap_on && own == tap_own)
+		return;
+	if(tap_session && tap_session != session)
+		tap_session->CoPlaySetOverlayAudio(false, false);
+	tap_session = session;
+	tap_on = on;
+	tap_own = own;
+	if(session)
+		session->CoPlaySetOverlayAudio(on, own);
+}
+
+void OverlayServer::UpdateTimer()
+{
+	bool needed = !event_clients.isEmpty() || !cam_clients.isEmpty() || !voice_clients.isEmpty();
+	if(needed && !timer.isActive())
+		timer.start();
+	else if(!needed && timer.isActive())
+		timer.stop();
 }
 
 QByteArray OverlayServer::ConfigJson() const
@@ -94,6 +124,8 @@ QByteArray OverlayServer::ConfigJson() const
 	o["skin"] = settings->GetOverlaySkin();
 	o["scale"] = qBound(10, settings->GetOverlayScale(), 100);
 	o["layout"] = settings->GetOverlayLayout() == "column" ? "column" : "row";
+	o["cams"] = settings->GetOverlayWebcams();
+	o["voice"] = settings->GetOverlayVoice();
 	o["skins"] = QJsonArray::fromStringList(Skins());
 	return QJsonDocument(o).toJson(QJsonDocument::Compact);
 }
@@ -117,8 +149,10 @@ void OverlayServer::OnNewConnection()
 		connect(socket, &QTcpSocket::disconnected, this, [this, socket] {
 			pending.remove(socket);
 			event_clients.removeAll(socket);
-			if(event_clients.isEmpty())
-				timer.stop();
+			cam_clients.remove(socket);
+			if(voice_clients.removeAll(socket))
+				UpdateVoiceTap();
+			UpdateTimer();
 			socket->deleteLater();
 		});
 	}
@@ -201,6 +235,28 @@ void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const Q
 		Respond(socket, 200, "application/json", StateJson());
 	else if(path == "/events")
 		StartEvents(socket);
+	else if(path == "/voice")
+		StartVoice(socket);
+	else if(path.startsWith("/cam/"))
+	{
+		// /cam/<slot>.mjpg: that player's webcam as it comes in; /cam/<slot>.jpg: the latest picture
+		QString name = path.mid(5);
+		bool stream = name.endsWith(".mjpg");
+		bool ok = false;
+		int slot = name.left(name.lastIndexOf('.')).toInt(&ok);
+		if(!ok || slot < 0 || slot > 255 || (!stream && !name.endsWith(".jpg")))
+			Respond(socket, 404, "text/plain", "Not found");
+		else if(stream)
+			StartCam(socket, slot);
+		else
+		{
+			QByteArray jpeg = session ? session->CoPlayCamJpeg(slot) : QByteArray();
+			if(jpeg.isEmpty())
+				Respond(socket, 404, "text/plain", "Not found");
+			else
+				Respond(socket, 200, "image/jpeg", jpeg);
+		}
+	}
 	else if(path.startsWith("/avatar/"))
 	{
 		QByteArray data = session ? session->CoPlayAvatarData(path.mid(8)) : QByteArray();
@@ -292,8 +348,34 @@ void OverlayServer::StartEvents(QTcpSocket *socket)
 	event_clients.append(socket);
 	SendEvent(socket, "config", ConfigJson());
 	SendEvent(socket, "state", StateJson());
-	if(!timer.isActive())
-		timer.start();
+	UpdateTimer();
+}
+
+void OverlayServer::StartCam(QTcpSocket *socket, int slot)
+{
+	// Motion JPEG: every picture replaces the one before, which an <img> shows as video
+	socket->write("HTTP/1.1 200 OK\r\n"
+		"Content-Type: multipart/x-mixed-replace; boundary=frame\r\n"
+		"Cache-Control: no-cache\r\n"
+		"Connection: close\r\n\r\n");
+	socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+	CamClient client;
+	client.slot = slot;
+	cam_clients.insert(socket, client);
+	UpdateTimer();
+}
+
+void OverlayServer::StartVoice(QTcpSocket *socket)
+{
+	// Raw sound without an end: 48 kHz, mono, signed 16 bit little endian
+	socket->write("HTTP/1.1 200 OK\r\n"
+		"Content-Type: application/octet-stream\r\n"
+		"Cache-Control: no-cache\r\n"
+		"Connection: close\r\n\r\n");
+	socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+	voice_clients.append(socket);
+	UpdateVoiceTap();
+	UpdateTimer();
 }
 
 void OverlayServer::SendEvent(QTcpSocket *socket, const QByteArray &event, const QByteArray &json)
@@ -303,6 +385,32 @@ void OverlayServer::SendEvent(QTcpSocket *socket, const QByteArray &event, const
 
 void OverlayServer::Tick()
 {
+	if(!voice_clients.isEmpty() && session && tap_on)
+	{
+		QByteArray audio = session->CoPlayReadOverlayAudio();
+		if(!audio.isEmpty())
+		{
+			for(QTcpSocket *socket : std::as_const(voice_clients))
+			{
+				// Late sound is worse than a gap
+				if(socket->bytesToWrite() < 96 * 1024)
+					socket->write(audio);
+			}
+		}
+	}
+	for(auto it = cam_clients.begin(); it != cam_clients.end(); ++it)
+	{
+		QTcpSocket *socket = it.key();
+		quint64 serial = 0;
+		QByteArray jpeg = session ? session->CoPlayCamJpeg(it->slot, &serial) : QByteArray();
+		if(jpeg.isEmpty() || serial == it->serial || socket->bytesToWrite() > 512 * 1024)
+			continue;
+		it->serial = serial;
+		socket->write("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + QByteArray::number(jpeg.size()) + "\r\n\r\n");
+		socket->write(jpeg);
+		socket->write("\r\n");
+	}
+
 	if(event_clients.isEmpty())
 		return;
 	QByteArray state = StateJson();

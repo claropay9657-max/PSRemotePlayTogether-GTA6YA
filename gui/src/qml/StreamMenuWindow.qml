@@ -83,6 +83,22 @@ Window {
             color: "#2b2b2b"
         }
 
+        // Play Together: players, webcams, microphone and webcam switches
+        PlayTogetherBar {
+            id: coplayBar
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                leftMargin: 30
+                rightMargin: 30
+                topMargin: 16
+            }
+            height: 124
+            downItem: closeButton
+            onCloseRequested: streamMenuWindow.closeRequested()
+        }
+
         RowLayout {
             anchors {
                 left: parent.left
@@ -107,6 +123,7 @@ Window {
                         streamMenuWindow.mainViewRequested();
                 }
                 KeyNavigation.right: volumeSlider
+                KeyNavigation.up: coplayBar.visible ? coplayBar.firstItem : null
                 Keys.onReturnPressed: clicked()
                 Keys.onEscapePressed: streamMenuWindow.closeRequested()
             }
@@ -368,7 +385,8 @@ Window {
             id: consoleNameLabel
             anchors {
                 right: parent.right
-                verticalCenter: parent.verticalCenter
+                bottom: parent.bottom
+                bottomMargin: coplayBar.visible ? 150 : 88
                 rightMargin: 30
             }
             text: {

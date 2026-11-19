@@ -17,11 +17,13 @@ class StreamSession;
 
 /**
  * Serves the stream overlay: a web page for an OBS browser source that shows
- * the players of a session, who is in control and everybody's controller.
+ * the players of a session, who is in control and everybody's controller,
+ * their webcams, and plays their conversation.
  *
  * A very small HTTP server on this computer only. The page and the controller
  * skins come out of the application's resources; the live data is pushed to
- * the page as server-sent events.
+ * the page as server-sent events, webcams as motion JPEG and the conversation
+ * as a stream of raw audio.
  */
 class OverlayServer : public QObject
 {
@@ -54,6 +56,10 @@ class OverlayServer : public QObject
 		void ServePad(QTcpSocket *socket, const QString &skin);
 		void StartEvents(QTcpSocket *socket);
 		void SendEvent(QTcpSocket *socket, const QByteArray &event, const QByteArray &json);
+		void StartCam(QTcpSocket *socket, int slot);
+		void StartVoice(QTcpSocket *socket);
+		void UpdateVoiceTap();
+		void UpdateTimer();
 		void Tick();
 		QByteArray ConfigJson() const;
 		QByteArray StateJson() const;
@@ -63,6 +69,16 @@ class OverlayServer : public QObject
 		QPointer<StreamSession> session;
 		QHash<QTcpSocket *, QByteArray> pending; // request bytes received so far
 		QList<QTcpSocket *> event_clients;
+		struct CamClient
+		{
+			int slot = 0;
+			quint64 serial = 0; // of the picture sent last
+		};
+		QHash<QTcpSocket *, CamClient> cam_clients;
+		QList<QTcpSocket *> voice_clients;
+		bool tap_on = false;
+		bool tap_own = false;
+		QPointer<StreamSession> tap_session;
 		QTimer timer;
 		QByteArray last_state;
 		QByteArray last_config;

@@ -278,6 +278,28 @@ class Settings : public QObject
 		QString GetCoPlayAvatar() const			{ return settings.value("coplay/avatar").toString(); }
 		void SetCoPlayAvatar(const QString &p)	{ settings.setValue("coplay/avatar", p); }
 
+		// Play Together: talking to and seeing each other
+		bool GetCoPlayVoiceEnabled() const		{ return settings.value("coplay/voice_enabled", true).toBool(); }
+		void SetCoPlayVoiceEnabled(bool on)		{ settings.setValue("coplay/voice_enabled", on); }
+		bool GetCoPlayVoiceStartMuted() const	{ return settings.value("coplay/voice_start_muted", false).toBool(); }
+		void SetCoPlayVoiceStartMuted(bool on)	{ settings.setValue("coplay/voice_start_muted", on); }
+		int GetCoPlayVoiceVolume() const		{ return settings.value("coplay/voice_volume", 100).toInt(); }
+		void SetCoPlayVoiceVolume(int percent)	{ settings.setValue("coplay/voice_volume", percent); }
+		/** Name of the webcam; empty = the system's default camera. */
+		QString GetCoPlayCameraDevice() const	{ return settings.value("coplay/camera_device").toString(); }
+		void SetCoPlayCameraDevice(const QString &d)	{ settings.setValue("coplay/camera_device", d); }
+		/** 0 = small, 1 = medium, 2 = large. */
+		int GetCoPlayCameraQuality() const		{ return settings.value("coplay/camera_quality", 1).toInt(); }
+		void SetCoPlayCameraQuality(int q)		{ settings.setValue("coplay/camera_quality", q); }
+		bool GetCoPlayCameraOnStart() const		{ return settings.value("coplay/camera_on_start", false).toBool(); }
+		void SetCoPlayCameraOnStart(bool on)	{ settings.setValue("coplay/camera_on_start", on); }
+		/** Receive and show the other players' webcams. */
+		bool GetCoPlayShowCams() const			{ return settings.value("coplay/show_cams", true).toBool(); }
+		void SetCoPlayShowCams(bool on)			{ settings.setValue("coplay/show_cams", on); }
+		/** Keep the webcams in a corner of the game picture while playing. */
+		bool GetCoPlayCamsOnStream() const		{ return settings.value("coplay/cams_on_stream", true).toBool(); }
+		void SetCoPlayCamsOnStream(bool on)		{ settings.setValue("coplay/cams_on_stream", on); }
+
 		// Stream overlay (OBS browser source)
 		bool GetOverlayEnabled() const			{ return settings.value("overlay/enabled", false).toBool(); }
 		void SetOverlayEnabled(bool enabled)	{ settings.setValue("overlay/enabled", enabled); }
@@ -295,6 +317,14 @@ class Settings : public QObject
 		void SetOverlayScale(int percent)		{ settings.setValue("overlay/scale", percent); }
 		QString GetOverlayLayout() const		{ return settings.value("overlay/layout", "row").toString(); }
 		void SetOverlayLayout(const QString &l)	{ settings.setValue("overlay/layout", l); }
+		bool GetOverlayWebcams() const			{ return settings.value("overlay/webcams", true).toBool(); }
+		void SetOverlayWebcams(bool on)			{ settings.setValue("overlay/webcams", on); }
+		/** The page plays the conversation, so that OBS can pick it up from the browser source. */
+		bool GetOverlayVoice() const			{ return settings.value("overlay/voice", true).toBool(); }
+		void SetOverlayVoice(bool on)			{ settings.setValue("overlay/voice", on); }
+		/** Whether that includes our own microphone (off if OBS records it anyway). */
+		bool GetOverlayOwnVoice() const			{ return settings.value("overlay/own_voice", false).toBool(); }
+		void SetOverlayOwnVoice(bool on)		{ settings.setValue("overlay/own_voice", on); }
 
 		bool GetLogVerbose() const 				{ return settings.value("settings/log_verbose", false).toBool(); }
 		void SetLogVerbose(bool enabled)		{ settings.setValue("settings/log_verbose", enabled); }

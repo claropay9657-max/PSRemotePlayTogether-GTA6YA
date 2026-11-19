@@ -351,6 +351,13 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	QFile avatar_file(settings->GetCoPlayAvatar());
 	if(!settings->GetCoPlayAvatar().isEmpty() && avatar_file.open(QIODevice::ReadOnly))
 		this->coplay_avatar = avatar_file.read(64 * 1024);
+	this->coplay_voice_enabled = settings->GetCoPlayVoiceEnabled();
+	this->coplay_voice_start_muted = settings->GetCoPlayVoiceStartMuted();
+	this->coplay_voice_volume = settings->GetCoPlayVoiceVolume();
+	this->coplay_camera_device = settings->GetCoPlayCameraDevice();
+	this->coplay_camera_quality = settings->GetCoPlayCameraQuality();
+	this->coplay_camera_on_start = settings->GetCoPlayCameraOnStart();
+	this->coplay_show_cams = settings->GetCoPlayShowCams();
 }
 
 static void AudioSettingsCb(uint32_t channels, uint32_t rate, void *user);

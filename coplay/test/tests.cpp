@@ -7,6 +7,7 @@
 #include <coplay/client.h>
 #include <coplay/host.h>
 #include <coplay/invite.h>
+#include <coplay/media.h>
 #include <coplay/mixer.h>
 #include <coplay/video.h>
 
@@ -211,6 +212,7 @@ TEST(session_state_round_trip)
 	s.your_slot = 2;
 	s.participants.push_back({ 0, kParticipantHost | kParticipantCanControl, "Nico" });
 	s.participants.push_back({ 2, kParticipantCanControl | kParticipantInControl, "Friend" });
+	s.participants[1].media = kMediaVoice | kMediaCamera;
 
 	std::vector<uint8_t> buf;
 	ByteWriter w(buf);
@@ -231,6 +233,7 @@ TEST(session_state_round_trip)
 	CHECK(t.your_slot == 2);
 	CHECK(t.participants.size() == 2 && t.participants[1].name == "Friend");
 	CHECK(t.participants[1].flags == (kParticipantCanControl | kParticipantInControl));
+	CHECK(t.participants[0].media == 0 && t.participants[1].media == (kMediaVoice | kMediaCamera));
 
 	for(size_t cut = 0; cut < buf.size(); cut++)
 	{
@@ -1036,6 +1039,9 @@ struct TestHost
 	std::atomic<int> input_changes{0};
 	std::atomic<int> keyframe_requests{0};
 	std::atomic<int> guest_changes{0};
+	std::mutex mutex;
+	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
+	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 
 	~TestHost() { host->Stop(); } // before the counters the callbacks touch go away
 
@@ -1050,6 +1056,14 @@ struct TestHost
 		cb.on_input_changed = [this] { input_changes++; };
 		cb.on_keyframe_needed = [this] { keyframe_requests++; };
 		cb.on_guests_changed = [this] { guest_changes++; };
+		cb.on_voice = [this](uint8_t slot, const uint8_t *d, size_t n) {
+			std::lock_guard<std::mutex> lock(mutex);
+			voice.emplace_back(slot, std::vector<uint8_t>(d, d + n));
+		};
+		cb.on_cam_frame = [this](uint8_t slot, const std::vector<uint8_t> &jpeg) {
+			std::lock_guard<std::mutex> lock(mutex);
+			cams.emplace_back(slot, jpeg);
+		};
 		host = std::make_unique<Host>(config, cb);
 		std::string error;
 		bool ok = host->Start(&error);
@@ -1087,6 +1101,8 @@ struct TestGuest
 	DisconnectReason reason = DisconnectReason::Timeout;
 	std::vector<InputsSnapshot> inputs;
 	std::vector<BlobRef> avatars;
+	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
+	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 
 	~TestGuest() { client->Stop(); } // callbacks use the members below
 
@@ -1145,6 +1161,14 @@ struct TestGuest
 				std::lock_guard<std::mutex> lock(mutex);
 				avatars.push_back(ref);
 			};
+			cb.on_voice = [this](uint8_t slot, const uint8_t *d, size_t n) {
+				std::lock_guard<std::mutex> lock(mutex);
+				voice.emplace_back(slot, std::vector<uint8_t>(d, d + n));
+			};
+			cb.on_cam_frame = [this](uint8_t slot, const std::vector<uint8_t> &jpeg) {
+				std::lock_guard<std::mutex> lock(mutex);
+				cams.emplace_back(slot, jpeg);
+			};
 			client->Start(cb);
 		}
 		return ok;
@@ -1160,6 +1184,24 @@ struct TestGuest
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 		return frames.size();
+	}
+
+	size_t VoiceCount(int slot = -1)
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		size_t n = 0;
+		for(const auto &v : voice)
+			n += slot < 0 || v.first == slot;
+		return n;
+	}
+
+	size_t CamCount(int slot = -1)
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		size_t n = 0;
+		for(const auto &c : cams)
+			n += slot < 0 || c.first == slot;
+		return n;
 	}
 };
 
@@ -1960,6 +2002,409 @@ TEST(net_replayed_packets_are_ignored)
 	auto press2 = input_packet(3, 3, kButtonSquare);
 	s.SendTo(press2.data(), press2.size(), addrs[0]);
 	CHECK(WaitFor([&] { return h.host->MixedInput().buttons == kButtonSquare; }, 1000));
+}
+
+// ---------------------------------------------------------------- voice and webcams
+
+static std::vector<uint8_t> FakePicture(size_t size, uint32_t seed)
+{
+	std::vector<uint8_t> d(size);
+	std::mt19937 rng(seed);
+	for(uint8_t &b : d)
+		b = static_cast<uint8_t>(rng());
+	if(size >= 3)
+	{
+		d[0] = 0xff; // looks like a JPEG from the outside
+		d[1] = 0xd8;
+		d[2] = 0xff;
+	}
+	return d;
+}
+
+struct CamPieces
+{
+	std::vector<CamFragmentHeader> headers;
+	std::vector<std::vector<uint8_t>> bodies;
+};
+
+static CamPieces CutPicture(uint32_t seq, const std::vector<uint8_t> &picture)
+{
+	CamPieces out;
+	std::vector<uint8_t> payload;
+	for(uint32_t i = 0; BuildCamFragment(seq, picture.data(), picture.size(), i, payload); i++)
+	{
+		ByteReader r(payload.data(), payload.size());
+		CamFragmentHeader h;
+		bool ok = ReadCamFragmentHeader(r, h);
+		CHECK(ok);
+		out.headers.push_back(h);
+		out.bodies.emplace_back(r.cursor(), r.cursor() + r.remaining());
+	}
+	return out;
+}
+
+TEST(cam_fragments)
+{
+	std::vector<uint8_t> picture = FakePicture(3 * kCamFragmentSize + 17, 1);
+	CamPieces p = CutPicture(5, picture);
+	CHECK(p.headers.size() == 4);
+	CHECK(p.bodies[0].size() == kCamFragmentSize && p.bodies[3].size() == 17);
+	CHECK(p.headers[2].frag_index == 2 && p.headers[2].frag_count == 4 && p.headers[2].total_size == picture.size());
+
+	// one fragment exactly, and one byte more
+	CHECK(CutPicture(1, FakePicture(kCamFragmentSize, 2)).headers.size() == 1);
+	CHECK(CutPicture(1, FakePicture(kCamFragmentSize + 1, 2)).headers.size() == 2);
+
+	// every packet fits a datagram even with the sender's slot in front
+	CHECK(1 + kCamFragmentHeaderSize + kCamFragmentSize <= kMaxPayload);
+	CHECK(5 + kMaxVoiceFrameSize <= kMaxPayload);
+
+	std::vector<uint8_t> payload;
+	CHECK(!BuildCamFragment(1, picture.data(), picture.size(), 4, payload));
+	CHECK(!BuildCamFragment(1, picture.data(), 0, 0, payload));
+	std::vector<uint8_t> huge(kMaxCamFrameSize + 1);
+	CHECK(!BuildCamFragment(1, huge.data(), huge.size(), 0, payload));
+
+	// headers that do not add up are turned down
+	CHECK(BuildCamFragment(1, picture.data(), picture.size(), 1, payload));
+	for(size_t cut = 0; cut < payload.size(); cut++)
+	{
+		ByteReader r(payload.data(), cut);
+		CamFragmentHeader h;
+		CHECK(!ReadCamFragmentHeader(r, h));
+	}
+	std::vector<uint8_t> bad = payload;
+	bad[7] = 9; // frag_count
+	{
+		ByteReader r(bad.data(), bad.size());
+		CamFragmentHeader h;
+		CHECK(!ReadCamFragmentHeader(r, h));
+	}
+}
+
+TEST(cam_assembler)
+{
+	CamAssembler a;
+	std::vector<uint8_t> one = FakePicture(5000, 1);
+	std::vector<uint8_t> two = FakePicture(4000, 2);
+	std::vector<uint8_t> three = FakePicture(6000, 3);
+	CamPieces p1 = CutPicture(1, one);
+	CamPieces p2 = CutPicture(2, two);
+	CamPieces p3 = CutPicture(3, three);
+	uint64_t now = 1000;
+
+	// in any order, complete exactly once
+	std::vector<size_t> order = { 3, 0, 4, 1 };
+	for(size_t i : order)
+		CHECK(!a.OnFragment(p1.headers[i], p1.bodies[i].data(), p1.bodies[i].size(), now));
+	CHECK(a.OnFragment(p1.headers[2], p1.bodies[2].data(), p1.bodies[2].size(), now));
+	CHECK(a.Frame() == one);
+	// a duplicate afterwards does not deliver it again
+	CHECK(!a.OnFragment(p1.headers[2], p1.bodies[2].data(), p1.bodies[2].size(), now));
+
+	// picture 2 loses a fragment: picture 3 simply takes over
+	CHECK(!a.OnFragment(p2.headers[0], p2.bodies[0].data(), p2.bodies[0].size(), now));
+	CHECK(!a.OnFragment(p2.headers[1], p2.bodies[1].data(), p2.bodies[1].size(), now));
+	bool done = false;
+	for(size_t i = 0; i < p3.headers.size(); i++)
+		done = a.OnFragment(p3.headers[i], p3.bodies[i].data(), p3.bodies[i].size(), now);
+	CHECK(done);
+	CHECK(a.Frame() == three);
+	// the rest of picture 2 arriving late changes nothing
+	for(size_t i = 2; i < p2.headers.size(); i++)
+		CHECK(!a.OnFragment(p2.headers[i], p2.bodies[i].data(), p2.bodies[i].size(), now));
+	CHECK(a.Frame() == three);
+
+	// a sender that starts over after a pause is accepted again
+	now += 5000;
+	done = false;
+	for(size_t i = 0; i < p1.headers.size(); i++)
+		done = a.OnFragment(p1.headers[i], p1.bodies[i].data(), p1.bodies[i].size(), now);
+	CHECK(done);
+	CHECK(a.Frame() == one);
+
+	// fragments whose numbers do not fit the picture
+	CamFragmentHeader h = p2.headers[0];
+	h.frag_index = 9;
+	CHECK(!a.OnFragment(h, p2.bodies[0].data(), p2.bodies[0].size(), now));
+	h = p2.headers[0];
+	h.total_size = 10; // does not hold a full fragment
+	CHECK(!a.OnFragment(h, p2.bodies[0].data(), p2.bodies[0].size(), now));
+}
+
+TEST(voice_sequence)
+{
+	VoiceSequence v;
+	CHECK(v.Accept(10, 100));
+	CHECK(!v.Accept(10, 110)); // duplicate
+	CHECK(!v.Accept(9, 120));  // late
+	CHECK(v.Accept(12, 130));  // 11 was lost
+	CHECK(!v.Accept(11, 140));
+	// numbering wraps around
+	VoiceSequence w;
+	CHECK(w.Accept(0xfffffffful, 100));
+	CHECK(w.Accept(0, 120));
+	CHECK(!w.Accept(0xfffffffful, 130));
+	// after a pause the speaker may start over
+	CHECK(v.Accept(1, 5000));
+	CHECK(v.Accept(2, 5020));
+}
+
+TEST(net_media_flags_reach_everyone)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll | kWantVoice | kWantCams);
+	TestGuest b(h.MakeInvite(), "B", kWantAll | kWantVoice | kWantCams);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	uint8_t slot_a = a.client->Welcome().slot;
+
+	auto media_of = [](TestGuest &g, uint8_t slot) -> int {
+		SessionState s = g.LastState();
+		for(const Participant &p : s.participants)
+		{
+			if(p.slot == slot)
+				return p.media;
+		}
+		return -1;
+	};
+
+	CHECK(WaitFor([&] { return media_of(b, slot_a) == 0 && media_of(b, 0) == 0; }, 2000));
+
+	a.client->SetMedia(kMediaVoice | kMediaCamera);
+	CHECK(WaitFor([&] { return media_of(b, slot_a) == (kMediaVoice | kMediaCamera); }, 2000));
+	CHECK(WaitFor([&] { return media_of(a, slot_a) == (kMediaVoice | kMediaCamera); }, 2000));
+	{
+		std::vector<GuestInfo> guests = h.host->Guests();
+		bool found = false;
+		for(const GuestInfo &g : guests)
+			found = found || (g.slot == slot_a && g.media == (kMediaVoice | kMediaCamera));
+		CHECK(found);
+	}
+
+	a.client->SetMedia(kMediaVoice | kMediaMuted);
+	CHECK(WaitFor([&] { return media_of(b, slot_a) == (kMediaVoice | kMediaMuted); }, 2000));
+
+	// a guest cannot claim what only the host decides
+	a.client->SetMedia(0xff);
+	CHECK(WaitFor([&] { return media_of(b, slot_a) == kMediaOwnMask; }, 2000));
+
+	h.host->SetLocalMedia(kMediaVoice);
+	CHECK(h.host->LocalMedia() == kMediaVoice);
+	CHECK(WaitFor([&] { return media_of(a, 0) == kMediaVoice && media_of(b, 0) == kMediaVoice; }, 2000));
+
+	h.host->SetGuestSilenced(slot_a, true);
+	CHECK(WaitFor([&] { return media_of(b, slot_a) == (kMediaOwnMask | kMediaSilenced); }, 2000));
+	CHECK(WaitFor([&] { return media_of(a, slot_a) == (kMediaOwnMask | kMediaSilenced); }, 2000));
+	h.host->SetGuestSilenced(slot_a, false);
+	CHECK(WaitFor([&] { return media_of(b, slot_a) == kMediaOwnMask; }, 2000));
+}
+
+TEST(net_voice_reaches_everyone_but_the_speaker)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll | kWantVoice);
+	TestGuest b(h.MakeInvite(), "B", kWantAll | kWantVoice);
+	TestGuest deaf(h.MakeInvite(), "Deaf"); // did not ask for voices
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(deaf.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 3; }, 2000));
+	uint8_t slot_a = a.client->Welcome().slot;
+	uint8_t slot_b = b.client->Welcome().slot;
+
+	for(uint8_t i = 0; i < 40; i++)
+	{
+		std::vector<uint8_t> frame(60 + i, i);
+		a.client->SendVoice(frame.data(), frame.size());
+		SleepMs(1);
+	}
+	CHECK(WaitFor([&] { return b.VoiceCount(slot_a) == 40; }, 2000));
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(h.mutex);
+		return h.voice.size() == 40;
+	}, 2000));
+	{
+		std::lock_guard<std::mutex> lock(b.mutex);
+		bool intact = b.voice.size() == 40;
+		for(size_t i = 0; intact && i < b.voice.size(); i++)
+			intact = b.voice[i].first == slot_a && b.voice[i].second.size() == 60 + i && b.voice[i].second[0] == i;
+		CHECK(intact);
+	}
+	{
+		std::lock_guard<std::mutex> lock(h.mutex);
+		bool intact = h.voice.size() == 40;
+		for(size_t i = 0; intact && i < h.voice.size(); i++)
+			intact = h.voice[i].first == slot_a && h.voice[i].second.size() == 60 + i;
+		CHECK(intact);
+	}
+
+	// the host talks: both hear it under slot 0
+	for(uint8_t i = 0; i < 25; i++)
+	{
+		std::vector<uint8_t> frame(80, static_cast<uint8_t>(100 + i));
+		h.host->PushVoice(frame.data(), frame.size());
+		SleepMs(1);
+	}
+	CHECK(WaitFor([&] { return a.VoiceCount(0) == 25 && b.VoiceCount(0) == 25; }, 2000));
+
+	// B answers
+	std::vector<uint8_t> reply(50, 7);
+	b.client->SendVoice(reply.data(), reply.size());
+	CHECK(WaitFor([&] { return a.VoiceCount(slot_b) == 1; }, 2000));
+
+	SleepMs(100);
+	CHECK(a.VoiceCount(slot_a) == 0); // nobody hears their own voice back
+	CHECK(b.VoiceCount(slot_b) == 0);
+	CHECK(deaf.VoiceCount() == 0);
+	CHECK(deaf.client->Stats().voice_frames == 0);
+	CHECK(b.client->Stats().voice_frames == 65);
+
+	// oversized and empty frames never leave
+	std::vector<uint8_t> big(kMaxVoiceFrameSize + 1, 1);
+	a.client->SendVoice(big.data(), big.size());
+	a.client->SendVoice(big.data(), 0);
+	SleepMs(100);
+	CHECK(b.VoiceCount(slot_a) == 40);
+}
+
+TEST(net_silenced_guest_is_not_heard)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll | kWantVoice);
+	TestGuest b(h.MakeInvite(), "B", kWantAll | kWantVoice);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	uint8_t slot_a = a.client->Welcome().slot;
+
+	std::vector<uint8_t> frame(70, 1);
+	a.client->SendVoice(frame.data(), frame.size());
+	CHECK(WaitFor([&] { return b.VoiceCount(slot_a) == 1; }, 2000));
+
+	h.host->SetGuestSilenced(slot_a, true);
+	for(int i = 0; i < 10; i++)
+	{
+		a.client->SendVoice(frame.data(), frame.size());
+		SleepMs(2);
+	}
+	SleepMs(150);
+	CHECK(b.VoiceCount(slot_a) == 1);
+	{
+		std::lock_guard<std::mutex> lock(h.mutex);
+		CHECK(h.voice.size() == 1);
+	}
+	// A still hears the others
+	h.host->PushVoice(frame.data(), frame.size());
+	CHECK(WaitFor([&] { return a.VoiceCount(0) == 1; }, 2000));
+
+	h.host->SetGuestSilenced(slot_a, false);
+	a.client->SendVoice(frame.data(), frame.size());
+	CHECK(WaitFor([&] { return b.VoiceCount(slot_a) == 2; }, 2000));
+}
+
+TEST(net_webcam_pictures_reach_everyone)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll | kWantCams);
+	TestGuest b(h.MakeInvite(), "B", kWantAll | kWantCams);
+	TestGuest blind(h.MakeInvite(), "Blind"); // did not ask for webcams
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(blind.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 3; }, 2000));
+	uint8_t slot_a = a.client->Welcome().slot;
+
+	std::vector<std::vector<uint8_t>> pictures;
+	for(uint32_t i = 0; i < 12; i++)
+		pictures.push_back(FakePicture(9000 + i * 700, 100 + i));
+	for(const auto &picture : pictures)
+	{
+		a.client->SendCamFrame(picture.data(), picture.size());
+		SleepMs(5);
+	}
+	CHECK(WaitFor([&] { return b.CamCount(slot_a) == pictures.size(); }, 3000));
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(h.mutex);
+		return h.cams.size() == pictures.size();
+	}, 3000));
+	{
+		std::lock_guard<std::mutex> lock(b.mutex);
+		bool intact = b.cams.size() == pictures.size();
+		for(size_t i = 0; intact && i < b.cams.size(); i++)
+			intact = b.cams[i].first == slot_a && b.cams[i].second == pictures[i];
+		CHECK(intact);
+	}
+	{
+		std::lock_guard<std::mutex> lock(h.mutex);
+		bool intact = h.cams.size() == pictures.size();
+		for(size_t i = 0; intact && i < h.cams.size(); i++)
+			intact = h.cams[i].first == slot_a && h.cams[i].second == pictures[i];
+		CHECK(intact);
+	}
+
+	// the host's own webcam
+	std::vector<uint8_t> host_picture = FakePicture(30000, 7);
+	h.host->PushCamFrame(host_picture.data(), host_picture.size());
+	CHECK(WaitFor([&] { return a.CamCount(0) == 1 && b.CamCount(0) == 1; }, 3000));
+	{
+		std::lock_guard<std::mutex> lock(a.mutex);
+		CHECK(a.cams.back().second == host_picture);
+	}
+
+	SleepMs(100);
+	CHECK(a.CamCount(slot_a) == 0); // not back to where it came from
+	CHECK(blind.CamCount() == 0);
+	CHECK(blind.client->Stats().cam_frames == 0);
+
+	// too large for a picture: nothing is sent
+	std::vector<uint8_t> huge(kMaxCamFrameSize + 1, 1);
+	a.client->SendCamFrame(huge.data(), huge.size());
+	SleepMs(100);
+	CHECK(b.CamCount(slot_a) == pictures.size());
+}
+
+TEST(net_webcam_pictures_arrive_whole_or_not_at_all)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll | kWantCams);
+	TestGuest b(h.MakeInvite(), "B", kWantAll | kWantCams);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	uint8_t slot_a = a.client->Welcome().slot;
+
+	a.client->SetSimulatedLoss(0.03, 5);
+	h.host->SetSimulatedLoss(0.03, 6);
+
+	std::map<uint32_t, std::vector<uint8_t>> sent; // by seed, which is in the picture
+	for(uint32_t i = 0; i < 150; i++)
+	{
+		std::vector<uint8_t> picture = FakePicture(8000, 1000 + i);
+		picture[3] = static_cast<uint8_t>(i);
+		sent[i] = picture;
+		a.client->SendCamFrame(picture.data(), picture.size());
+		SleepMs(3);
+	}
+	SleepMs(300);
+	std::lock_guard<std::mutex> lock(b.mutex);
+	size_t got = 0;
+	bool intact = true;
+	int last = -1;
+	for(const auto &c : b.cams)
+	{
+		if(c.first != slot_a)
+			continue;
+		got++;
+		uint32_t index = c.second.size() > 3 ? c.second[3] : 999;
+		intact = intact && sent.count(index) && sent[index] == c.second;
+		intact = intact && static_cast<int>(index) > last; // never an older picture after a newer one
+		last = static_cast<int>(index);
+	}
+	CHECK(intact);
+	// 7 fragments each way at 3 % loss: about two thirds get through
+	CHECK(got > 60 && got < 150);
 }
 
 int main(int argc, char **argv)

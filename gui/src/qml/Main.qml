@@ -145,6 +145,8 @@ Item {
     }
 
     function showStreamView() {
+        // A notice from before would stay on the game picture, where nothing can close it
+        infoDialog.close();
         stack.replace(stack.get(0), streamViewComponent);
     }
 
@@ -178,7 +180,7 @@ Item {
 
     function showRendererFallbackDialog(reason) {
         showInfoDialog(qsTr("Renderer Fallback"),
-                       qsTr("Vulkan renderer is unavailable and chiaki-ng switched to OpenGL.\n\nReason: %1").arg(reason));
+                       qsTr("Vulkan renderer is unavailable and PSRemotePlayTogether switched to OpenGL.\n\nReason: %1").arg(reason));
     }
 
     function showRemindDialog(title, text, remotePlay, callback) {

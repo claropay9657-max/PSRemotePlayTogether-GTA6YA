@@ -130,6 +130,16 @@ void Host::Fire(Deferred &d)
 	}
 	if(d.guests_changed && callbacks.on_guests_changed)
 		callbacks.on_guests_changed();
+	if(callbacks.on_voice)
+	{
+		for(const auto &v : d.voice)
+			callbacks.on_voice(v.first, v.second.data(), v.second.size());
+	}
+	if(callbacks.on_cam_frame)
+	{
+		for(const auto &c : d.cams)
+			callbacks.on_cam_frame(c.first, c.second);
+	}
 	if(d.keyframe_needed && callbacks.on_keyframe_needed)
 		callbacks.on_keyframe_needed();
 	if(d.input_changed && callbacks.on_input_changed)
@@ -295,6 +305,7 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	g->want = hello.want;
 	g->controller = hello.controller;
 	g->avatar = hello.avatar;
+	g->media = hello.media & kMediaOwnMask;
 
 	WelcomePayload welcome;
 	welcome.guest_nonce = hello.guest_nonce;
@@ -388,12 +399,16 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 			if(!r.ok())
 				break;
 			ControllerKind kind = ControllerKindFromWire(r.U8());
+			uint8_t media = r.U8() & kMediaOwnMask;
 			if(!r.ok())
 				break;
 			g.rtt_ms = rtt;
-			if(kind != g.controller)
+			if(kind != g.controller || media != g.media)
 			{
+				if((g.media & kMediaCamera) && !(media & kMediaCamera))
+					g.cam.Reset();
 				g.controller = kind;
+				g.media = media;
 				d.guests_changed = true;
 				state_seq++;
 				BroadcastState(now_ms);
@@ -415,6 +430,46 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 			w.U32(ping_id);
 			w.U64(sent_us);
 			SendToGuest(g, PacketType::Pong, pong);
+			break;
+		}
+		case PacketType::VoiceUp: {
+			uint32_t seq = r.U32();
+			if(!r.ok() || r.remaining() == 0 || r.remaining() > kMaxVoiceFrameSize)
+				break;
+			if(g.silenced || !g.voice_seq.Accept(seq, now_ms))
+				break;
+			// To everybody else as it is, under the speaker's own numbering
+			std::vector<uint8_t> out;
+			out.reserve(5 + r.remaining());
+			ByteWriter w(out);
+			w.U8(g.slot);
+			w.U32(seq);
+			w.Bytes(r.cursor(), r.remaining());
+			for(auto &entry : guests)
+			{
+				Guest &other = *entry.second;
+				if(&other != &g && other.confirmed && (other.want & kWantVoice))
+					SendToGuest(other, PacketType::Voice, out);
+			}
+			d.voice.emplace_back(g.slot, std::vector<uint8_t>(r.cursor(), r.cursor() + r.remaining()));
+			break;
+		}
+		case PacketType::CamUp: {
+			CamFragmentHeader h;
+			if(!ReadCamFragmentHeader(r, h))
+				break;
+			std::vector<uint8_t> out;
+			out.reserve(1 + payload.size());
+			out.push_back(g.slot);
+			out.insert(out.end(), payload.begin(), payload.end());
+			for(auto &entry : guests)
+			{
+				Guest &other = *entry.second;
+				if(&other != &g && other.confirmed && (other.want & kWantCams))
+					SendToGuest(other, PacketType::Cam, out);
+			}
+			if(g.cam.OnFragment(h, r.cursor(), r.remaining(), now_ms))
+				d.cams.emplace_back(g.slot, g.cam.Frame());
 			break;
 		}
 		case PacketType::Nack:
@@ -588,6 +643,7 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 	host.name = config.name;
 	host.avatar = own_avatar;
 	host.controller = config.controller;
+	host.media = config.media;
 	s.participants.push_back(host);
 	for(auto &entry : guests)
 	{
@@ -599,6 +655,7 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 		p.flags = static_cast<uint8_t>((other.can_control ? kParticipantCanControl : 0) | (other.in_control ? kParticipantInControl : 0));
 		p.name = other.name;
 		p.controller = other.controller;
+		p.media = static_cast<uint8_t>(other.media | (other.silenced ? kMediaSilenced : 0));
 		// Only once it is here completely, or the others would ask for it in vain
 		if(blobs.Has(other.avatar))
 			p.avatar = other.avatar;
@@ -776,6 +833,90 @@ void Host::PushHaptics(const uint8_t *data, size_t size)
 	}
 }
 
+void Host::PushVoice(const uint8_t *data, size_t size)
+{
+	if(!data || !size || size > kMaxVoiceFrameSize || !running)
+		return;
+	std::lock_guard<std::mutex> lock(mutex);
+	if(guests.empty())
+		return;
+	std::vector<uint8_t> payload;
+	payload.reserve(size + 5);
+	ByteWriter w(payload);
+	w.U8(0); // the host's slot
+	w.U32(++voice_seq);
+	w.Bytes(data, size);
+	for(auto &entry : guests)
+	{
+		Guest &g = *entry.second;
+		if(g.confirmed && (g.want & kWantVoice))
+			SendToGuest(g, PacketType::Voice, payload);
+	}
+}
+
+void Host::PushCamFrame(const uint8_t *data, size_t size)
+{
+	if(!data || !size || size > kMaxCamFrameSize || !running)
+		return;
+	std::lock_guard<std::mutex> lock(mutex);
+	bool any = false;
+	for(auto &entry : guests)
+		any = any || (entry.second->confirmed && (entry.second->want & kWantCams));
+	if(!any)
+		return;
+	uint32_t seq = ++cam_seq;
+	uint32_t count = CamFragmentCount(size);
+	std::vector<uint8_t> fragment;
+	std::vector<uint8_t> payload;
+	for(uint32_t i = 0; i < count; i++)
+	{
+		if(!BuildCamFragment(seq, data, size, i, fragment))
+			return;
+		payload.clear();
+		payload.push_back(0); // the host's slot
+		payload.insert(payload.end(), fragment.begin(), fragment.end());
+		for(auto &entry : guests)
+		{
+			Guest &g = *entry.second;
+			if(g.confirmed && (g.want & kWantCams))
+				SendToGuest(g, PacketType::Cam, payload);
+		}
+	}
+}
+
+void Host::SetLocalMedia(uint8_t media)
+{
+	media &= kMediaOwnMask;
+	std::lock_guard<std::mutex> lock(mutex);
+	if(config.media == media)
+		return;
+	config.media = media;
+	state_seq++;
+	BroadcastState(NowMs());
+}
+
+uint8_t Host::LocalMedia()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return config.media;
+}
+
+void Host::SetGuestSilenced(uint8_t slot, bool silenced)
+{
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		Guest *g = FindBySlot(slot);
+		if(!g || g->silenced == silenced)
+			return;
+		g->silenced = silenced;
+		state_seq++;
+		BroadcastState(NowMs());
+		d.guests_changed = true;
+	}
+	Fire(d);
+}
+
 void Host::SetRumble(uint8_t left, uint8_t right)
 {
 	std::lock_guard<std::mutex> lock(mutex);
@@ -941,6 +1082,7 @@ std::vector<GuestInfo> Host::Guests()
 		info.can_control = g.can_control;
 		info.in_control = g.in_control;
 		info.rtt_ms = g.rtt_ms;
+		info.media = static_cast<uint8_t>(g.media | (g.silenced ? kMediaSilenced : 0));
 		if(blobs.Has(g.avatar))
 			info.avatar = g.avatar;
 		out.push_back(info);

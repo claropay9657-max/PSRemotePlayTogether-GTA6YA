@@ -13,6 +13,8 @@ if(Qt6_VERSION VERSION_GREATER_EQUAL "6.10.0")
 endif()
 
 find_package(Qt6 COMPONENTS WebEngineQuick)
+# Webcams in Play Together. Without it the app still shows the other players' webcams.
+find_package(Qt6 COMPONENTS Multimedia)
 find_package(Qt6 COMPONENTS DBus)
 
 if(WIN32)
@@ -56,6 +58,10 @@ set(SOURCE_FILES
 	src/qmlsettings.cpp
 	src/qmlsettings_coplay.cpp
 	src/qmlbackend_coplay.cpp
+	include/voicechat.h
+	src/voicechat.cpp
+	include/coplaycamera.h
+	src/coplaycamera.cpp
 	include/qmlsvgprovider.h
 	src/qmlsvgprovider.cpp
 	include/systemdinhibit.h
@@ -118,6 +124,17 @@ if (NOT APPLE)
 	target_compile_definitions(chiaki PRIVATE CHIAKI_HAVE_DBUS)
 endif()
 endif()
+if (${Qt6Multimedia_FOUND})
+	target_link_libraries(chiaki Qt::Multimedia)
+	target_compile_definitions(chiaki PRIVATE CHIAKI_GUI_ENABLE_CAMERA=1)
+	message(STATUS "Play Together webcam capture enabled")
+else()
+	message(STATUS "Play Together webcam capture disabled (Qt Multimedia not found)")
+endif()
+# The players' voice chat encodes and decodes Opus itself
+find_package(Opus REQUIRED)
+target_include_directories(chiaki PRIVATE ${Opus_INCLUDE_DIRS})
+target_link_libraries(chiaki ${Opus_LIBRARIES})
 if (${Qt6WebEngineQuick_FOUND})
 	target_link_libraries(chiaki Qt::WebEngineQuick)
 	target_compile_definitions(chiaki PRIVATE CHIAKI_HAVE_WEBENGINE)
@@ -153,9 +170,9 @@ endif()
 set_target_properties(chiaki PROPERTIES
 		MACOSX_BUNDLE TRUE
 		MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/MacOSXBundleInfo.plist.in"
-		MACOSX_BUNDLE_BUNDLE_NAME chiaki-ng
+		MACOSX_BUNDLE_BUNDLE_NAME PSRemotePlayTogether
 		MACOSX_BUNDLE_BUNDLE_VERSION ${CHIAKI_VERSION}
-		MACOSX_BUNDLE_COPYRIGHT "thestr4ng3r (AGPLv3)"
+		MACOSX_BUNDLE_COPYRIGHT "GamerNova.net, Street Pea, thestr4ng3r (AGPLv3)"
 		MACOSX_BUNDLE_GUI_IDENTIFIER "org.streetpea.chiaking"
 		MACOSX_BUNDLE_ICON_FILE chiaking.icns
 		RESOURCE "${RESOURCE_FILES}")

@@ -140,6 +140,14 @@ class SdeckHapticsWorker;
 		int coplay_mix_mode = 0;
 		/** The player's picture as image file bytes; shown to the others and in the overlay. */
 		QByteArray coplay_avatar;
+		// Talking to and seeing the other players
+		bool coplay_voice_enabled = true;
+		bool coplay_voice_start_muted = false;
+		int coplay_voice_volume = 100;
+		QString coplay_camera_device;
+		int coplay_camera_quality = 1;
+		bool coplay_camera_on_start = false;
+		bool coplay_show_cams = true;
 		// Joining somebody else's session instead of connecting to a console.
 		// The client has already completed its handshake with the host.
 		std::shared_ptr<coplay::Client> coplay_client;
@@ -185,6 +193,14 @@ class StreamSession : public QObject
 	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
 	Q_PROPERTY(int coplayMixMode READ GetCoPlayMixMode WRITE SetCoPlayMixMode NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayVideoEnabled READ GetCoPlayVideoEnabled WRITE SetCoPlayVideoEnabled NOTIFY CoPlayChanged)
+	Q_PROPERTY(bool coplayActive READ IsCoPlayActive NOTIFY CoPlayChanged)
+	Q_PROPERTY(bool coplayVoiceOn READ GetCoPlayVoiceOn WRITE SetCoPlayVoiceOn NOTIFY CoPlayMediaChanged)
+	Q_PROPERTY(bool coplayMicMuted READ GetCoPlayMicMuted WRITE SetCoPlayMicMuted NOTIFY CoPlayMediaChanged)
+	Q_PROPERTY(bool coplayDeafened READ GetCoPlayDeafened WRITE SetCoPlayDeafened NOTIFY CoPlayMediaChanged)
+	Q_PROPERTY(bool coplayCameraOn READ GetCoPlayCameraOn WRITE SetCoPlayCameraOn NOTIFY CoPlayMediaChanged)
+	Q_PROPERTY(bool coplayCameraSupported READ GetCoPlayCameraSupported CONSTANT)
+	Q_PROPERTY(QVariantMap coplayTalking READ GetCoPlayTalking NOTIFY CoPlayTalkingChanged)
+	Q_PROPERTY(int coplayCamSerial READ GetCoPlayCamSerial NOTIFY CoPlayCamChanged)
 
 	private:
 		SessionLog log;
@@ -351,6 +367,14 @@ class StreamSession : public QObject
 		void CoPlayOnHaptics(uint8_t *buf, size_t buf_size);
 		void CoPlayUpdatePlayers();
 		void CoPlayUpdateControllerKind();
+		void CoPlayStartMedia();
+		void CoPlayOpenMicrophone();
+		void CoPlayUpdateMedia();
+		void CoPlaySyncPlayers(const QVariantList &players);
+		void CoPlayOnVoice(int slot, const uint8_t *data, size_t size);
+		void CoPlayOnCamFrame(int slot, const QByteArray &jpeg);
+		void CoPlayMediaTick();
+		int CoPlayOwnSlot() const;
 		void SendControllerState(ChiakiControllerState *state);
 		static bool CoPlayVideoSampleCb(uint8_t *buf, size_t buf_size, int32_t frames_lost, bool frame_recovered, void *user);
 		static void CoPlayAudioHeaderCb(ChiakiAudioHeader *header, void *user);
@@ -411,6 +435,31 @@ class StreamSession : public QObject
 		Q_INVOKABLE void coplayKick(int slot);
 		Q_INVOKABLE void coplaySetCanControl(int slot, bool allowed);
 		Q_INVOKABLE void coplayCopyInvite();
+		/** Sharing our session, or taking part in somebody else's. */
+		bool IsCoPlayActive() const;
+		bool GetCoPlayVoiceOn() const;
+		void SetCoPlayVoiceOn(bool on);
+		bool GetCoPlayMicMuted() const;
+		void SetCoPlayMicMuted(bool muted);
+		bool GetCoPlayDeafened() const;
+		void SetCoPlayDeafened(bool deafened);
+		bool GetCoPlayCameraOn() const;
+		void SetCoPlayCameraOn(bool on);
+		bool GetCoPlayCameraSupported() const;
+		/** Who is talking right now: slot (as text) -> true. */
+		QVariantMap GetCoPlayTalking() const;
+		/** Changes with every new webcam picture, of anybody. */
+		int GetCoPlayCamSerial() const;
+		/** Stops playing one player on this computer only. */
+		Q_INVOKABLE void coplaySetPlayerMuted(int slot, bool muted);
+		/** Host only: stops passing a guest's microphone on to everybody. */
+		Q_INVOKABLE void coplaySetSilenced(int slot, bool silenced);
+		/** A player's latest webcam picture (JPEG) and a number that changes with each one. */
+		QByteArray CoPlayCamJpeg(int slot, quint64 *serial = nullptr);
+		/** The conversation for the stream overlay; see VoiceChat::SetTap(). */
+		void CoPlaySetOverlayAudio(bool enabled, bool include_own);
+		QByteArray CoPlayReadOverlayAudio();
+		void CoPlayMicPermissionResult(bool granted);
 		/** Everything the stream overlay shows: players, who is in control, what everybody presses. */
 		QJsonObject OverlayState();
 		/** A player's picture by the id the overlay state gives; empty if unknown. */
@@ -459,6 +508,9 @@ class StreamSession : public QObject
 		void CantDisplayChanged(bool cant_display);
 		void FecFailure();
 		void CoPlayChanged();
+		void CoPlayMediaChanged();
+		void CoPlayTalkingChanged();
+		void CoPlayCamChanged();
 		/** Something the user should be told, e.g. that the port for sharing is taken. */
 		void CoPlayNotice(const QString &text);
 

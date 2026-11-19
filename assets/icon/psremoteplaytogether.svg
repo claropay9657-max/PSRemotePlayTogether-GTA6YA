@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- PSRemotePlayTogether app icon: two players, linked, on one controller. -->
+  <defs>
+    <radialGradient id="space" cx="512" cy="360" r="720" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2b1a66"/>
+      <stop offset="0.55" stop-color="#120c2c"/>
+      <stop offset="1" stop-color="#06060e"/>
+    </radialGradient>
+    <linearGradient id="pad" x1="250" y1="0" x2="774" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8c52ff"/>
+      <stop offset="0.5" stop-color="#c24dd6"/>
+      <stop offset="1" stop-color="#00f2ff"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="64" x2="0" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="204" ry="204" fill="url(#space)"/>
+  <rect x="66" y="66" width="892" height="892" rx="202" ry="202" fill="none" stroke="url(#edge)" stroke-width="4"/>
+
+  <!-- a few far-away stars -->
+  <g fill="#ffffff">
+    <circle cx="196" cy="236" r="5" opacity="0.55"/>
+    <circle cx="828" cy="300" r="4" opacity="0.45"/>
+    <circle cx="760" cy="176" r="6" opacity="0.6"/>
+    <circle cx="272" cy="372" r="3" opacity="0.4"/>
+    <circle cx="180" cy="760" r="4" opacity="0.35"/>
+    <circle cx="852" cy="716" r="5" opacity="0.4"/>
+    <circle cx="610" cy="140" r="3" opacity="0.4"/>
+  </g>
+
+  <!-- two players, linked -->
+  <circle cx="452" cy="286" r="82" fill="none" stroke="#8c52ff" stroke-width="34"/>
+  <circle cx="572" cy="286" r="82" fill="none" stroke="#00f2ff" stroke-width="34"/>
+  <!-- the left ring passes over the right one at the bottom, so they read as interlocked -->
+  <path d="M 512 342.1 A 82 82 0 0 1 452 368" fill="none" stroke="#8c52ff" stroke-width="34" stroke-linecap="butt"/>
+
+  <!-- one controller -->
+  <path fill="url(#pad)" d="M 300 520 C 300 474 338 448 400 448 L 624 448 C 686 448 724 474 724 520 L 772 724 C 786 786 752 828 706 828 C 668 828 648 806 626 770 L 600 728 L 424 728 L 398 770 C 376 806 356 828 318 828 C 272 828 238 786 252 724 Z"/>
+
+  <g fill="#0b0a1c">
+    <!-- direction pad -->
+    <rect x="336" y="556" width="104" height="34" rx="10"/>
+    <rect x="371" y="521" width="34" height="104" rx="10"/>
+    <!-- buttons -->
+    <circle cx="610" cy="600" r="25"/>
+    <circle cx="668" cy="548" r="25"/>
+    <!-- sticks -->
+    <circle cx="452" cy="668" r="36"/>
+    <circle cx="572" cy="668" r="36"/>
+  </g>
+  <circle cx="452" cy="668" r="15" fill="#8c52ff"/>
+  <circle cx="572" cy="668" r="15" fill="#00f2ff"/>
+  <!-- light bar -->
+  <rect x="470" y="492" width="84" height="16" rx="8" fill="#ffffff" opacity="0.9"/>
+</svg>

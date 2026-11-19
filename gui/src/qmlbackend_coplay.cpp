@@ -41,6 +41,11 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
     // The overlay shows what everybody presses
     if (settings->GetOverlayEnabled())
         config.want |= coplay::kWantInputs;
+    // Talking to and seeing the others works with and without the console's picture
+    if (settings->GetCoPlayVoiceEnabled())
+        config.want |= coplay::kWantVoice;
+    if (settings->GetCoPlayShowCams())
+        config.want |= coplay::kWantCams;
     // The session corrects this as soon as it has opened the controllers
     config.controller = coplay::ControllerKind::None;
     for (QmlController *controller : qmlControllers()) {
