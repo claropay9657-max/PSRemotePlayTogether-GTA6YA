@@ -98,7 +98,9 @@ Item {
             sessionStopDialogActive ||
             separateSessionStopWindow.visible ||
             sessionPinDialogActive ||
-            separateSessionPinWindow.visible
+            separateSessionPinWindow.visible ||
+            // Arranging the display inside this scene: it has to keep being drawn
+            (hudInline && !!view.hud && view.hud.editing)
         );
     }
 
@@ -499,7 +501,7 @@ Item {
             }
             onArrangeRequested: {
                 menuController.close();
-                streamHud.editing = true;
+                view.hud.editing = true;
             }
             onMainViewRequested: root.showMainView()
         }
@@ -542,17 +544,59 @@ Item {
         }
     }
 
-    // What is shown on top of the game picture: players, webcams, controllers
-    StreamHud {
-        id: streamHud
-        view: view
-        chatOpen: chatPanel.open
-        allowed: !menuController.open && !menuController.closing
+    // What is shown on top of the game picture: players, webcams, controllers.
+    //
+    // On macOS it sits in a see-through window of its own (StreamHudWindow), which costs the
+    // stream nothing. On Windows such a window shows nothing, so everywhere else the display
+    // is part of this scene, which the app lays over the game like the stream menu
+    // (Chiaki.hudInline). That needs the Vulkan renderer: with OpenGL a scene that changes
+    // while the game is drawn comes out garbled, which is why the stream menu is a window
+    // there too, and so the display stays a window with OpenGL on every system.
+    readonly property bool hudInline: Chiaki.hudInline && !useSeparateMenuWindow
+    readonly property bool hudAllowed: !menuController.open && !menuController.closing
                  && !view.sessionLoading && !view.sessionError
                  && Chiaki.window.visibility !== Window.Hidden
                  && Chiaki.window.visibility !== Window.Minimized
                  && view.StackView.status === StackView.Active
+    /** The display, whichever way it is shown; `hud.editing = true` starts arranging. */
+    readonly property Item hud: hudInline ? inlineHud.item : (hudWindow ? hudWindow.hud : null)
+
+    Loader {
+        id: inlineHud
+        anchors.fill: parent
+        active: view.hudInline
+        sourceComponent: Component {
+            StreamHud {
+                // Not "view: view": in here that name is this object's own property
+                view: inlineHud.parent
+                chatOpen: chatPanel.open
+                allowed: view.hudAllowed
+                // Arranging needs the mouse and the keys, which otherwise all go to the game
+                onEditingChanged: {
+                    if (editing)
+                        view.grabInput(this);
+                    else
+                        view.releaseInput();
+                    view.updateOverlayInteractionActive();
+                }
+            }
+        }
     }
+
+    Loader {
+        id: hudWindowLoader
+        active: !view.hudInline
+        sourceComponent: Component {
+            StreamHudWindow {
+                view: hudWindowLoader.parent
+            }
+        }
+        onLoaded: {
+            item.hud.chatOpen = Qt.binding(() => chatPanel.open);
+            item.hud.allowed = Qt.binding(() => view.hudAllowed);
+        }
+    }
+    readonly property var hudWindow: hudWindowLoader.item
 
     // Play Together text chat, from the stream menu or with Ctrl+T (⌘T)
     StreamChatPanel {
@@ -564,7 +608,7 @@ Item {
     StreamDisplayPanel {
         id: displayPanel
         view: view
-        onArrangeRequested: streamHud.editing = true
+        onArrangeRequested: view.hud.editing = true
     }
 
     // The connection was lost and the app is getting it back by itself (Chiaki.reconnecting).
@@ -668,7 +712,7 @@ Item {
         }
         onArrangeRequested: {
             menuController.close();
-            streamHud.editing = true;
+            view.hud.editing = true;
         }
         onCloseAnimationFinished: {
             if (view.hostWindow)

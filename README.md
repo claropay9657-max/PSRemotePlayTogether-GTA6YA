@@ -59,7 +59,7 @@ Add `--controller-only` to join without picture and sound.
 
 ### While you play: the stream menu
 
-Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. Next to the usual Remote Play buttons it has the players, your microphone, the others' voices and your webcam, who may control, the invite, and **Overlays…** for everything shown on the game picture and in OBS. The host can click a player to mute them for everybody, let them only watch, or remove them. All of it can be changed while the game runs.
+Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. Next to the usual Remote Play buttons it has the players, your microphone, the others' voices and your webcam, who may control, the invite, and under **Overlays** the preset, **Arrange** and **Options…** for everything shown on the game picture and in OBS. The host can click a player to mute them for everybody, let them only watch, or remove them. All of it can be changed while the game runs.
 
 The controller shortcut can be changed in **Settings → General → Stream Menu Combo**.
 
@@ -79,7 +79,7 @@ Press **⌘T** (Ctrl+T on Windows and Linux), or choose **Chat** in the stream m
 
 ### On the game picture
 
-**Play Together → Overlays → On the game picture**, or **Overlays…** in the stream menu, decides what lies on top of the game for you while playing:
+**Play Together → Overlays → On the game picture**, or **Options…** under Overlays in the stream menu, decides what lies on top of the game for you while playing:
 
 - the players with picture, name, a ring that lights up when they talk, and their controller's battery
 - the webcams
@@ -87,7 +87,7 @@ Press **⌘T** (Ctrl+T on Windows and Linux), or choose **Chat** in the stream m
 - the controller the console gets, with whoever is in control marked
 - a short note when somebody joins or leaves
 
-Choose **Arrange on the game picture** to drag the pieces into place; the mouse wheel or the + and − buttons change a piece's size. **Reset places and sizes** puts everything back.
+Choose **Arrange** in the stream menu to drag the pieces into place; the mouse wheel or the + and − buttons change a piece's size. **Reset places and sizes** puts everything back.
 
 Three looks: transparent without boxes (the default), glass boxes, dark boxes. A set of choices is a **preset**: make as many as you like, for example one for playing and one for watching, and switch between them at any time. Changes go into the selected preset by themselves.
 
@@ -123,6 +123,7 @@ Controller looks: DualSense in white, Midnight Black, Cosmic Red, Nova Pink, Sta
 - There is no automatic NAT traversal yet: internet play needs the forwarded port.
 - The controller battery is what the controller reports to the computer; some controllers and connections report nothing, and then nothing is shown.
 - All players need the same version of the app.
+- On Windows and Linux the display on the game picture needs the Vulkan renderer, which is the default (**Settings → Video → Renderer**).
 
 ## Building
 

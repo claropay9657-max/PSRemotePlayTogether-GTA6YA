@@ -141,3 +141,22 @@ QObject *QmlBackend::overlayLayoutSettings() const
 {
     return overlay_settings;
 }
+
+bool QmlBackend::hudInline() const
+{
+    // A see-through, click-through window over the game costs the stream nothing, but it only
+    // shows reliably on macOS: on Windows such a window stays invisible. Everywhere else the
+    // display is drawn into the stream scene, which is laid over the game like the stream menu
+    // (only with Vulkan, see StreamView.hudInline).
+    // PSRPT_HUD=inline or PSRPT_HUD=window picks one regardless, for trying the other way.
+    const QByteArray forced = qgetenv("PSRPT_HUD").trimmed().toLower();
+    if (forced == "inline")
+        return true;
+    if (forced == "window")
+        return false;
+#ifdef Q_OS_MACOS
+    return false;
+#else
+    return true;
+#endif
+}

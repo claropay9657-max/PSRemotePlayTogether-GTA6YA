@@ -12,10 +12,12 @@ import "controls" as C
 // everybody presses and what the console gets out of it. Four elements, each
 // with a switch, a place and a size (Chiaki.hud.values), kept as presets.
 //
-// A window of its own, so that it shows the same way with every renderer. While
+// An item that fills the game picture. It is either part of the stream window's
+// own scene, which the app lays over the game, or sits in a see-through window
+// of its own (StreamHudWindow); StreamView.hudInline says which and why. While
 // playing it lets every click and key through to the game; in arrange mode it
 // takes the mouse so that the elements can be dragged.
-Window {
+Item {
     id: hud
 
     /** The stream view: gives the place of the game picture on screen. */
@@ -58,33 +60,24 @@ Window {
     readonly property bool plain: cfg.style !== "glass" && cfg.style !== "solid"
     readonly property color boxColor: plain ? "transparent" : (cfg.style === "solid" ? "#10101a" : glass)
 
-    transientParent: view.hostWindow
-    color: "transparent"
-    flags: editing
-           ? (Qt.Tool | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
-           : (Qt.Tool | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput | Qt.NoDropShadowWindowHint)
-    x: view.streamGlobalX
-    y: view.streamGlobalY
-    width: Math.max(1, view.width)
-    height: Math.max(1, view.height)
     readonly property bool separatePads: !!cfg.pads_separate
-    visible: allowed && !!session && (editing || playersElement.wanted || camsElement.wanted || padsElement.wanted
+    /**
+     * Whether there is anything to show right now. Whoever hosts this (the stream view or
+     * the window) goes by this, never by `visible`: that is also false while the host
+     * itself is hidden, and a host waiting for it would never show again.
+     */
+    readonly property bool shown: allowed && !!session && (editing || playersElement.wanted || camsElement.wanted || padsElement.wanted
                                       || combinedElement.wanted || (separatePads && cfg.pads_show && players.length > 0)
                                       || toasts.count > 0 || chatNotes.count > 0)
+    visible: shown
 
-    onEditingChanged: {
-        if (editing) {
-            requestActivate();
-        } else if (view.hostWindow) {
-            view.hostWindow.requestActivate();
-        }
-    }
+    Keys.onEscapePressed: editing = false
 
     // What everybody presses, while something shows it
     Timer {
         interval: 33
         repeat: true
-        running: hud.visible && hud.wantPads
+        running: hud.shown && hud.wantPads
         onTriggered: hud.padStates = hud.session ? hud.session.coplayPadStates() : ({})
     }
 
@@ -200,14 +193,14 @@ Window {
                 property real grabX: 0
                 property real grabY: 0
                 onPressed: (mouse) => {
-                    let p = mapToItem(null, mouse.x, mouse.y);
+                    let p = mapToItem(hud, mouse.x, mouse.y);
                     grabX = p.x - el.x;
                     grabY = p.y - el.y;
                 }
                 onPositionChanged: (mouse) => {
                     if (!pressed)
                         return;
-                    let p = mapToItem(null, mouse.x, mouse.y);
+                    let p = mapToItem(hud, mouse.x, mouse.y);
                     el.dragX = Math.max(12, Math.min(hud.width - el.width - 12, p.x - grabX));
                     el.dragY = Math.max(12, Math.min(hud.height - el.height - 12, p.y - grabY));
                 }

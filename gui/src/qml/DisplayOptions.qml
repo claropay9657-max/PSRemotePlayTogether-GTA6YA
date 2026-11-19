@@ -383,7 +383,17 @@ Item {
                 wrapMode: Text.WordWrap
                 opacity: 0.6
                 font.pixelSize: 13
-                text: qsTr("Arranging works while a game is running: open the stream menu and choose Overlays.")
+                text: qsTr("Arranging works while a game is running: open the stream menu and choose Arrange.")
+            }
+
+            Label {
+                Layout.fillWidth: true
+                // With OpenGL the display is a window of its own, which Windows does not always show
+                visible: Qt.platform.os === "windows" && Chiaki.window.runtimeRendererBackend === 1
+                wrapMode: Text.WordWrap
+                color: "#f5b942"
+                font.pixelSize: 13
+                text: qsTr("Nothing on the game picture? On Windows this display needs the Vulkan renderer: Settings > Video > Renderer.")
             }
         }
 

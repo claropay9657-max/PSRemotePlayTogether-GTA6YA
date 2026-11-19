@@ -83,6 +83,8 @@ class QmlBackend : public QObject
     // What is drawn on top of the game picture, and the OBS overlay: live values and presets
     Q_PROPERTY(QObject* hud READ hudSettings CONSTANT)
     Q_PROPERTY(QObject* overlayLayout READ overlayLayoutSettings CONSTANT)
+    // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
+    Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
     Q_PROPERTY(StreamSession* session READ qmlSession NOTIFY sessionChanged)
     Q_PROPERTY(QList<QmlController*> controllers READ qmlControllers NOTIFY controllersChanged)
     Q_PROPERTY(bool discoveryEnabled READ discoveryEnabled WRITE setDiscoveryEnabled NOTIFY discoveryEnabledChanged)
@@ -210,6 +212,7 @@ public:
     void initDisplays();
     QObject *hudSettings() const;
     QObject *overlayLayoutSettings() const;
+    bool hudInline() const;
     /** Joins a session somebody else shares. Answers with coplayJoinFinished. */
     Q_INVOKABLE void joinCoPlay(const QString &invite, const QString &name, bool controller_only);
     /**

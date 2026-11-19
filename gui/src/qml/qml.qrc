@@ -27,6 +27,7 @@
     <file>AutoConnectView.qml</file>
     <file>PsnView.qml</file>
     <file>StreamHud.qml</file>
+    <file>StreamHudWindow.qml</file>
     <file>StreamDisplayPanel.qml</file>
     <file>DisplayOptions.qml</file>
     <file>controls/PadView.qml</file>
