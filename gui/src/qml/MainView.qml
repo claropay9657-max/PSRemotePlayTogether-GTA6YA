@@ -65,6 +65,10 @@ Pane {
             root.showManualHostDialog();
             event.accepted = true;
             break;
+        case Qt.Key_F3:
+            root.showPlayTogetherDialog();
+            event.accepted = true;
+            break;
         }
     }
 
@@ -138,6 +142,17 @@ Pane {
                 focusPolicy: Qt.NoFocus
                 Material.roundedScale: Material.SmallScale
                 visible: !Chiaki.settings.psnAuthToken
+            }
+
+            Button {
+                Layout.fillHeight: true
+                Layout.preferredWidth: 260
+                flat: true
+                text: qsTr("Play Together")
+                focusPolicy: Qt.NoFocus
+                onClicked: root.showPlayTogetherDialog()
+                Material.roundedScale: Material.SmallScale
+                highlighted: Chiaki.settings.coplayHostEnabled
             }
 
             Button {

@@ -32,7 +32,10 @@
 #include "controllermanager.h"
 #include "settings.h"
 
+#include <memory>
+
 #include <QObject>
+#include <QVariantList>
 #include <QImage>
 #include <QMouseEvent>
 #include <QMutex>
@@ -50,6 +53,9 @@
 
 class QKeyEvent;
 class Settings;
+
+namespace coplay { class Client; }
+struct CoPlayState;
 
 class ChiakiException: public Exception
 {
@@ -124,6 +130,17 @@ class SdeckHapticsWorker;
 		uint dpad_touch_shortcut3;
 		uint dpad_touch_shortcut4;
 
+		// Play Together. Sharing our own console session with guests:
+		bool coplay_host_enabled = false;
+		int coplay_port = 0;
+		QString coplay_secret;
+		QString coplay_name;
+		QString coplay_address;
+		int coplay_mix_mode = 0;
+		// Joining somebody else's session instead of connecting to a console.
+		// The client has already completed its handshake with the host.
+		std::shared_ptr<coplay::Client> coplay_client;
+
 	StreamSessionConnectInfo() {}
 	StreamSessionConnectInfo(
 			Settings *settings,
@@ -159,6 +176,12 @@ class StreamSession : public QObject
 	Q_PROPERTY(bool muted READ GetMuted WRITE SetMuted NOTIFY MutedChanged)
 	Q_PROPERTY(bool cantDisplay READ GetCantDisplay NOTIFY CantDisplayChanged)
 	Q_PROPERTY(int framesLost READ GetFramesLost NOTIFY FramesLostChanged)
+	Q_PROPERTY(bool coplayGuest READ IsCoPlayGuest CONSTANT)
+	Q_PROPERTY(bool coplayHosting READ IsCoPlayHosting NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayInvite READ GetCoPlayInvite NOTIFY CoPlayChanged)
+	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
+	Q_PROPERTY(int coplayMixMode READ GetCoPlayMixMode WRITE SetCoPlayMixMode NOTIFY CoPlayChanged)
+	Q_PROPERTY(bool coplayVideoEnabled READ GetCoPlayVideoEnabled WRITE SetCoPlayVideoEnabled NOTIFY CoPlayChanged)
 
 	private:
 		SessionLog log;
@@ -314,6 +337,23 @@ class StreamSession : public QObject
 #if CHIAKI_GUI_ENABLE_STEAMDECK_NATIVE
 		void HandleSDeckEvent(SDeckEvent *event);
 #endif
+		// Play Together, see streamsession_coplay.cpp
+		CoPlayState *coplay = nullptr;
+		void CoPlayInit(const StreamSessionConnectInfo &connect_info);
+		void CoPlayStopThreads();
+		void CoPlayFini();
+		void CoPlayStartGuest();
+		void CoPlayStopGuest();
+		void CoPlayOnEvent(ChiakiEvent *event);
+		void CoPlayOnHaptics(uint8_t *buf, size_t buf_size);
+		void CoPlayUpdatePlayers();
+		void SendControllerState(ChiakiControllerState *state);
+		static bool CoPlayVideoSampleCb(uint8_t *buf, size_t buf_size, int32_t frames_lost, bool frame_recovered, void *user);
+		static void CoPlayAudioHeaderCb(ChiakiAudioHeader *header, void *user);
+		static void CoPlayAudioFrameCb(uint8_t *buf, size_t buf_size, void *user);
+		static void CoPlayGuestAudioSettingsCb(uint32_t channels, uint32_t rate, void *user);
+		static void CoPlayGuestAudioFrameCb(int16_t *buf, size_t samples_count, void *user);
+
 		void AdjustAdaptiveTriggerPacket(uint8_t *buf, uint8_t type);
 		void WaitHaptics();
 		void RetryHaptics(quint64 generation);
@@ -356,6 +396,17 @@ class StreamSession : public QObject
 		void SetMuted(bool enable)	{ if (enable != muted) ToggleMute(); }
 		void SetAudioVolume(int volume) { audio_volume = volume; }
 		bool GetCantDisplay()	{ return cant_display; }
+		bool IsCoPlayGuest() const;
+		bool IsCoPlayHosting() const;
+		QString GetCoPlayInvite() const;
+		QVariantList GetCoPlayPlayers() const;
+		int GetCoPlayMixMode() const;
+		void SetCoPlayMixMode(int mode);
+		bool GetCoPlayVideoEnabled() const;
+		void SetCoPlayVideoEnabled(bool enabled);
+		Q_INVOKABLE void coplayKick(int slot);
+		Q_INVOKABLE void coplaySetCanControl(int slot, bool allowed);
+		Q_INVOKABLE void coplayCopyInvite();
 		ChiakiErrorCode ConnectPsnConnection(QString duid, bool ps5);
 		void CancelPsnConnection(bool stop_thread);
 
@@ -399,6 +450,9 @@ class StreamSession : public QObject
 		void MutedChanged();
 		void CantDisplayChanged(bool cant_display);
 		void FecFailure();
+		void CoPlayChanged();
+		/** Something the user should be told, e.g. that the port for sharing is taken. */
+		void CoPlayNotice(const QString &text);
 
 	private slots:
 		void UpdateGamepads();

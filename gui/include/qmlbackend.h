@@ -86,6 +86,7 @@ class QmlBackend : public QObject
     Q_PROPERTY(QVariantList hosts READ hosts NOTIFY hostsChanged)
     Q_PROPERTY(QVariantList hiddenHosts READ hiddenHosts NOTIFY hiddenHostsChanged)
     Q_PROPERTY(bool autoConnect READ autoConnect NOTIFY autoConnectChanged)
+    Q_PROPERTY(bool coplayJoining READ coplayJoining NOTIFY coplayJoiningChanged)
     Q_PROPERTY(PsnConnectState connectState READ connectState WRITE setConnectState NOTIFY connectStateChanged)
     Q_PROPERTY(QVariantList currentControllerMapping READ currentControllerMapping NOTIFY currentControllerMappingChanged)
     Q_PROPERTY(QString currentControllerType READ currentControllerType NOTIFY currentControllerTypeChanged)
@@ -189,6 +190,10 @@ public:
     Q_INVOKABLE bool registerHost(const QString &host, const QString &psn_id, const QString &pin, const QString &cpin, bool broadcast, int target, const QJSValue &callback);
     Q_INVOKABLE void connectToHost(int index, QString nickname = QString());
     Q_INVOKABLE void stopSession(bool sleep);
+    // Play Together, see qmlbackend_coplay.cpp
+    bool coplayJoining() const { return coplay_joining; }
+    /** Joins a session somebody else shares. Answers with coplayJoinFinished. */
+    Q_INVOKABLE void joinCoPlay(const QString &invite, const QString &name, bool controller_only);
     Q_INVOKABLE void sessionGoHome();
     Q_INVOKABLE void enterPin(const QString &pin);
     Q_INVOKABLE QUrl psnLoginUrl() const;
@@ -244,6 +249,8 @@ signals:
 
     void error(const QString &title, const QString &text);
     void sessionError(const QString &title, const QString &text);
+    void coplayJoiningChanged();
+    void coplayJoinFinished(bool ok, const QString &message);
     void sessionPinDialogRequested();
     void sessionStopDialogRequested();
     void registDialogRequested(const QString &host, bool ps5, const QString &duid);
@@ -330,6 +337,7 @@ private:
     bool controller_mapping_in_progress = false;
     bool enable_analog_stick_mapping = false;
     bool resume_session = false;
+    bool coplay_joining = false;
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};
     QString auto_connect_nickname = "";

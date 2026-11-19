@@ -341,6 +341,12 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	this->dpad_touch_shortcut4 = settings->GetDpadTouchShortcut4();
 	if(this->dpad_touch_shortcut4 > 0)
 		this->dpad_touch_shortcut4 = 1 << (this->dpad_touch_shortcut4 - 1);
+	this->coplay_host_enabled = settings->GetCoPlayHostEnabled();
+	this->coplay_port = settings->GetCoPlayPort();
+	this->coplay_secret = settings->GetCoPlaySecret();
+	this->coplay_name = settings->GetCoPlayName();
+	this->coplay_address = settings->GetCoPlayAddress();
+	this->coplay_mix_mode = settings->GetCoPlayMixMode();
 }
 
 static void AudioSettingsCb(uint32_t channels, uint32_t rate, void *user);
@@ -387,6 +393,9 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	rumble_haptics_on(false)
 {
 	mic_buf.buf = nullptr;
+	// A guest of a shared session never talks to a console: its session object stays unused
+	memset(&session, 0, sizeof(session));
+	CoPlayInit(connect_info);
 	connected = false;
 	muted = true;
 	mic_connected = false;
@@ -490,7 +499,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 		chiaki_connect_info.video_profile.codec = CHIAKI_CODEC_H264;
 	}
 #endif
-	if(connect_info.duid.isEmpty())
+	if(connect_info.duid.isEmpty() && !IsCoPlayGuest())
 	{
 		if(connect_info.regist_key.size() != sizeof(chiaki_connect_info.regist_key))
 			throw ChiakiException("RegistKey invalid");
@@ -536,7 +545,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	});
 	// If duid isn't empty connect with psn
 	chiaki_connect_info.holepunch_session = NULL;
-	if(!connect_info.duid.isEmpty())
+	if(!connect_info.duid.isEmpty() && !IsCoPlayGuest())
 	{
 		err = InitiatePsnConnection(connect_info.psn_token);
 		if (err != CHIAKI_ERR_SUCCESS)
@@ -548,27 +557,44 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
         }
         memcpy(chiaki_connect_info.psn_account_id, psn_account_id.constData(), CHIAKI_PSN_ACCOUNT_ID_SIZE);
 	}
-	err = chiaki_session_init(&session, &chiaki_connect_info, GetChiakiLog());
-	if(err != CHIAKI_ERR_SUCCESS)
-		throw ChiakiException("Chiaki Session Init failed: " + QString::fromLocal8Bit(chiaki_error_string(err)));
-	ChiakiCtrlDisplaySink display_sink;
-	display_sink.user = this;
-	display_sink.cantdisplay_cb = CantDisplayCb;
-	chiaki_session_ctrl_set_display_sink(&session, &display_sink);
 	chiaki_opus_decoder_set_cb(&opus_decoder, AudioSettingsCb, AudioFrameCb, this);
-	ChiakiAudioSink audio_sink;
-	chiaki_opus_decoder_get_sink(&opus_decoder, &audio_sink);
-	chiaki_session_set_audio_sink(&session, &audio_sink);
-	ChiakiAudioHeader audio_header;
-	chiaki_audio_header_set(&audio_header, 2, 16, MICROPHONE_SAMPLES * 100, MICROPHONE_SAMPLES);
-	chiaki_opus_encoder_header(&audio_header, &opus_encoder, &session);
-
-	if (connect_info.enable_dualsense)
+	if(IsCoPlayGuest())
 	{
-		ChiakiAudioSink haptics_sink;
-		haptics_sink.user = this;
-		haptics_sink.frame_cb = HapticsFrameCb;
-		chiaki_session_set_haptics_sink(&session, &haptics_sink);
+		// Video, audio, haptics and events come from the host of the shared session
+		// instead of a console; see streamsession_coplay.cpp
+		if(!ffmpeg_decoder)
+			throw ChiakiException("Joining a shared session needs the FFmpeg decoder");
+	}
+	else
+	{
+		err = chiaki_session_init(&session, &chiaki_connect_info, GetChiakiLog());
+		if(err != CHIAKI_ERR_SUCCESS)
+			throw ChiakiException("Chiaki Session Init failed: " + QString::fromLocal8Bit(chiaki_error_string(err)));
+		ChiakiCtrlDisplaySink display_sink;
+		display_sink.user = this;
+		display_sink.cantdisplay_cb = CantDisplayCb;
+		chiaki_session_ctrl_set_display_sink(&session, &display_sink);
+		// The Opus decoder sits behind a pass-through that also feeds guests of a shared session
+		ChiakiAudioSink audio_sink;
+		audio_sink.user = this;
+		audio_sink.header_cb = CoPlayAudioHeaderCb;
+		audio_sink.frame_cb = CoPlayAudioFrameCb;
+		chiaki_session_set_audio_sink(&session, &audio_sink);
+		ChiakiAudioHeader audio_header;
+		chiaki_audio_header_set(&audio_header, 2, 16, MICROPHONE_SAMPLES * 100, MICROPHONE_SAMPLES);
+		chiaki_opus_encoder_header(&audio_header, &opus_encoder, &session);
+
+		if (connect_info.enable_dualsense)
+		{
+			ChiakiAudioSink haptics_sink;
+			haptics_sink.user = this;
+			haptics_sink.frame_cb = HapticsFrameCb;
+			chiaki_session_set_haptics_sink(&session, &haptics_sink);
+		}
+		// Same for video: goes to the decoder below and to guests
+		chiaki_session_set_video_sample_cb(&session, CoPlayVideoSampleCb, this);
+
+		chiaki_session_set_event_cb(&session, EventCb, this);
 	}
 #if CHIAKI_GUI_ENABLE_STEAMDECK_NATIVE
 	if (connect_info.enable_steamdeck_haptics)
@@ -576,18 +602,6 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	else
 		enable_steamdeck_haptics = false;
 #endif
-#if CHIAKI_LIB_ENABLE_PI_DECODER
-	if(pi_decoder)
-		chiaki_session_set_video_sample_cb(&session, chiaki_pi_decoder_video_sample_cb, pi_decoder);
-	else
-	{
-#endif
-		chiaki_session_set_video_sample_cb(&session, chiaki_ffmpeg_decoder_video_sample_cb, ffmpeg_decoder);
-#if CHIAKI_LIB_ENABLE_PI_DECODER
-	}
-#endif
-
-	chiaki_session_set_event_cb(&session, EventCb, this);
 
 #if CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 	connect(ControllerManager::GetInstance(), &ControllerManager::AvailableControllersUpdated, this, &StreamSession::UpdateGamepads);
@@ -685,6 +699,8 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	packet_loss_timer->setInterval(200);
 	packet_loss_timer->start();
 	connect(packet_loss_timer, &QTimer::timeout, this, [this]() {
+		if(IsCoPlayGuest())
+			return;
 		if(packet_loss_history.size() > 10)
 			packet_loss_history.takeFirst();
 		packet_loss_history.append(session.stream_connection.congestion_control.packet_loss);
@@ -713,6 +729,8 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 
 StreamSession::~StreamSession()
 {
+	// Ends the sharing threads first: they feed the audio output and decoders that go below
+	CoPlayStopThreads();
 	mic_active.storeRelaxed(false);
 	StopAudioOutDrainThread();
 	if(audio_out)
@@ -736,6 +754,8 @@ StreamSession::~StreamSession()
 	// This prevents crashes from log callbacks during shutdown
 	log.PrepareShutdown();
 
+	bool coplay_guest = IsCoPlayGuest();
+
 	if(session_started)
 	{
 		// Quitting the app while streaming (Cmd-Q, for one) deletes the session without Stop()
@@ -743,7 +763,10 @@ StreamSession::~StreamSession()
 		chiaki_session_stop(&session);
 		chiaki_session_join(&session);
 	}
-	chiaki_session_fini(&session);
+	if(!coplay_guest)
+		chiaki_session_fini(&session);
+	// Only now: until the session's threads are gone they still pass video and audio through it
+	CoPlayFini();
 	chiaki_opus_decoder_fini(&opus_decoder);
 	chiaki_opus_encoder_fini(&opus_encoder);
 #if CHIAKI_GUI_ENABLE_SPEEX
@@ -822,6 +845,11 @@ void StreamSession::Start()
 {
 	if(!connect_timer.isValid())
 		connect_timer.start();
+	if(IsCoPlayGuest())
+	{
+		CoPlayStartGuest();
+		return;
+	}
 	ChiakiErrorCode err = chiaki_session_start(&session);
 	if(err != CHIAKI_ERR_SUCCESS)
 	{
@@ -833,17 +861,29 @@ void StreamSession::Start()
 void StreamSession::Stop()
 {
 	mic_active.storeRelaxed(false);
+	if(IsCoPlayGuest())
+	{
+		CoPlayStopGuest();
+		return;
+	}
 	chiaki_session_stop(&session);
 }
 
 void StreamSession::GoToBed()
 {
+	if(IsCoPlayGuest())
+	{
+		// Only the host may put its console to sleep; a guest just leaves
+		CoPlayStopGuest();
+		return;
+	}
 	chiaki_session_goto_bed(&session);
 }
 
 void StreamSession::ToggleMute()
 {
-	if(!allow_unmute)
+	// Guests of a shared session have no microphone channel to the console
+	if(!allow_unmute || IsCoPlayGuest())
 		return;
 	if(!mic_connected)
 	{
@@ -889,12 +929,16 @@ void StreamSession::ToggleMute()
 
 void StreamSession::SetLoginPIN(const QString &pin)
 {
+	if(IsCoPlayGuest())
+		return;
 	QByteArray data = pin.toUtf8();
 	chiaki_session_set_login_pin(&session, (const uint8_t *)data.constData(), data.size());
 }
 
 void StreamSession::GoHome()
 {
+	if(IsCoPlayGuest())
+		return;
 	chiaki_session_go_home(&session);
 }
 
@@ -1317,7 +1361,7 @@ void StreamSession::DpadSendFeedbackState()
 			dpad_touch_stop_timer->start(NEW_DPAD_TOUCH_INTERVAL_MS);
 	}
 	chiaki_controller_state_or(&state, &state, &dpad_touch_state);
-	chiaki_session_set_controller_state(&session, &state);
+	SendControllerState(&state);
 }
 
 void StreamSession::SendFeedbackState()
@@ -1373,7 +1417,7 @@ void StreamSession::SendFeedbackState()
 			dpad_touch_stop_timer->start(NEW_DPAD_TOUCH_INTERVAL_MS);
 	}
 	chiaki_controller_state_or(&state, &state, &dpad_touch_state);
-	chiaki_session_set_controller_state(&session, &state);
+	SendControllerState(&state);
 }
 
 void StreamSession::InitAudio(unsigned int channels, unsigned int rate)
@@ -2199,6 +2243,7 @@ void StreamSession::SetMicAuthorization(Authorization authorization)
 
 void StreamSession::PushHapticsFrame(uint8_t *buf, size_t buf_size)
 {
+	CoPlayOnHaptics(buf, buf_size);
 	if(buf_size == 0)
 	{
 		CHIAKI_LOGW(log.GetChiakiLog(), "Received empty haptics frame");
@@ -2382,6 +2427,7 @@ void StreamSession::PushHapticsFrame(uint8_t *buf, size_t buf_size)
 
 void StreamSession::Event(ChiakiEvent *event)
 {
+	CoPlayOnEvent(event);
 	switch(event->type)
 	{
 		case CHIAKI_EVENT_CONNECTED:
@@ -2808,6 +2854,8 @@ void StreamSession::CancelPsnConnection(bool stop_thread)
 void StreamSession::TriggerFfmpegFrameAvailable()
 {
 	emit FfmpegFrameAvailable();
+	if(IsCoPlayGuest())
+		return;
 	if(measured_bitrate != session.stream_connection.measured_bitrate)
 	{
 		measured_bitrate = session.stream_connection.measured_bitrate;
@@ -2817,6 +2865,8 @@ void StreamSession::TriggerFfmpegFrameAvailable()
 
 bool StreamSession::RequestIDR()
 {
+	if(IsCoPlayGuest())
+		return false; // the client asks the host on its own when it needs one
 	ChiakiErrorCode err = chiaki_session_request_idr(&session);
 	if(err == CHIAKI_ERR_SUCCESS)
 	{

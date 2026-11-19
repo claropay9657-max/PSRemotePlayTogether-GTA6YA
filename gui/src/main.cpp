@@ -19,6 +19,7 @@ int main(int argc, char *argv[]) { return real_main(argc, argv); }
 #include <controllermanager.h>
 #include <discoverymanager.h>
 #include <qmlmainwindow.h>
+#include <QTimer>
 #include <QApplication>
 #include <QtTypes>
 
@@ -63,6 +64,7 @@ static const QMap<QString, CLICommand> cli_commands = {
 
 int RunStream(QGuiApplication &app, const StreamSessionConnectInfo &connect_info);
 int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit);
+int RunJoin(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &invite, const QString &name, bool controller_only);
 
 int real_main(int argc, char *argv[])
 {
@@ -156,6 +158,7 @@ int real_main(int argc, char *argv[])
 	QStringList cmds;
 	cmds.append("stream");
 	cmds.append("list");
+	cmds.append("join");
 #ifdef CHIAKI_ENABLE_CLI
 	cmds.append(cli_commands.keys());
 #endif
@@ -164,6 +167,13 @@ int real_main(int argc, char *argv[])
 	parser.addPositionalArgument("nickname", "Needed for stream command to get credentials for connecting. "
 			"Use 'list' to get the nickname.");
 	parser.addPositionalArgument("host", "Address to connect to (when using the stream command).");
+	parser.addPositionalArgument("invite", "With the join command (join <invite>): the Play Together invite of the session to join.");
+
+	QCommandLineOption coplay_name_option("name", "Your player name when joining a shared session (join command).", "name");
+	parser.addOption(coplay_name_option);
+
+	QCommandLineOption coplay_controller_only_option("controller-only", "Join a shared session without picture and sound (join command).");
+	parser.addOption(coplay_controller_only_option);
 
 	QCommandLineOption profile_option("profile", "", "profile", "Configuration profile");
 	parser.addOption(profile_option);
@@ -220,6 +230,14 @@ int real_main(int argc, char *argv[])
 	if(args.length() == 0)
 		return RunMain(app, use_alt_settings ? &alt_settings : &settings, exit_app_on_stream_exit);
 
+	if(args[0] == "join")
+	{
+		if(args.length() < 2)
+			parser.showHelp(1);
+		Settings *active_settings = use_alt_settings ? &alt_settings : &settings;
+		QString name = parser.isSet(coplay_name_option) ? parser.value(coplay_name_option) : active_settings->GetCoPlayName();
+		return RunJoin(app, active_settings, exit_app_on_stream_exit, args[1], name, parser.isSet(coplay_controller_only_option));
+	}
 	if(args[0] == "list")
 	{
 		for(const auto &host : settings.GetRegisteredHosts())
@@ -348,6 +366,24 @@ int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_ex
 {
 	QmlMainWindow main_window(settings, exit_app_on_stream_exit);
 	main_window.show();
+	return app.exec();
+}
+
+int RunJoin(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &invite, const QString &name, bool controller_only)
+{
+	QmlMainWindow main_window(settings, exit_app_on_stream_exit);
+	main_window.show();
+	// Only once the window is on screen: a session that starts before that never gets shown
+	auto timer = new QTimer(&main_window);
+	timer->setInterval(50);
+	QObject::connect(timer, &QTimer::timeout, &main_window, [&main_window, timer, invite, name, controller_only]() {
+		if(!main_window.isExposed())
+			return;
+		timer->stop();
+		timer->deleteLater();
+		main_window.joinCoPlay(invite, name, controller_only);
+	});
+	timer->start();
 	return app.exec();
 }
 

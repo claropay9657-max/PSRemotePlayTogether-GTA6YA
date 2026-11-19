@@ -609,7 +609,8 @@ void Host::SetAudioHeader(const AudioHeader &header)
 
 void Host::PushVideo(const uint8_t *data, size_t size, int32_t frames_lost, bool recovered)
 {
-	if(!data || !size || size > kMaxVideoFrameSize || !running)
+	// Also while not running: the parameter sets usually arrive before sharing starts
+	if(!data || !size || size > kMaxVideoFrameSize)
 		return;
 	std::lock_guard<std::mutex> lock(mutex);
 	FrameKind kind = ClassifyFrame(stream.codec, data, size);
@@ -875,6 +876,12 @@ std::vector<GuestInfo> Host::Guests()
 	}
 	std::sort(out.begin(), out.end(), [](const GuestInfo &a, const GuestInfo &b) { return a.slot < b.slot; });
 	return out;
+}
+
+bool Host::HostInControl()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return host_in_control;
 }
 
 bool Host::AnyGuestWantsVideo()

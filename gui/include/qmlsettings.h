@@ -82,6 +82,16 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString psnAccountId READ psnAccountId WRITE setPsnAccountId NOTIFY psnAccountIdChanged)
     Q_PROPERTY(bool mouseTouchEnabled READ mouseTouchEnabled WRITE setMouseTouchEnabled NOTIFY mouseTouchEnabledChanged)
     Q_PROPERTY(bool keyboardEnabled READ keyboardEnabled WRITE setKeyboardEnabled NOTIFY keyboardEnabledChanged)
+    // Play Together, see qmlsettings_coplay.cpp
+    Q_PROPERTY(bool coplayHostEnabled READ coplayHostEnabled WRITE setCoplayHostEnabled NOTIFY coplayChanged)
+    Q_PROPERTY(int coplayPort READ coplayPort WRITE setCoplayPort NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayAddress READ coplayAddress WRITE setCoplayAddress NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayName READ coplayName WRITE setCoplayName NOTIFY coplayChanged)
+    Q_PROPERTY(int coplayMixMode READ coplayMixMode WRITE setCoplayMixMode NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayLastInvite READ coplayLastInvite WRITE setCoplayLastInvite NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayControllerOnly READ coplayControllerOnly WRITE setCoplayControllerOnly NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayInvite READ coplayInvite NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayLocalAddress READ coplayLocalAddress CONSTANT)
     Q_PROPERTY(bool dpadTouchEnabled READ dpadTouchEnabled WRITE setDpadTouchEnabled NOTIFY dpadTouchEnabledChanged)
     Q_PROPERTY(bool iDROnFECFailureEnabled READ iDROnFECFailureEnabled WRITE setIDROnFECFailureEnabled NOTIFY iDROnFECFailureEnabledChanged)
     Q_PROPERTY(uint16_t dpadTouchIncrement READ dpadTouchIncrement WRITE setDpadTouchIncrement NOTIFY dpadTouchIncrementChanged)
@@ -550,6 +560,27 @@ public:
     bool keyboardEnabled() const;
     void setKeyboardEnabled(bool enabled);
 
+    bool coplayHostEnabled() const;
+    void setCoplayHostEnabled(bool enabled);
+    int coplayPort() const;
+    void setCoplayPort(int port);
+    QString coplayAddress() const;
+    void setCoplayAddress(const QString &address);
+    QString coplayName() const;
+    void setCoplayName(const QString &name);
+    int coplayMixMode() const;
+    void setCoplayMixMode(int mode);
+    QString coplayLastInvite() const;
+    void setCoplayLastInvite(const QString &invite);
+    bool coplayControllerOnly() const;
+    void setCoplayControllerOnly(bool enabled);
+    /** The text to give to friends. Creates the session key on first use. */
+    QString coplayInvite() const;
+    QString coplayLocalAddress() const;
+    /** Replaces the session key: invites handed out before stop working. */
+    Q_INVOKABLE void coplayNewKey();
+    Q_INVOKABLE void coplayCopyInvite();
+
     bool dpadTouchEnabled() const;
     void setDpadTouchEnabled(bool enabled);
 
@@ -682,6 +713,7 @@ signals:
     void psnAccountIdChanged();
     void mouseTouchEnabledChanged();
     void keyboardEnabledChanged();
+    void coplayChanged();
     void dpadTouchEnabledChanged();
     void dpadTouchIncrementChanged();
     void dpadTouchShortcut1Changed();

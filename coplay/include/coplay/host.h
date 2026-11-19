@@ -110,6 +110,8 @@ class Host
 		void SetGuestCanControl(uint8_t slot, bool allowed);
 		void KickGuest(uint8_t slot);
 		std::vector<GuestInfo> Guests();
+		/** Whether the host's own controllers currently reach the console (see MixMode). */
+		bool HostInControl();
 		bool AnyGuestWantsVideo();
 
 		/** Outgoing packet loss for tests and the simulator. */

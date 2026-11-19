@@ -2534,6 +2534,18 @@ QmlMainWindow::QmlMainWindow(Settings *settings, bool exit_app_on_stream_exit)
     init(settings, exit_app_on_stream_exit);
 }
 
+void QmlMainWindow::joinCoPlay(const QString &invite, const QString &name, bool controller_only)
+{
+    // Nobody has the Play Together dialog open to show a failure in, so use the message banner
+    connect(backend, &QmlBackend::coplayJoinFinished, backend, [this](bool ok, const QString &message) {
+        if (!ok) {
+            qWarning().noquote() << "Play Together:" << message;
+            emit backend->error(tr("Play Together"), message);
+        }
+    }, Qt::SingleShotConnection);
+    backend->joinCoPlay(invite, name, controller_only);
+}
+
 QmlMainWindow::QmlMainWindow(const StreamSessionConnectInfo &connect_info)
     : QWindow()
     , settings(connect_info.settings)

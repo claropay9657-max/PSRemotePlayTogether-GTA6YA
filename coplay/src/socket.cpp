@@ -154,6 +154,35 @@ bool Resolve(const std::string &host, uint16_t port, std::vector<Address> &out, 
 	return true;
 }
 
+std::string GuessLocalAddress()
+{
+	EnsureSocketsInitialized();
+	// "Connecting" a UDP socket only asks the system which interface it would route
+	// through; no packet is sent. 192.0.2.1 is a documentation address (RFC 5737).
+	auto s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if(s == kInvalidHandle)
+		return std::string();
+	sockaddr_in remote;
+	std::memset(&remote, 0, sizeof(remote));
+	remote.sin_family = AF_INET;
+	remote.sin_port = htons(9);
+	inet_pton(AF_INET, "192.0.2.1", &remote.sin_addr);
+	std::string result;
+	if(connect(s, reinterpret_cast<const sockaddr *>(&remote), sizeof(remote)) == 0)
+	{
+		sockaddr_in local;
+		socklen_t len = sizeof(local);
+		if(getsockname(s, reinterpret_cast<sockaddr *>(&local), &len) == 0 && local.sin_addr.s_addr != 0)
+		{
+			char buf[INET_ADDRSTRLEN] = { 0 };
+			if(inet_ntop(AF_INET, &local.sin_addr, buf, sizeof(buf)))
+				result = buf;
+		}
+	}
+	CloseHandle_(s);
+	return result;
+}
+
 UdpSocket::UdpSocket() : handle(kInvalidHandle)
 {
 	EnsureSocketsInitialized();

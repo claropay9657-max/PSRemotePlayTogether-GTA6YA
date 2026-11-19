@@ -282,6 +282,7 @@ else()
 endif()
 
 if(CHIAKI_ENABLE_GUI)
+	add_subdirectory(coplay)
 	add_subdirectory(gui)
 endif()
 

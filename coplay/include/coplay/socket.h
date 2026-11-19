@@ -79,6 +79,12 @@ class UdpSocket
 		std::atomic<uint32_t> loss_state{1};
 };
 
+/**
+ * Best guess for this machine's address on the local network, for example
+ * "192.168.1.20". Empty if there is none. Does not send anything.
+ */
+std::string GuessLocalAddress();
+
 /** Milliseconds on a monotonic clock. */
 uint64_t NowMs();
 /** Microseconds on a monotonic clock. */

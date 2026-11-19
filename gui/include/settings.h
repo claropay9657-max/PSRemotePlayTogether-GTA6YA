@@ -256,6 +256,25 @@ class Settings : public QObject
 		bool GetAddSteamShortcutAsk() const           { return settings.value("settings/add_steam_shortcut_ask", true).toBool(); }
 		void SetAddSteamShortcutAsk(bool asked)       { settings.setValue("settings/add_steam_shortcut_ask", asked); }
 
+		// Play Together
+		bool GetCoPlayHostEnabled() const		{ return settings.value("coplay/host_enabled", false).toBool(); }
+		void SetCoPlayHostEnabled(bool enabled)	{ settings.setValue("coplay/host_enabled", enabled); }
+		int GetCoPlayPort() const				{ return settings.value("coplay/port", 9410).toInt(); }
+		void SetCoPlayPort(int port)			{ settings.setValue("coplay/port", port); }
+		/** Address written into invites; empty = this computer's address on the local network. */
+		QString GetCoPlayAddress() const		{ return settings.value("coplay/address").toString(); }
+		void SetCoPlayAddress(const QString &a)	{ settings.setValue("coplay/address", a); }
+		QString GetCoPlaySecret() const			{ return settings.value("coplay/secret").toString(); }
+		void SetCoPlaySecret(const QString &s)	{ settings.setValue("coplay/secret", s); }
+		QString GetCoPlayName() const			{ return settings.value("coplay/name").toString(); }
+		void SetCoPlayName(const QString &n)	{ settings.setValue("coplay/name", n); }
+		int GetCoPlayMixMode() const			{ return settings.value("coplay/mix_mode", 0).toInt(); }
+		void SetCoPlayMixMode(int mode)			{ settings.setValue("coplay/mix_mode", mode); }
+		QString GetCoPlayLastInvite() const		{ return settings.value("coplay/last_invite").toString(); }
+		void SetCoPlayLastInvite(const QString &i)	{ settings.setValue("coplay/last_invite", i); }
+		bool GetCoPlayControllerOnly() const	{ return settings.value("coplay/controller_only", false).toBool(); }
+		void SetCoPlayControllerOnly(bool on)	{ settings.setValue("coplay/controller_only", on); }
+
 		bool GetLogVerbose() const 				{ return settings.value("settings/log_verbose", false).toBool(); }
 		void SetLogVerbose(bool enabled)		{ settings.setValue("settings/log_verbose", enabled); }
 		bool GetLogSanitize() const            { return settings.value("settings/log_sanitize", true).toBool(); }

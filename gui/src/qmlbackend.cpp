@@ -1213,6 +1213,10 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 
     connect(session, &StreamSession::NicknameReceived, this, &QmlBackend::checkNickname);
 
+    connect(session, &StreamSession::CoPlayNotice, this, [this](const QString &text) {
+        emit error(tr("Play Together"), text);
+    });
+
     connect(session, &StreamSession::AutoRegistSucceeded, this, &QmlBackend::finishAutoRegister);
 
     connect(session, &StreamSession::ConnectedChanged, this, [this, session_for_connections]() {

@@ -151,6 +151,10 @@ Item {
         stack.push(manualHostDialogComponent);
     }
 
+    function showPlayTogetherDialog() {
+        stack.push(playTogetherDialogComponent);
+    }
+
     function showConfirmDialog(title, text, callback, rejectCallback = null) {
         confirmDialog.title = title;
         confirmDialog.text = text;
@@ -585,6 +589,11 @@ Item {
     Component {
         id: manualHostDialogComponent
         ManualHostDialog { }
+    }
+
+    Component {
+        id: playTogetherDialogComponent
+        PlayTogetherDialog { }
     }
 
     Component {

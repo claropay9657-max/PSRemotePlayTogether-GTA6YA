@@ -26,6 +26,7 @@ set(SOURCE_FILES
 	src/discoverymanager.cpp
 	include/streamsession.h
 	src/streamsession.cpp
+	src/streamsession_coplay.cpp
 	include/sessionlog.h
 	src/sessionlog.cpp
 	include/settings.h
@@ -50,6 +51,8 @@ set(SOURCE_FILES
 	src/qmlcontroller.cpp
 	include/qmlsettings.h
 	src/qmlsettings.cpp
+	src/qmlsettings_coplay.cpp
+	src/qmlbackend_coplay.cpp
 	include/qmlsvgprovider.h
 	src/qmlsvgprovider.cpp
 	include/systemdinhibit.h
@@ -99,6 +102,7 @@ target_link_libraries(placebo-libav-impl PkgConfig::LIBPLACEBO FFMPEG::avcodec F
 target_link_libraries(chiaki PkgConfig::LIBPLACEBO placebo-libav-impl)
 
 target_link_libraries(chiaki chiaki-lib)
+target_link_libraries(chiaki coplay)
 if(CHIAKI_ENABLE_CLI)
 	add_definitions(-DCHIAKI_ENABLE_CLI)
 	target_link_libraries(chiaki chiaki-cli-lib)
