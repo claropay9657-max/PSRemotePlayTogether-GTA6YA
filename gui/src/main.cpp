@@ -19,6 +19,7 @@ int main(int argc, char *argv[]) { return real_main(argc, argv); }
 #include <controllermanager.h>
 #include <discoverymanager.h>
 #include <qmlmainwindow.h>
+#include <QSettings>
 #include <QTimer>
 #include <QApplication>
 #include <QtTypes>
@@ -66,6 +67,57 @@ int RunStream(QGuiApplication &app, const StreamSessionConnectInfo &connect_info
 int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit);
 int RunJoin(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &invite, const QString &name, bool controller_only);
 
+static void CopySettings(QSettings &from, QSettings &to)
+{
+	const QStringList keys = from.allKeys();
+	for(const QString &key : keys)
+		to.setValue(key, from.value(key));
+}
+
+/**
+ * On the very first start: takes over the settings of a chiaki-ng (or Chiaki)
+ * on this computer, registered consoles and profiles included, so that nobody
+ * has to pair their console again. chiaki-ng's own settings stay as they are.
+ */
+static void ImportChiakiSettings()
+{
+	const QString org = QCoreApplication::organizationName();
+	const QString app = QCoreApplication::applicationName();
+	QSettings own(org, app);
+	own.setFallbacksEnabled(false);
+	if(!own.allKeys().isEmpty())
+		return;
+	QSettings theirs(QStringLiteral("Chiaki"), QStringLiteral("Chiaki"));
+	theirs.setFallbacksEnabled(false);
+	if(theirs.allKeys().isEmpty())
+		return;
+	CopySettings(theirs, own);
+
+	int count = theirs.beginReadArray("profiles");
+	QStringList profiles;
+	for(int i = 0; i < count; i++)
+	{
+		theirs.setArrayIndex(i);
+		profiles.append(theirs.value("settings/profile_name").toString());
+	}
+	theirs.endArray();
+	for(const QString &profile : std::as_const(profiles))
+	{
+		if(profile.isEmpty())
+			continue;
+		QSettings from(QStringLiteral("Chiaki"), QStringLiteral("Chiaki-%1").arg(profile));
+		QSettings to(org, QStringLiteral("%1-%2").arg(app, profile));
+		from.setFallbacksEnabled(false);
+		CopySettings(from, to);
+	}
+
+	QSettings render_from(QStringLiteral("Chiaki"), QStringLiteral("pl_render_params"));
+	QSettings render_to(org, QStringLiteral("pl_render_params"));
+	render_from.setFallbacksEnabled(false);
+	CopySettings(render_from, render_to);
+	own.sync();
+}
+
 int real_main(int argc, char *argv[])
 {
 	qRegisterMetaType<DiscoveryHost>();
@@ -75,8 +127,10 @@ int real_main(int argc, char *argv[])
 	qRegisterMetaType<ChiakiRegistEventType>();
 	qRegisterMetaType<ChiakiLogLevel>();
 
-	QGuiApplication::setOrganizationName("Chiaki");
-	QGuiApplication::setApplicationName("Chiaki");
+	// Our own settings, apart from a chiaki-ng on the same computer
+	QGuiApplication::setOrganizationName("GamerNova");
+	QGuiApplication::setApplicationName("PSRemotePlayTogether");
+	ImportChiakiSettings();
 	QGuiApplication::setApplicationVersion(CHIAKI_VERSION);
 	QGuiApplication::setApplicationDisplayName("PSRemotePlayTogether");
 #if defined(Q_OS_MACOS)
