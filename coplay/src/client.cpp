@@ -21,7 +21,9 @@ Client::Client(const ClientConfig &config) : config(config), assembler(config.as
 {
 	hello_key = DeriveHelloKey(config.invite.secret);
 	welcome_key = DeriveWelcomeKey(config.invite.secret);
-	want = static_cast<uint8_t>(config.want & kWantAll);
+	want = static_cast<uint8_t>(config.want & kWantMask);
+	controller = static_cast<uint8_t>(config.controller);
+	own_avatar = blobs.Put(config.avatar);
 }
 
 Client::~Client()
@@ -60,8 +62,9 @@ bool Client::Connect(std::string *error)
 	if(!RandomBytes(hello.guest_nonce.data(), hello.guest_nonce.size()))
 		return fail("No random numbers available");
 	hello.want = want;
-	hello.controller = config.controller;
+	hello.controller = ControllerKindFromWire(controller);
 	hello.name = config.name;
+	hello.avatar = own_avatar;
 	std::vector<uint8_t> body;
 	ByteWriter w(body);
 	WriteHello(w, hello);
@@ -217,11 +220,17 @@ void Client::SetInput(const PadState &state)
 
 void Client::SetWant(uint8_t new_want)
 {
-	new_want &= kWantAll;
+	new_want &= kWantMask;
 	if(want.exchange(new_want) == new_want)
 		return;
 	// The next ping carries it; make that one come soon
 	ping_now = true;
+}
+
+void Client::SetController(ControllerKind kind)
+{
+	if(controller.exchange(static_cast<uint8_t>(kind)) != static_cast<uint8_t>(kind))
+		ping_now = true;
 }
 
 void Client::SendPing(uint64_t now_ms)
@@ -233,8 +242,15 @@ void Client::SendPing(uint64_t now_ms)
 	w.U8(want);
 	uint32_t rtt = rtt_ms;
 	w.U16(static_cast<uint16_t>(rtt > 0xffff ? 0xffff : rtt));
+	w.U8(controller);
 	Send(PacketType::Ping, payload);
 	(void)now_ms;
+}
+
+BlobData Client::Avatar(const BlobHash &hash)
+{
+	std::lock_guard<std::mutex> lock(blob_mutex);
+	return blobs.Get(hash);
 }
 
 ClientStats Client::Stats()
@@ -322,8 +338,56 @@ void Client::HandlePacket(const uint8_t *data, size_t size, const Address &from,
 				break;
 			have_state = true;
 			last_state_seq = s.state_seq;
+			{
+				// Fetch the pictures we do not have yet
+				std::lock_guard<std::mutex> lock(blob_mutex);
+				for(const Participant &p : s.participants)
+					blobs.Want(p.avatar);
+			}
 			if(callbacks.on_state)
 				callbacks.on_state(s);
+			break;
+		}
+		case PacketType::Inputs: {
+			InputsSnapshot s;
+			if(!ReadInputs(r, s))
+				break;
+			if(have_inputs && static_cast<int32_t>(s.seq - last_inputs_seq) <= 0)
+				break;
+			have_inputs = true;
+			last_inputs_seq = s.seq;
+			if(callbacks.on_inputs)
+				callbacks.on_inputs(s);
+			break;
+		}
+		case PacketType::BlobRequest: {
+			// The host asks for our picture
+			BlobHash hash;
+			uint16_t index;
+			if(!ReadBlobRequest(r, hash, index) || !own_avatar.Valid() || hash != own_avatar.hash)
+				break;
+			std::vector<uint8_t> chunk;
+			if(BuildBlobChunk(hash, config.avatar, index, chunk))
+				Send(PacketType::BlobChunk, chunk);
+			break;
+		}
+		case PacketType::BlobChunk: {
+			BlobChunkHeader chunk;
+			if(!ReadBlobChunkHeader(r, chunk))
+				break;
+			bool complete;
+			BlobRef ref;
+			{
+				std::lock_guard<std::mutex> lock(blob_mutex);
+				complete = blobs.OnChunk(chunk, r.cursor(), r.remaining());
+				if(complete)
+				{
+					ref.hash = chunk.hash;
+					ref.size = static_cast<uint16_t>(chunk.total_size);
+				}
+			}
+			if(complete && callbacks.on_avatar)
+				callbacks.on_avatar(ref);
 			break;
 		}
 		case PacketType::VideoConfig: {
@@ -442,6 +506,23 @@ void Client::Tick(uint64_t now_ms)
 		}
 		else if(now_ms - last_input_send_ms >= kInputRefreshMs)
 			SendInput(now_ms);
+	}
+
+	if(now_ms - last_blob_poll_ms >= 50)
+	{
+		last_blob_poll_ms = now_ms;
+		std::vector<BlobStore::Request> requests;
+		{
+			std::lock_guard<std::mutex> lock(blob_mutex);
+			blobs.Poll(now_ms, requests);
+		}
+		for(const BlobStore::Request &request : requests)
+		{
+			std::vector<uint8_t> payload;
+			ByteWriter w(payload);
+			WriteBlobRequest(w, request.hash, request.index);
+			Send(PacketType::BlobRequest, payload);
+		}
 	}
 
 	if(current_want & kWantVideo)

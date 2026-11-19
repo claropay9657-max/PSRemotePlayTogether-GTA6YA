@@ -73,11 +73,14 @@ enum class PacketType : uint8_t
 	Haptics = 0x22,         // host -> guest
 	State = 0x23,           // host -> guest
 	VideoConfig = 0x24,     // host -> guest
+	Inputs = 0x25,          // host -> guest
 
 	Nack = 0x30,            // guest -> host
 	KeyframeRequest = 0x31, // guest -> host
 
 	Bye = 0x40,             // both directions
+	BlobRequest = 0x41,     // both directions
+	BlobChunk = 0x42,       // both directions
 };
 
 enum class RejectReason : uint8_t
@@ -99,7 +102,29 @@ enum WantFlags : uint8_t
 	kWantVideo = 1 << 0,
 	kWantAudio = 1 << 1,
 	kWantHaptics = 1 << 2,
-	kWantAll = kWantVideo | kWantAudio | kWantHaptics
+	/** What every player is pressing right now, for a stream overlay. */
+	kWantInputs = 1 << 3,
+	kWantAll = kWantVideo | kWantAudio | kWantHaptics,
+	kWantMask = kWantAll | kWantInputs
+};
+
+/**
+ * A player's picture is identified by the first bytes of its SHA-256 and
+ * fetched in chunks by whoever does not have it yet.
+ */
+constexpr size_t kBlobHashSize = 8;
+constexpr size_t kBlobChunkSize = 1024;
+constexpr size_t kMaxAvatarSize = 48 * 1024;
+using BlobHash = std::array<uint8_t, kBlobHashSize>;
+
+struct BlobRef
+{
+	BlobHash hash{};
+	uint16_t size = 0; // 0 = none
+
+	bool Valid() const { return size != 0; }
+	bool operator==(const BlobRef &o) const { return size == o.size && hash == o.hash; }
+	bool operator!=(const BlobRef &o) const { return !(*this == o); }
 };
 
 enum class ControllerKind : uint8_t
@@ -107,8 +132,15 @@ enum class ControllerKind : uint8_t
 	None = 0,
 	DualSense = 1,
 	Xbox = 2,
-	Other = 3
+	Other = 3,
+	DualShock4 = 4
 };
+
+/** Maps a byte from the wire to a known kind. */
+inline ControllerKind ControllerKindFromWire(uint8_t v)
+{
+	return v > static_cast<uint8_t>(ControllerKind::DualShock4) ? ControllerKind::Other : static_cast<ControllerKind>(v);
+}
 
 /** Same values as ChiakiCodec. */
 enum class VideoCodec : uint8_t
@@ -250,7 +282,56 @@ struct Participant
 	uint8_t slot = 0; // 0 = host, guests start at 1
 	uint8_t flags = 0;
 	std::string name;
+	BlobRef avatar;
+	ControllerKind controller = ControllerKind::None;
 };
+
+/** Buttons, triggers and sticks of one player, without touch and motion. */
+struct PlayerInput
+{
+	uint8_t slot = 0;
+	uint32_t buttons = 0;
+	uint8_t l2 = 0;
+	uint8_t r2 = 0;
+	int16_t left_x = 0;
+	int16_t left_y = 0;
+	int16_t right_x = 0;
+	int16_t right_y = 0;
+
+	bool operator==(const PlayerInput &o) const
+	{
+		return slot == o.slot && buttons == o.buttons && l2 == o.l2 && r2 == o.r2 && left_x == o.left_x
+			&& left_y == o.left_y && right_x == o.right_x && right_y == o.right_y;
+	}
+};
+
+PlayerInput ToPlayerInput(uint8_t slot, const PadState &state);
+
+/** What everybody is pressing, and what the console gets out of it. */
+struct InputsSnapshot
+{
+	uint32_t seq = 0;
+	std::vector<PlayerInput> players;
+	PlayerInput combined;
+
+	bool SameInputs(const InputsSnapshot &o) const { return players == o.players && combined == o.combined; }
+};
+
+void WriteInputs(ByteWriter &w, const InputsSnapshot &s);
+bool ReadInputs(ByteReader &r, InputsSnapshot &s);
+
+struct BlobChunkHeader
+{
+	BlobHash hash{};
+	uint16_t index = 0;
+	uint16_t count = 0;
+	uint32_t total_size = 0;
+};
+
+inline uint32_t BlobChunkCount(size_t size)
+{
+	return size == 0 ? 0 : static_cast<uint32_t>((size + kBlobChunkSize - 1) / kBlobChunkSize);
+}
 
 /** How the host combines everyone's controllers. */
 enum class MixMode : uint8_t
@@ -282,6 +363,7 @@ struct HelloPayload
 	uint8_t want = kWantAll;
 	ControllerKind controller = ControllerKind::None;
 	std::string name;
+	BlobRef avatar;
 };
 
 void WriteHello(ByteWriter &w, const HelloPayload &h);

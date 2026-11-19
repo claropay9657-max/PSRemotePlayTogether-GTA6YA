@@ -13,6 +13,10 @@ static const uint64_t kFastStateWindowMs = 100;
 static const uint32_t kFastStateIntervalMs = 30;
 static const size_t kMaxSeenNonces = 256;
 static const size_t kMaxRetransmitFragmentsPerNack = 256;
+/** Live inputs go out at most this often, and at least every kInputsRefreshMs. */
+static const uint32_t kInputsMinIntervalMs = 16;
+static const uint32_t kInputsRefreshMs = 500;
+static const uint32_t kBlobPollIntervalMs = 50;
 /** A requested key frame that has not shown up after this long is requested again. */
 static const uint32_t kKeyframeOutstandingMs = 1000;
 
@@ -39,6 +43,7 @@ Host::Host(const HostConfig &config_in, const HostCallbacks &callbacks)
 	hello_key = DeriveHelloKey(config.secret);
 	welcome_key = DeriveWelcomeKey(config.secret);
 	mixer.SetSource(InputMixer::kHostSource, PadState(), NowMs());
+	own_avatar = blobs.Put(config.avatar);
 }
 
 Host::~Host()
@@ -190,7 +195,16 @@ void Host::RemoveGuest(uint32_t conn_id, Deferred &d, const std::string &why)
 	if(was_confirmed)
 		d.logs.push_back(g.name + " " + why);
 	mixer.RemoveSource(g.slot);
+	BlobRef avatar = g.avatar;
 	guests.erase(it);
+	if(avatar.Valid() && avatar != own_avatar)
+	{
+		bool still_used = false;
+		for(auto &entry : guests)
+			still_used = still_used || entry.second->avatar == avatar;
+		if(!still_used)
+			blobs.Forget(avatar.hash);
+	}
 	if(was_confirmed)
 	{
 		d.guests_changed = true;
@@ -280,6 +294,7 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	g->last_rx_ms = now_ms;
 	g->want = hello.want;
 	g->controller = hello.controller;
+	g->avatar = hello.avatar;
 
 	WelcomePayload welcome;
 	welcome.guest_nonce = hello.guest_nonce;
@@ -340,6 +355,7 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 		mixer.SetMask(g.slot, g.can_control ? InputMask::All() : InputMask::None());
 		d.guests_changed = true;
 		d.logs.push_back(g.name + " joined from " + g.addr.ToString());
+		blobs.Want(g.avatar);
 		if(g.want & kWantVideo)
 		{
 			SendVideoConfig(g);
@@ -367,11 +383,21 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 		case PacketType::Ping: {
 			uint32_t ping_id = r.U32();
 			uint64_t sent_us = r.U64();
-			uint8_t want = r.U8() & kWantAll;
+			uint8_t want = r.U8() & kWantMask;
 			uint16_t rtt = r.U16();
 			if(!r.ok())
 				break;
+			ControllerKind kind = ControllerKindFromWire(r.U8());
+			if(!r.ok())
+				break;
 			g.rtt_ms = rtt;
+			if(kind != g.controller)
+			{
+				g.controller = kind;
+				d.guests_changed = true;
+				state_seq++;
+				BroadcastState(now_ms);
+			}
 			if(want != g.want)
 			{
 				bool video_turned_on = (want & kWantVideo) && !(g.want & kWantVideo);
@@ -398,6 +424,31 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 			if(g.want & kWantVideo)
 				RequestKeyframe(now_ms, d);
 			break;
+		case PacketType::BlobRequest: {
+			BlobHash hash;
+			uint16_t index;
+			if(!ReadBlobRequest(r, hash, index))
+				break;
+			BlobData data = blobs.Get(hash);
+			std::vector<uint8_t> chunk;
+			if(data && BuildBlobChunk(hash, *data, index, chunk))
+				SendToGuest(g, PacketType::BlobChunk, chunk);
+			break;
+		}
+		case PacketType::BlobChunk: {
+			BlobChunkHeader chunk;
+			// A guest can only hand in the picture it announced for itself
+			if(!ReadBlobChunkHeader(r, chunk) || !g.avatar.Valid() || chunk.hash != g.avatar.hash)
+				break;
+			if(blobs.OnChunk(chunk, r.cursor(), r.remaining()))
+			{
+				// Complete: from now on the others are told about it
+				d.guests_changed = true;
+				state_seq++;
+				BroadcastState(now_ms);
+			}
+			break;
+		}
 		case PacketType::Bye:
 			RemoveGuest(header.conn_id, d, "left");
 			return; // g is gone
@@ -506,6 +557,8 @@ void Host::Tick(uint64_t now_ms, Deferred &d)
 	}
 
 	UpdateControl(now_ms, d);
+	SendInputs(now_ms);
+	PollBlobs(now_ms);
 
 	// Right after a change the state goes out a few times in quick succession, so that
 	// a lost packet does not leave a controller rumbling for long
@@ -533,6 +586,8 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 	host.slot = 0;
 	host.flags = static_cast<uint8_t>(kParticipantHost | kParticipantCanControl | (host_in_control ? kParticipantInControl : 0));
 	host.name = config.name;
+	host.avatar = own_avatar;
+	host.controller = config.controller;
 	s.participants.push_back(host);
 	for(auto &entry : guests)
 	{
@@ -543,6 +598,10 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 		p.slot = other.slot;
 		p.flags = static_cast<uint8_t>((other.can_control ? kParticipantCanControl : 0) | (other.in_control ? kParticipantInControl : 0));
 		p.name = other.name;
+		p.controller = other.controller;
+		// Only once it is here completely, or the others would ask for it in vain
+		if(blobs.Has(other.avatar))
+			p.avatar = other.avatar;
 		s.participants.push_back(p);
 	}
 	std::sort(s.participants.begin(), s.participants.end(),
@@ -797,6 +856,16 @@ PadState Host::MixedInput()
 	return mix;
 }
 
+void Host::SetController(ControllerKind kind)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	if(config.controller == kind)
+		return;
+	config.controller = kind;
+	state_seq++;
+	BroadcastState(NowMs());
+}
+
 void Host::SetMixMode(MixMode mode)
 {
 	Deferred d;
@@ -872,10 +941,103 @@ std::vector<GuestInfo> Host::Guests()
 		info.can_control = g.can_control;
 		info.in_control = g.in_control;
 		info.rtt_ms = g.rtt_ms;
+		if(blobs.Has(g.avatar))
+			info.avatar = g.avatar;
 		out.push_back(info);
 	}
 	std::sort(out.begin(), out.end(), [](const GuestInfo &a, const GuestInfo &b) { return a.slot < b.slot; });
 	return out;
+}
+
+void Host::BuildInputs(uint64_t now_ms, InputsSnapshot &s)
+{
+	s.players.clear();
+	s.players.push_back(ToPlayerInput(0, mixer.Raw(InputMixer::kHostSource, now_ms)));
+	for(auto &entry : guests)
+	{
+		const Guest &g = *entry.second;
+		if(g.confirmed)
+			s.players.push_back(ToPlayerInput(g.slot, mixer.Raw(g.slot, now_ms)));
+	}
+	std::sort(s.players.begin(), s.players.end(),
+		[](const PlayerInput &a, const PlayerInput &b) { return a.slot < b.slot; });
+	s.combined = ToPlayerInput(0, mixer.Mix(now_ms));
+}
+
+void Host::SendInputs(uint64_t now_ms)
+{
+	bool wanted = false;
+	for(auto &entry : guests)
+	{
+		if(entry.second->confirmed && (entry.second->want & kWantInputs))
+		{
+			wanted = true;
+			break;
+		}
+	}
+	if(!wanted || now_ms - last_inputs_ms < kInputsMinIntervalMs)
+		return;
+	InputsSnapshot s;
+	BuildInputs(now_ms, s);
+	if(s.SameInputs(last_inputs) && now_ms - last_inputs_ms < kInputsRefreshMs)
+		return;
+	s.seq = last_inputs.seq + 1;
+	last_inputs = s;
+	last_inputs_ms = now_ms;
+	std::vector<uint8_t> payload;
+	ByteWriter w(payload);
+	WriteInputs(w, s);
+	for(auto &entry : guests)
+	{
+		Guest &g = *entry.second;
+		if(g.confirmed && (g.want & kWantInputs))
+			SendToGuest(g, PacketType::Inputs, payload);
+	}
+}
+
+void Host::PollBlobs(uint64_t now_ms)
+{
+	if(now_ms - last_blob_poll_ms < kBlobPollIntervalMs)
+		return;
+	last_blob_poll_ms = now_ms;
+	std::vector<BlobStore::Request> requests;
+	blobs.Poll(now_ms, requests);
+	for(const BlobStore::Request &request : requests)
+	{
+		// Ask the guest whose picture it is
+		for(auto &entry : guests)
+		{
+			Guest &g = *entry.second;
+			if(g.confirmed && g.avatar.Valid() && g.avatar.hash == request.hash)
+			{
+				std::vector<uint8_t> payload;
+				ByteWriter w(payload);
+				WriteBlobRequest(w, request.hash, request.index);
+				SendToGuest(g, PacketType::BlobRequest, payload);
+				break;
+			}
+		}
+	}
+}
+
+InputsSnapshot Host::Inputs()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	InputsSnapshot s;
+	BuildInputs(NowMs(), s);
+	return s;
+}
+
+BlobRef Host::OwnAvatar()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return own_avatar;
+}
+
+BlobData Host::Avatar(const BlobHash &hash)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return blobs.Get(hash);
 }
 
 bool Host::HostInControl()

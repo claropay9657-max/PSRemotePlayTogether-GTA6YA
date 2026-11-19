@@ -212,6 +212,83 @@ static bool ReadFeedback(ByteReader &r, Feedback &f)
 	return r.ok();
 }
 
+static void WriteBlobRef(ByteWriter &w, const BlobRef &b)
+{
+	w.Bytes(b.hash.data(), b.hash.size());
+	w.U16(b.size);
+}
+
+static bool ReadBlobRef(ByteReader &r, BlobRef &b)
+{
+	r.Bytes(b.hash.data(), b.hash.size());
+	b.size = r.U16();
+	if(!r.ok() || b.size > kMaxAvatarSize)
+		return false;
+	return true;
+}
+
+PlayerInput ToPlayerInput(uint8_t slot, const PadState &state)
+{
+	PlayerInput p;
+	p.slot = slot;
+	p.buttons = state.buttons;
+	p.l2 = state.l2;
+	p.r2 = state.r2;
+	p.left_x = state.left_x;
+	p.left_y = state.left_y;
+	p.right_x = state.right_x;
+	p.right_y = state.right_y;
+	return p;
+}
+
+static void WritePlayerInput(ByteWriter &w, const PlayerInput &p)
+{
+	w.U8(p.slot);
+	w.U32(p.buttons);
+	w.U8(p.l2);
+	w.U8(p.r2);
+	w.I16(p.left_x);
+	w.I16(p.left_y);
+	w.I16(p.right_x);
+	w.I16(p.right_y);
+}
+
+static void ReadPlayerInput(ByteReader &r, PlayerInput &p)
+{
+	p.slot = r.U8();
+	p.buttons = r.U32();
+	p.l2 = r.U8();
+	p.r2 = r.U8();
+	p.left_x = r.I16();
+	p.left_y = r.I16();
+	p.right_x = r.I16();
+	p.right_y = r.I16();
+}
+
+void WriteInputs(ByteWriter &w, const InputsSnapshot &s)
+{
+	w.U32(s.seq);
+	size_t count = s.players.size() > kMaxGuests + 1 ? kMaxGuests + 1 : s.players.size();
+	w.U8(static_cast<uint8_t>(count));
+	for(size_t i = 0; i < count; i++)
+		WritePlayerInput(w, s.players[i]);
+	WritePlayerInput(w, s.combined);
+}
+
+bool ReadInputs(ByteReader &r, InputsSnapshot &s)
+{
+	s = InputsSnapshot();
+	s.seq = r.U32();
+	size_t count = r.U8();
+	if(!r.ok() || count > kMaxGuests + 1)
+		return false;
+	s.players.resize(count);
+	for(size_t i = 0; i < count; i++)
+		ReadPlayerInput(r, s.players[i]);
+	ReadPlayerInput(r, s.combined);
+	return r.ok();
+}
+
 void WriteSessionState(ByteWriter &w, const SessionState &s)
 {
 	w.U32(s.state_seq);
@@ -229,6 +306,8 @@ void WriteSessionState(ByteWriter &w, const SessionState &s)
 		w.U8(p.slot);
 		w.U8(p.flags);
 		w.Str8(p.name.substr(0, kMaxNameLength));
+		WriteBlobRef(w, p.avatar);
+		w.U8(static_cast<uint8_t>(p.controller));
 	}
 }
 
@@ -253,8 +332,9 @@ bool ReadSessionState(ByteReader &r, SessionState &s)
 		p.slot = r.U8();
 		p.flags = r.U8();
 		p.name = r.Str8();
-		if(!r.ok() || p.name.size() > kMaxNameLength)
+		if(!r.ok() || p.name.size() > kMaxNameLength || !ReadBlobRef(r, p.avatar))
 			return false;
+		p.controller = ControllerKindFromWire(r.U8());
 		s.participants.push_back(std::move(p));
 	}
 	return r.ok();
@@ -266,18 +346,18 @@ void WriteHello(ByteWriter &w, const HelloPayload &h)
 	w.U8(h.want);
 	w.U8(static_cast<uint8_t>(h.controller));
 	w.Str8(h.name.substr(0, kMaxNameLength));
+	WriteBlobRef(w, h.avatar);
 }
 
 bool ReadHello(ByteReader &r, HelloPayload &h)
 {
 	r.Bytes(h.guest_nonce.data(), h.guest_nonce.size());
-	h.want = r.U8() & kWantAll;
+	h.want = r.U8() & kWantMask;
 	uint8_t controller = r.U8();
 	h.name = r.Str8();
-	if(!r.ok() || h.name.size() > kMaxNameLength)
+	if(!r.ok() || h.name.size() > kMaxNameLength || !ReadBlobRef(r, h.avatar))
 		return false;
-	h.controller = controller > static_cast<uint8_t>(ControllerKind::Other) ? ControllerKind::Other
-		: static_cast<ControllerKind>(controller);
+	h.controller = ControllerKindFromWire(controller);
 	return true;
 }
 

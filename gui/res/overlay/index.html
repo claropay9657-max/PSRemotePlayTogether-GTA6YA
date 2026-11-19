@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Play Together overlay</title>
+  <link rel="stylesheet" href="/overlay.css">
+</head>
+<body>
+  <!--
+    Stream overlay for OBS (add it as a Browser Source). Shows who is playing,
+    who is in control right now, and everybody's controller live.
+
+    Everything can be set in the app. To have several sources that show
+    different things, override per source in the address:
+
+      ?show=players             only the player list
+      ?show=pads                only the players' controllers
+      ?show=combined            only the controller the console gets
+      ?show=players,combined    any combination
+      &layout=row|column        how the players are arranged
+      &scale=30                 controller size in percent
+      &skin=PS5                 one skin for everybody (default: by controller type)
+      &demo=1                   made-up players, to arrange a scene without a session
+  -->
+  <div id="root"></div>
+  <script src="/overlay.js"></script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<RCC>
+  <qresource prefix="/overlay">
+    <file>cryptopad/static/controller.js</file>
+    <file>cryptopad/static/custom-local.css</file>
+    <file>cryptopad/static/custom.css</file>
+    <file>cryptopad/static/images/PS4 (blue)/base.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/bumper.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/buttons.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/disconnected.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/face.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/meta.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/start.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/sticks.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/touchpad.svg</file>
+    <file>cryptopad/static/images/PS4 (blue)/triggers.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/base.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/bumper.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/buttons.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/disconnected.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/dpad.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/face.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/meta.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/start.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/sticks.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/touchpad.svg</file>
+    <file>cryptopad/static/images/PS4 (dracula)/triggers.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/base.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/bumper.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/buttons.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/disconnected.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/face.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/meta.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/start.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/sticks.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/touchpad.svg</file>
+    <file>cryptopad/static/images/PS4 (red)/triggers.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/base.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/bumper.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/buttons.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/disconnected.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/face.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/meta.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/start.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/sticks.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/touchpad.svg</file>
+    <file>cryptopad/static/images/PS4 (white)/triggers.svg</file>
+    <file>cryptopad/static/images/PS4/base.svg</file>
+    <file>cryptopad/static/images/PS4/bumper.svg</file>
+    <file>cryptopad/static/images/PS4/buttons.svg</file>
+    <file>cryptopad/static/images/PS4/disconnected.svg</file>
+    <file>cryptopad/static/images/PS4/face.svg</file>
+    <file>cryptopad/static/images/PS4/meta.svg</file>
+    <file>cryptopad/static/images/PS4/start.svg</file>
+    <file>cryptopad/static/images/PS4/sticks.svg</file>
+    <file>cryptopad/static/images/PS4/touchpad.svg</file>
+    <file>cryptopad/static/images/PS4/triggers.svg</file>
+    <file>cryptopad/static/images/PS5 (black)/back_start.png</file>
+    <file>cryptopad/static/images/PS5 (black)/base.png</file>
+    <file>cryptopad/static/images/PS5 (black)/bumper.png</file>
+    <file>cryptopad/static/images/PS5 (black)/button.png</file>
+    <file>cryptopad/static/images/PS5 (black)/face.png</file>
+    <file>cryptopad/static/images/PS5 (black)/meta.png</file>
+    <file>cryptopad/static/images/PS5 (black)/stick.png</file>
+    <file>cryptopad/static/images/PS5 (black)/stick.webp</file>
+    <file>cryptopad/static/images/PS5 (black)/touchpad.png</file>
+    <file>cryptopad/static/images/PS5 (black)/trigger.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/back_start.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/base.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/bumper.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/button.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/face.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/meta.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/stick.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/stick.webp</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/touchpad.png</file>
+    <file>cryptopad/static/images/PS5 (cosmic red)/trigger.png</file>
+    <file>cryptopad/static/images/PS5/back_start.png</file>
+    <file>cryptopad/static/images/PS5/base.png</file>
+    <file>cryptopad/static/images/PS5/bumper.png</file>
+    <file>cryptopad/static/images/PS5/button.png</file>
+    <file>cryptopad/static/images/PS5/face.png</file>
+    <file>cryptopad/static/images/PS5/meta.png</file>
+    <file>cryptopad/static/images/PS5/stick.png</file>
+    <file>cryptopad/static/images/PS5/stick.webp</file>
+    <file>cryptopad/static/images/PS5/touchpad.png</file>
+    <file>cryptopad/static/images/PS5/trigger.png</file>
+    <file>cryptopad/static/images/Xbox (blue)/abxy.svg</file>
+    <file>cryptopad/static/images/Xbox (blue)/base.svg</file>
+    <file>cryptopad/static/images/Xbox (blue)/bumper.svg</file>
+    <file>cryptopad/static/images/Xbox (blue)/disconnected.svg</file>
+    <file>cryptopad/static/images/Xbox (blue)/dpad.svg</file>
+    <file>cryptopad/static/images/Xbox (blue)/quadrant.svg</file>
+    <file>cryptopad/static/images/Xbox (blue)/start-select.svg</file>
+    <file>cryptopad/static/images/Xbox (blue)/stick.svg</file>
+    <file>cryptopad/static/images/Xbox (blue)/trigger.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/abxy.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/base.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/bumper.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/disconnected.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/dpad.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/quadrant.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/start-select.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/stick.svg</file>
+    <file>cryptopad/static/images/Xbox (dracula)/trigger.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/abxy.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/base.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/bumper.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/disconnected.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/dpad.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/quadrant.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/start-select.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/stick.svg</file>
+    <file>cryptopad/static/images/Xbox (white)/trigger.svg</file>
+    <file>cryptopad/static/images/Xbox/abxy.svg</file>
+    <file>cryptopad/static/images/Xbox/base.svg</file>
+    <file>cryptopad/static/images/Xbox/bumper.svg</file>
+    <file>cryptopad/static/images/Xbox/disconnected.svg</file>
+    <file>cryptopad/static/images/Xbox/dpad.svg</file>
+    <file>cryptopad/static/images/Xbox/quadrant.svg</file>
+    <file>cryptopad/static/images/Xbox/start-select.svg</file>
+    <file>cryptopad/static/images/Xbox/stick.svg</file>
+    <file>cryptopad/static/images/Xbox/trigger.svg</file>
+    <file>cryptopad/static/local-variables.css</file>
+    <file>cryptopad/static/ps4-blue-controller.css</file>
+    <file>cryptopad/static/ps4-controller.css</file>
+    <file>cryptopad/static/ps4-dracula-controller.css</file>
+    <file>cryptopad/static/ps4-red-controller.css</file>
+    <file>cryptopad/static/ps4-white-controller.css</file>
+    <file>cryptopad/static/ps5-black-controller.css</file>
+    <file>cryptopad/static/ps5-controller.css</file>
+    <file>cryptopad/static/ps5-cosmic-red-controller.css</file>
+    <file>cryptopad/static/xbox-blue-controller.css</file>
+    <file>cryptopad/static/xbox-dracula-controller.css</file>
+    <file>cryptopad/static/xbox-white-controller.css</file>
+    <file>cryptopad/templates/PS4 (blue)/index.html</file>
+    <file>cryptopad/templates/PS4 (dracula)/index.html</file>
+    <file>cryptopad/templates/PS4 (red)/index.html</file>
+    <file>cryptopad/templates/PS4 (white)/index.html</file>
+    <file>cryptopad/templates/PS4/index.html</file>
+    <file>cryptopad/templates/PS5 (black)/index.html</file>
+    <file>cryptopad/templates/PS5 (cosmic red)/index.html</file>
+    <file>cryptopad/templates/PS5/index.html</file>
+    <file>cryptopad/templates/Xbox (blue)/index.html</file>
+    <file>cryptopad/templates/Xbox (dracula)/index.html</file>
+    <file>cryptopad/templates/Xbox (white)/index.html</file>
+    <file>cryptopad/templates/Xbox/index.html</file>
+    <file>index.html</file>
+    <file>overlay.css</file>
+    <file>overlay.js</file>
+    <file>pad.js</file>
+  </qresource>
+</RCC>

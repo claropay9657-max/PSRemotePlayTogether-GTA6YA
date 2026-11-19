@@ -36,6 +36,7 @@
 
 #include <QObject>
 #include <QVariantList>
+#include <QJsonObject>
 #include <QImage>
 #include <QMouseEvent>
 #include <QMutex>
@@ -137,6 +138,8 @@ class SdeckHapticsWorker;
 		QString coplay_name;
 		QString coplay_address;
 		int coplay_mix_mode = 0;
+		/** The player's picture as image file bytes; shown to the others and in the overlay. */
+		QByteArray coplay_avatar;
 		// Joining somebody else's session instead of connecting to a console.
 		// The client has already completed its handshake with the host.
 		std::shared_ptr<coplay::Client> coplay_client;
@@ -347,6 +350,7 @@ class StreamSession : public QObject
 		void CoPlayOnEvent(ChiakiEvent *event);
 		void CoPlayOnHaptics(uint8_t *buf, size_t buf_size);
 		void CoPlayUpdatePlayers();
+		void CoPlayUpdateControllerKind();
 		void SendControllerState(ChiakiControllerState *state);
 		static bool CoPlayVideoSampleCb(uint8_t *buf, size_t buf_size, int32_t frames_lost, bool frame_recovered, void *user);
 		static void CoPlayAudioHeaderCb(ChiakiAudioHeader *header, void *user);
@@ -407,6 +411,10 @@ class StreamSession : public QObject
 		Q_INVOKABLE void coplayKick(int slot);
 		Q_INVOKABLE void coplaySetCanControl(int slot, bool allowed);
 		Q_INVOKABLE void coplayCopyInvite();
+		/** Everything the stream overlay shows: players, who is in control, what everybody presses. */
+		QJsonObject OverlayState();
+		/** A player's picture by the id the overlay state gives; empty if unknown. */
+		QByteArray CoPlayAvatarData(const QString &id);
 		ChiakiErrorCode ConnectPsnConnection(QString duid, bool ps5);
 		void CancelPsnConnection(bool stop_thread);
 

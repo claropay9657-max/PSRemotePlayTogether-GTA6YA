@@ -92,6 +92,17 @@ class QmlSettings : public QObject
     Q_PROPERTY(bool coplayControllerOnly READ coplayControllerOnly WRITE setCoplayControllerOnly NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayInvite READ coplayInvite NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayLocalAddress READ coplayLocalAddress CONSTANT)
+    Q_PROPERTY(QString coplayAvatarUrl READ coplayAvatarUrl NOTIFY coplayChanged)
+    // Stream overlay for OBS
+    Q_PROPERTY(bool overlayEnabled READ overlayEnabled WRITE setOverlayEnabled NOTIFY overlayChanged)
+    Q_PROPERTY(int overlayPort READ overlayPort WRITE setOverlayPort NOTIFY overlayChanged)
+    Q_PROPERTY(bool overlayPlayers READ overlayPlayers WRITE setOverlayPlayers NOTIFY overlayChanged)
+    Q_PROPERTY(bool overlayPads READ overlayPads WRITE setOverlayPads NOTIFY overlayChanged)
+    Q_PROPERTY(bool overlayCombined READ overlayCombined WRITE setOverlayCombined NOTIFY overlayChanged)
+    Q_PROPERTY(QString overlaySkin READ overlaySkin WRITE setOverlaySkin NOTIFY overlayChanged)
+    Q_PROPERTY(int overlayScale READ overlayScale WRITE setOverlayScale NOTIFY overlayChanged)
+    Q_PROPERTY(QString overlayLayout READ overlayLayout WRITE setOverlayLayout NOTIFY overlayChanged)
+    Q_PROPERTY(QStringList overlaySkins READ overlaySkins CONSTANT)
     Q_PROPERTY(bool dpadTouchEnabled READ dpadTouchEnabled WRITE setDpadTouchEnabled NOTIFY dpadTouchEnabledChanged)
     Q_PROPERTY(bool iDROnFECFailureEnabled READ iDROnFECFailureEnabled WRITE setIDROnFECFailureEnabled NOTIFY iDROnFECFailureEnabledChanged)
     Q_PROPERTY(uint16_t dpadTouchIncrement READ dpadTouchIncrement WRITE setDpadTouchIncrement NOTIFY dpadTouchIncrementChanged)
@@ -580,6 +591,29 @@ public:
     /** Replaces the session key: invites handed out before stop working. */
     Q_INVOKABLE void coplayNewKey();
     Q_INVOKABLE void coplayCopyInvite();
+    /** Address of the picture file for showing it, changes whenever the picture does. */
+    QString coplayAvatarUrl() const;
+    /** Lets the user pick an image and makes it the player's picture. */
+    Q_INVOKABLE void coplayChooseAvatar();
+    Q_INVOKABLE void coplayClearAvatar();
+
+    bool overlayEnabled() const;
+    void setOverlayEnabled(bool enabled);
+    int overlayPort() const;
+    void setOverlayPort(int port);
+    bool overlayPlayers() const;
+    void setOverlayPlayers(bool on);
+    bool overlayPads() const;
+    void setOverlayPads(bool on);
+    bool overlayCombined() const;
+    void setOverlayCombined(bool on);
+    QString overlaySkin() const;
+    void setOverlaySkin(const QString &skin);
+    int overlayScale() const;
+    void setOverlayScale(int percent);
+    QString overlayLayout() const;
+    void setOverlayLayout(const QString &layout);
+    QStringList overlaySkins() const;
 
     bool dpadTouchEnabled() const;
     void setDpadTouchEnabled(bool enabled);
@@ -714,6 +748,7 @@ signals:
     void mouseTouchEnabledChanged();
     void keyboardEnabledChanged();
     void coplayChanged();
+    void overlayChanged();
     void dpadTouchEnabledChanged();
     void dpadTouchIncrementChanged();
     void dpadTouchShortcut1Changed();

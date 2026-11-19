@@ -11,6 +11,7 @@
 #include <thread>
 #include <vector>
 
+#include "blob.h"
 #include "crypto.h"
 #include "invite.h"
 #include "protocol.h"
@@ -23,6 +24,8 @@ struct ClientConfig
 {
 	Invite invite;
 	std::string name;
+	/** Our picture (an image file's bytes, at most kMaxAvatarSize), or empty. */
+	std::vector<uint8_t> avatar;
 	uint8_t want = kWantAll;
 	ControllerKind controller = ControllerKind::None;
 	uint32_t connect_timeout_ms = 5000;
@@ -51,6 +54,10 @@ struct ClientCallbacks
 	std::function<void(const AssembledFrame &)> on_video_frame;
 	std::function<void(const uint8_t *, size_t)> on_audio;
 	std::function<void(const uint8_t *, size_t)> on_haptics;
+	/** Needs kWantInputs. */
+	std::function<void(const InputsSnapshot &)> on_inputs;
+	/** A player's picture has arrived; fetch it with Client::Avatar(). */
+	std::function<void(const BlobRef &)> on_avatar;
 	/** Not called after Stop(). */
 	std::function<void(DisconnectReason)> on_disconnected;
 };
@@ -94,7 +101,12 @@ class Client
 		/** Changes which streams the host sends, for example to switch to controller-only. */
 		void SetWant(uint8_t want);
 		uint8_t Want() const { return want; }
+		/** Tells the others which kind of controller we hold (it can change during a session). */
+		void SetController(ControllerKind kind);
 		ClientStats Stats();
+		BlobRef OwnAvatar() const { return own_avatar; }
+		/** A player's picture, or null if it is not (yet) here. */
+		BlobData Avatar(const BlobHash &hash);
 
 		/** Outgoing packet loss for tests and the simulator. */
 		void SetSimulatedLoss(double probability, uint32_t seed = 1);
@@ -135,6 +147,7 @@ class Client
 
 		std::atomic<uint8_t> want{kWantAll};
 		std::atomic<bool> ping_now{false};
+		std::atomic<uint8_t> controller{0};
 		std::atomic<uint32_t> rtt_ms{0};
 		double loss_probability = 0.0;
 		uint32_t loss_seed = 1;
@@ -157,6 +170,13 @@ class Client
 
 		std::mutex stats_mutex;
 		ClientStats stats;
+
+		std::mutex blob_mutex;
+		BlobStore blobs;
+		BlobRef own_avatar;
+		bool have_inputs = false;
+		uint32_t last_inputs_seq = 0;
+		uint64_t last_blob_poll_ms = 0;
 };
 
 } // namespace coplay

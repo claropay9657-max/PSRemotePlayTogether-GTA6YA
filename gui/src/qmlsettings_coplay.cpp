@@ -7,8 +7,20 @@
 #include <coplay/invite.h>
 #include <coplay/socket.h>
 
+#include "overlayserver.h"
+
+#include <QApplication>
+#include <QBuffer>
 #include <QClipboard>
+#include <QDateTime>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QImage>
+#include <QImageReader>
+#include <QStandardPaths>
+#include <QUrl>
 
 bool QmlSettings::coplayHostEnabled() const
 {
@@ -120,4 +132,163 @@ void QmlSettings::coplayNewKey()
 void QmlSettings::coplayCopyInvite()
 {
     QGuiApplication::clipboard()->setText(coplayInvite());
+}
+
+// ------------------------------------------------------------------ profile picture
+
+QString QmlSettings::coplayAvatarUrl() const
+{
+    QString path = settings->GetCoPlayAvatar();
+    QFileInfo info(path);
+    if (path.isEmpty() || !info.exists())
+        return QString();
+    // The time stamp makes the view load the new picture when the file is replaced
+    return QUrl::fromLocalFile(path).toString() + "?t=" + QString::number(info.lastModified().toMSecsSinceEpoch());
+}
+
+void QmlSettings::coplayChooseAvatar()
+{
+    QString file = QFileDialog::getOpenFileName(QApplication::focusWidget(), tr("Choose Your Picture"),
+                                                QStandardPaths::writableLocation(QStandardPaths::PicturesLocation),
+                                                tr("Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)"),
+                                                nullptr,
+                                                QFileDialog::DontUseNativeDialog);
+    if (file.isEmpty())
+        return;
+    QImageReader reader(file);
+    reader.setAutoTransform(true);
+    QImage image = reader.read();
+    if (image.isNull())
+        return;
+
+    // A square from the middle, small enough to send to the other players in an instant
+    int side = qMin(image.width(), image.height());
+    image = image.copy((image.width() - side) / 2, (image.height() - side) / 2, side, side)
+                .scaled(160, 160, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                .convertToFormat(QImage::Format_RGB32);
+    QByteArray bytes;
+    for (int quality = 88; quality >= 40; quality -= 12) {
+        bytes.clear();
+        QBuffer buffer(&bytes);
+        buffer.open(QIODevice::WriteOnly);
+        image.save(&buffer, "JPEG", quality);
+        if (bytes.size() <= static_cast<int>(coplay::kMaxAvatarSize))
+            break;
+    }
+    if (bytes.isEmpty() || bytes.size() > static_cast<int>(coplay::kMaxAvatarSize))
+        return;
+
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    QString path = dir + "/player-picture.jpg";
+    QFile out(path);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return;
+    out.write(bytes);
+    out.close();
+    settings->SetCoPlayAvatar(path);
+    emit coplayChanged();
+}
+
+void QmlSettings::coplayClearAvatar()
+{
+    settings->SetCoPlayAvatar(QString());
+    emit coplayChanged();
+}
+
+// ------------------------------------------------------------------ stream overlay
+
+bool QmlSettings::overlayEnabled() const
+{
+    return settings->GetOverlayEnabled();
+}
+
+void QmlSettings::setOverlayEnabled(bool enabled)
+{
+    settings->SetOverlayEnabled(enabled);
+    emit overlayChanged();
+}
+
+int QmlSettings::overlayPort() const
+{
+    return settings->GetOverlayPort();
+}
+
+void QmlSettings::setOverlayPort(int port)
+{
+    if (port < 1 || port > 65535)
+        return;
+    settings->SetOverlayPort(port);
+    emit overlayChanged();
+}
+
+bool QmlSettings::overlayPlayers() const
+{
+    return settings->GetOverlayPlayers();
+}
+
+void QmlSettings::setOverlayPlayers(bool on)
+{
+    settings->SetOverlayPlayers(on);
+    emit overlayChanged();
+}
+
+bool QmlSettings::overlayPads() const
+{
+    return settings->GetOverlayPads();
+}
+
+void QmlSettings::setOverlayPads(bool on)
+{
+    settings->SetOverlayPads(on);
+    emit overlayChanged();
+}
+
+bool QmlSettings::overlayCombined() const
+{
+    return settings->GetOverlayCombined();
+}
+
+void QmlSettings::setOverlayCombined(bool on)
+{
+    settings->SetOverlayCombined(on);
+    emit overlayChanged();
+}
+
+QString QmlSettings::overlaySkin() const
+{
+    return settings->GetOverlaySkin();
+}
+
+void QmlSettings::setOverlaySkin(const QString &skin)
+{
+    settings->SetOverlaySkin(skin);
+    emit overlayChanged();
+}
+
+int QmlSettings::overlayScale() const
+{
+    return settings->GetOverlayScale();
+}
+
+void QmlSettings::setOverlayScale(int percent)
+{
+    settings->SetOverlayScale(qBound(10, percent, 100));
+    emit overlayChanged();
+}
+
+QString QmlSettings::overlayLayout() const
+{
+    return settings->GetOverlayLayout();
+}
+
+void QmlSettings::setOverlayLayout(const QString &layout)
+{
+    settings->SetOverlayLayout(layout == "column" ? "column" : "row");
+    emit overlayChanged();
+}
+
+QStringList QmlSettings::overlaySkins() const
+{
+    return OverlayServer::Skins();
 }

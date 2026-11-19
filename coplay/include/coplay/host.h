@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include "blob.h"
 #include "crypto.h"
 #include "mixer.h"
 #include "protocol.h"
@@ -26,6 +27,9 @@ struct HostConfig
 	uint16_t port = kDefaultPort;
 	Secret secret{};
 	std::string name = "Host";
+	/** The host's picture (an image file's bytes, at most kMaxAvatarSize), or empty. */
+	std::vector<uint8_t> avatar;
+	ControllerKind controller = ControllerKind::None;
 	size_t max_guests = 4;
 	/** A guest that was silent this long is dropped. */
 	uint32_t guest_timeout_ms = 6000;
@@ -45,6 +49,8 @@ struct GuestInfo
 	bool can_control = true;
 	bool in_control = false;
 	uint32_t rtt_ms = 0;
+	/** Valid once the guest's picture has arrived completely; see Host::Avatar(). */
+	BlobRef avatar;
 };
 
 /**
@@ -105,6 +111,8 @@ class Host
 		/** What to send to the console right now. */
 		PadState MixedInput();
 
+		/** The kind of controller the host itself holds. */
+		void SetController(ControllerKind kind);
 		void SetMixMode(MixMode mode);
 		MixMode GetMixMode();
 		void SetGuestCanControl(uint8_t slot, bool allowed);
@@ -113,6 +121,12 @@ class Host
 		/** Whether the host's own controllers currently reach the console (see MixMode). */
 		bool HostInControl();
 		bool AnyGuestWantsVideo();
+
+		/** What every player is pressing right now, and the combined result. */
+		InputsSnapshot Inputs();
+		BlobRef OwnAvatar();
+		/** A player's picture, or null if it is not (yet) here. */
+		BlobData Avatar(const BlobHash &hash);
 
 		/** Outgoing packet loss for tests and the simulator. */
 		void SetSimulatedLoss(double probability, uint32_t seed = 1) { socket.SetSimulatedLoss(probability, seed); }
@@ -140,6 +154,7 @@ class Host
 			bool have_input = false;
 			uint32_t last_input_seq = 0;
 			uint32_t rtt_ms = 0;
+			BlobRef avatar;
 			std::vector<uint8_t> welcome_packet;
 		};
 
@@ -168,6 +183,9 @@ class Host
 		void RemoveGuest(uint32_t conn_id, Deferred &d, const std::string &why);
 		void RequestKeyframe(uint64_t now_ms, Deferred &d);
 		void UpdateControl(uint64_t now_ms, Deferred &d);
+		void BuildInputs(uint64_t now_ms, InputsSnapshot &s);
+		void SendInputs(uint64_t now_ms);
+		void PollBlobs(uint64_t now_ms);
 		void BumpSeq(uint16_t &seq);
 		Guest *FindBySlot(uint8_t slot);
 
@@ -202,6 +220,12 @@ class Host
 		uint64_t last_keyframe_request_ms = 0;
 		bool keyframe_pending = false;
 		bool keyframe_outstanding = false;
+
+		BlobStore blobs;
+		BlobRef own_avatar;
+		InputsSnapshot last_inputs;
+		uint64_t last_inputs_ms = 0;
+		uint64_t last_blob_poll_ms = 0;
 };
 
 } // namespace coplay

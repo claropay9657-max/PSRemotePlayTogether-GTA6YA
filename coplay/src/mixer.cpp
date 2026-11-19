@@ -155,6 +155,17 @@ PadState InputMixer::Effective(uint32_t id, const Source &source, uint64_t now_m
 	return ApplyMask(source.state, source.mask);
 }
 
+PadState InputMixer::Raw(uint32_t id, uint64_t now_ms) const
+{
+	auto it = sources.find(id);
+	if(it == sources.end() || !it->second.has_state)
+		return PadState();
+	const Source &source = it->second;
+	if(id != kHostSource && now_ms > source.updated_ms && now_ms - source.updated_ms > config.stale_ms)
+		return PadState();
+	return source.state;
+}
+
 PadState InputMixer::Mix(uint64_t now_ms)
 {
 	switch(mode)

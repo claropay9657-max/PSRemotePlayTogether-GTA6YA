@@ -3,6 +3,7 @@
 // Tests for the co-play library. The network tests run a real host and real
 // clients against each other over UDP on the loopback interface.
 
+#include <coplay/blob.h>
 #include <coplay/client.h>
 #include <coplay/host.h>
 #include <coplay/invite.h>
@@ -1037,11 +1038,12 @@ struct TestHost
 
 	~TestHost() { host->Stop(); } // before the counters the callbacks touch go away
 
-	explicit TestHost(size_t max_guests = 4)
+	explicit TestHost(size_t max_guests = 4, const std::vector<uint8_t> &avatar = {})
 	{
 		config.port = 0; // any free port
 		config.secret = GenerateSecret();
 		config.name = "Host";
+		config.avatar = avatar;
 		config.max_guests = max_guests;
 		HostCallbacks cb;
 		cb.on_input_changed = [this] { input_changes++; };
@@ -1082,14 +1084,18 @@ struct TestGuest
 	std::vector<std::vector<uint8_t>> haptics;
 	std::atomic<int> disconnects{0};
 	DisconnectReason reason = DisconnectReason::Timeout;
+	std::vector<InputsSnapshot> inputs;
+	std::vector<BlobRef> avatars;
 
 	~TestGuest() { client->Stop(); } // callbacks use the members below
 
-	TestGuest(const Invite &invite, const std::string &name, uint8_t want = kWantAll, uint32_t connect_timeout_ms = 3000)
+	TestGuest(const Invite &invite, const std::string &name, uint8_t want = kWantAll, uint32_t connect_timeout_ms = 3000,
+		const std::vector<uint8_t> &avatar = {})
 	{
 		ClientConfig config;
 		config.invite = invite;
 		config.name = name;
+		config.avatar = avatar;
 		config.want = want;
 		config.controller = ControllerKind::Xbox;
 		config.connect_timeout_ms = connect_timeout_ms;
@@ -1129,6 +1135,14 @@ struct TestGuest
 			cb.on_disconnected = [this](DisconnectReason r) {
 				reason = r;
 				disconnects++;
+			};
+			cb.on_inputs = [this](const InputsSnapshot &snapshot) {
+				std::lock_guard<std::mutex> lock(mutex);
+				inputs.push_back(snapshot);
+			};
+			cb.on_avatar = [this](const BlobRef &ref) {
+				std::lock_guard<std::mutex> lock(mutex);
+				avatars.push_back(ref);
 			};
 			client->Start(cb);
 		}
@@ -1659,6 +1673,223 @@ TEST(net_kick_host_end_and_timeout)
 	h2.host->SetSimulatedLoss(1.0);
 	CHECK(WaitFor([&] { return g.disconnects == 1; }, 4000));
 	CHECK(g.reason == DisconnectReason::Timeout);
+}
+
+static std::vector<uint8_t> FakeImage(size_t size, uint32_t seed)
+{
+	std::vector<uint8_t> out(size);
+	std::mt19937 rng(seed);
+	for(auto &b : out)
+		b = static_cast<uint8_t>(rng());
+	return out;
+}
+
+TEST(blob_store)
+{
+	auto image = FakeImage(kBlobChunkSize * 3 + 100, 1);
+	BlobRef ref = MakeBlobRef(image);
+	CHECK(ref.Valid() && ref.size == image.size());
+	CHECK(MakeBlobRef(FakeImage(100, 2)) != ref);
+	CHECK(!MakeBlobRef({}).Valid());
+	CHECK(!MakeBlobRef(FakeImage(kMaxAvatarSize + 1, 3)).Valid());
+	CHECK(MakeBlobRef(FakeImage(kMaxAvatarSize, 3)).Valid());
+	CHECK(BlobChunkCount(image.size()) == 4);
+
+	BlobStore sender, receiver;
+	CHECK(sender.Put(image) == ref);
+	CHECK(sender.Has(ref) && !receiver.Has(ref));
+
+	receiver.Want(ref);
+	std::vector<BlobStore::Request> requests;
+	receiver.Poll(1000, requests, 2);
+	CHECK(requests.size() == 2 && requests[0].index == 0 && requests[1].index == 1);
+	receiver.Poll(1001, requests, 8);
+	CHECK(requests.size() == 2 && requests[0].index == 2 && requests[1].index == 3); // 0 and 1 were just asked for
+	receiver.Poll(1100, requests, 8);
+	CHECK(requests.empty());
+	receiver.Poll(1300, requests, 8);
+	CHECK(requests.size() == 4); // no answers: ask again
+
+	auto deliver = [&](uint16_t index, BlobStore &to) {
+		std::vector<uint8_t> payload;
+		CHECK(BuildBlobChunk(ref.hash, image, index, payload));
+		CHECK(payload.size() <= kMaxPayload);
+		ByteReader r(payload.data(), payload.size());
+		BlobChunkHeader h;
+		CHECK(ReadBlobChunkHeader(r, h));
+		return to.OnChunk(h, r.cursor(), r.remaining());
+	};
+	CHECK(!deliver(3, receiver));
+	CHECK(!deliver(3, receiver)); // duplicate
+	CHECK(!deliver(0, receiver));
+	CHECK(!deliver(2, receiver));
+	CHECK(!receiver.Has(ref));
+	CHECK(deliver(1, receiver));
+	CHECK(receiver.Has(ref));
+	CHECK(*receiver.Get(ref.hash) == image);
+	receiver.Poll(5000, requests, 8);
+	CHECK(requests.empty());
+	std::vector<uint8_t> payload;
+	CHECK(!BuildBlobChunk(ref.hash, image, 4, payload));
+
+	// Chunks nobody asked for are not stored
+	BlobStore stranger;
+	CHECK(!deliver(0, stranger));
+	CHECK(!stranger.Wanted(ref.hash));
+
+	// Data that does not match the announced hash is thrown away
+	BlobStore fooled;
+	auto other = FakeImage(image.size(), 99);
+	fooled.Want(ref);
+	for(uint16_t i = 0; i < 4; i++)
+	{
+		std::vector<uint8_t> p;
+		BuildBlobChunk(ref.hash, other, i, p);
+		ByteReader r(p.data(), p.size());
+		BlobChunkHeader h;
+		ReadBlobChunkHeader(r, h);
+		CHECK(!fooled.OnChunk(h, r.cursor(), r.remaining()));
+	}
+	CHECK(!fooled.Has(ref));
+	CHECK(!fooled.Get(ref.hash));
+}
+
+TEST(inputs_snapshot_round_trip)
+{
+	InputsSnapshot s;
+	s.seq = 9;
+	for(uint8_t i = 0; i <= kMaxGuests; i++)
+	{
+		PadState pad = Pad(kButtonCross << i, static_cast<int16_t>(-1000 * i), 77, i, static_cast<uint8_t>(255 - i));
+		pad.right_y = -32768;
+		pad.gyro[0] = 3.0f; // not part of a snapshot
+		s.players.push_back(ToPlayerInput(i, pad));
+	}
+	s.combined = ToPlayerInput(0, Pad(kButtonPs, 5, 6, 7, 8));
+	std::vector<uint8_t> buf;
+	ByteWriter w(buf);
+	WriteInputs(w, s);
+	CHECK(buf.size() <= kMaxPayload);
+	InputsSnapshot t;
+	ByteReader r(buf.data(), buf.size());
+	CHECK(ReadInputs(r, t));
+	CHECK(t.seq == 9 && t.SameInputs(s));
+	CHECK(t.players.size() == kMaxGuests + 1 && t.players[3].slot == 3 && t.players[3].right_y == -32768);
+	CHECK(t.combined.buttons == kButtonPs && t.combined.r2 == 8);
+	ByteReader cut(buf.data(), buf.size() - 1);
+	CHECK(!ReadInputs(cut, t));
+}
+
+TEST(net_everyone_sees_what_everyone_presses)
+{
+	TestHost h;
+	TestGuest watcher(h.MakeInvite(), "Watcher", kWantInputs);
+	TestGuest player(h.MakeInvite(), "Player", 0);
+	CHECK(watcher.Connect());
+	CHECK(player.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+
+	h.host->SetLocalInput(Pad(kButtonSquare));
+	player.client->SetInput(Pad(kButtonCross, 12000, -3000, 0, 99));
+
+	auto last = [&](InputsSnapshot &out) {
+		std::lock_guard<std::mutex> lock(watcher.mutex);
+		if(watcher.inputs.empty())
+			return false;
+		out = watcher.inputs.back();
+		return true;
+	};
+	CHECK(WaitFor([&] {
+		InputsSnapshot s;
+		return last(s) && s.players.size() == 3 && s.players[2].buttons == kButtonCross && s.players[0].buttons == kButtonSquare;
+	}, 2000));
+	InputsSnapshot s;
+	CHECK(last(s));
+	if(s.players.size() == 3)
+	{
+		CHECK(s.players[0].slot == 0 && s.players[1].slot == 1 && s.players[2].slot == 2);
+		CHECK(s.players[1].buttons == 0); // the watcher itself presses nothing
+		CHECK(s.players[2].left_x == 12000 && s.players[2].left_y == -3000 && s.players[2].r2 == 99);
+		CHECK(s.combined.buttons == (kButtonSquare | kButtonCross) && s.combined.left_x == 12000);
+	}
+
+	// A player who may not control still shows what they press; the console just does not get it
+	h.host->SetGuestCanControl(2, false);
+	CHECK(WaitFor([&] {
+		InputsSnapshot t;
+		return last(t) && t.combined.buttons == kButtonSquare && t.players.size() == 3 && t.players[2].buttons == kButtonCross;
+	}, 2000));
+
+	// The host has the same view without asking anybody
+	InputsSnapshot own = h.host->Inputs();
+	CHECK(own.players.size() == 3 && own.players[2].buttons == kButtonCross && own.combined.buttons == kButtonSquare);
+
+	// Guests that did not ask for it are not sent any
+	{
+		std::lock_guard<std::mutex> lock(player.mutex);
+		CHECK(player.inputs.empty());
+	}
+}
+
+TEST(net_pictures_reach_everyone)
+{
+	auto host_image = FakeImage(9000, 1);
+	auto alice_image = FakeImage(20000, 2);
+	auto bob_image = FakeImage(kMaxAvatarSize, 3);
+	TestHost h(4, host_image);
+	h.host->SetSimulatedLoss(0.1, 5); // chunks get lost and are asked for again
+
+	TestGuest alice(h.MakeInvite(), "Alice", 0, 3000, alice_image);
+	alice.client->SetSimulatedLoss(0.1, 6);
+	CHECK(alice.Connect());
+
+	BlobRef host_ref = MakeBlobRef(host_image), alice_ref = MakeBlobRef(alice_image), bob_ref = MakeBlobRef(bob_image);
+	CHECK(h.host->OwnAvatar() == host_ref);
+	CHECK(alice.client->OwnAvatar() == alice_ref);
+
+	// Alice gets the host's picture, the host gets Alice's
+	CHECK(WaitFor([&] { return alice.client->Avatar(host_ref.hash) != nullptr; }, 5000));
+	CHECK(WaitFor([&] { return h.host->Avatar(alice_ref.hash) != nullptr; }, 5000));
+	if(alice.client->Avatar(host_ref.hash))
+		CHECK(*alice.client->Avatar(host_ref.hash) == host_image);
+	if(h.host->Avatar(alice_ref.hash))
+		CHECK(*h.host->Avatar(alice_ref.hash) == alice_image);
+	CHECK(WaitFor([&] {
+		auto guests = h.host->Guests();
+		return guests.size() == 1 && guests[0].avatar == alice_ref;
+	}, 2000));
+
+	// Bob joins later and gets both, Alice gets Bob's through the host
+	TestGuest bob(h.MakeInvite(), "Bob", 0, 3000, bob_image);
+	CHECK(bob.Connect());
+	CHECK(WaitFor([&] {
+		return bob.client->Avatar(host_ref.hash) && bob.client->Avatar(alice_ref.hash) && alice.client->Avatar(bob_ref.hash);
+	}, 8000));
+	if(alice.client->Avatar(bob_ref.hash))
+		CHECK(*alice.client->Avatar(bob_ref.hash) == bob_image);
+	if(bob.client->Avatar(alice_ref.hash))
+		CHECK(*bob.client->Avatar(alice_ref.hash) == alice_image);
+	{
+		std::lock_guard<std::mutex> lock(alice.mutex);
+		CHECK(alice.avatars.size() == 2); // told once per picture
+	}
+
+	// The roster says whose picture is whose
+	SessionState state = bob.LastState();
+	CHECK(state.participants.size() == 3);
+	if(state.participants.size() == 3)
+	{
+		CHECK(state.participants[0].avatar == host_ref);
+		CHECK(state.participants[1].avatar == alice_ref);
+		CHECK(state.participants[2].avatar == bob_ref);
+	}
+
+	// A player without a picture simply has none
+	TestGuest carl(h.MakeInvite(), "Carl", 0);
+	CHECK(carl.Connect());
+	CHECK(WaitFor([&] { return carl.LastState().participants.size() == 4; }, 2000));
+	CHECK(!carl.LastState().participants[3].avatar.Valid());
+	CHECK(!carl.client->OwnAvatar().Valid());
 }
 
 TEST(net_replayed_packets_are_ignored)

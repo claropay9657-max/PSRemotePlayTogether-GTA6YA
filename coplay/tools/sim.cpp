@@ -51,6 +51,7 @@ static void Usage()
 		"      --address HOST      address written into the invite (default 127.0.0.1)\n"
 		"      --secret TEXT       reuse a session key instead of generating one\n"
 		"      --name NAME\n"
+		"      --avatar FILE       picture shown to the other players (image file, at most 48 KB)\n"
 		"      --mode together|last-active|host-only\n"
 		"      --loss PERCENT      drop this share of outgoing packets\n"
 		"      --seconds N         stop after N seconds\n"
@@ -58,6 +59,7 @@ static void Usage()
 		"coplay-sim guest <invite> [options]\n"
 		"    Joins a session without showing anything and prints statistics.\n"
 		"      --name NAME\n"
+		"      --avatar FILE       picture shown to the other players\n"
 		"      --no-video          controller only\n"
 		"      --dump FILE         write the received video stream to FILE\n"
 		"      --press             press and release Cross once per second\n"
@@ -74,7 +76,7 @@ static void Usage()
 struct Options
 {
 	std::vector<std::string> positional;
-	std::string codec, size = "1280x720", address = "127.0.0.1", secret, name, mode = "together", dump;
+	std::string codec, size = "1280x720", address = "127.0.0.1", secret, name, mode = "together", dump, avatar;
 	int fps = 60;
 	int port = kDefaultPort;
 	double loss = 0.0;
@@ -102,6 +104,7 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--name") { if(!value(o.name)) return false; }
 		else if(a == "--mode") { if(!value(o.mode)) return false; }
 		else if(a == "--dump") { if(!value(o.dump)) return false; }
+		else if(a == "--avatar") { if(!value(o.avatar)) return false; }
 		else if(a == "--fps") { if(!value(v)) return false; o.fps = std::atoi(v.c_str()); }
 		else if(a == "--port") { if(!value(v)) return false; o.port = std::atoi(v.c_str()); }
 		else if(a == "--loss") { if(!value(v)) return false; o.loss = std::atof(v.c_str()) / 100.0; }
@@ -112,6 +115,12 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else o.positional.push_back(a);
 	}
 	return true;
+}
+
+static std::vector<uint8_t> ReadFile(const std::string &path)
+{
+	std::ifstream f(path, std::ios::binary);
+	return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 }
 
 // ---------------------------------------------------------------- elementary stream
@@ -317,6 +326,9 @@ static int RunHost(const Options &o)
 	HostConfig config;
 	config.port = static_cast<uint16_t>(o.port);
 	config.name = o.name.empty() ? "Simulated console" : o.name;
+	config.controller = ControllerKind::DualSense;
+	if(!o.avatar.empty())
+		config.avatar = ReadFile(o.avatar);
 	if(!o.secret.empty())
 	{
 		if(!SecretFromString(o.secret, config.secret))
@@ -544,6 +556,8 @@ static int RunGuest(const Options &o)
 	config.name = o.name.empty() ? "Simulated guest" : o.name;
 	config.want = o.no_video ? 0 : kWantAll;
 	config.controller = ControllerKind::Xbox;
+	if(!o.avatar.empty())
+		config.avatar = ReadFile(o.avatar);
 
 	Client client(config);
 	if(o.loss > 0)

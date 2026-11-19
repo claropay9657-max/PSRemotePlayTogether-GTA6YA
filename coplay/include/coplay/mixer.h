@@ -72,6 +72,9 @@ class InputMixer
 
 		PadState Mix(uint64_t now_ms);
 
+		/** What this source itself is pressing, whether or not it reaches the console. */
+		PadState Raw(uint32_t id, uint64_t now_ms) const;
+
 		/** After Mix(): whether this source's input currently reaches the console. */
 		bool InControl(uint32_t id) const;
 

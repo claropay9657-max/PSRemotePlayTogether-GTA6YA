@@ -17,6 +17,7 @@ option(COPLAY_ENABLE_TESTS "Build the co-play tests" ON)
 option(COPLAY_ENABLE_SIM "Build coplay-sim, a simulated console for testing without a PlayStation" ON)
 
 add_library(coplay STATIC
+	include/coplay/blob.h
 	include/coplay/bytes.h
 	include/coplay/client.h
 	include/coplay/crypto.h
@@ -26,6 +27,7 @@ add_library(coplay STATIC
 	include/coplay/protocol.h
 	include/coplay/socket.h
 	include/coplay/video.h
+	src/blob.cpp
 	src/client.cpp
 	src/crypto.cpp
 	src/host.cpp

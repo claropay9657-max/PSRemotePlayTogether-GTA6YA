@@ -11,6 +11,7 @@
 #include <chiaki/time.h>
 #include "../../lib/src/utils.h"
 
+#include <QFile>
 #include <QKeyEvent>
 #include <QMutexLocker>
 #include <QtMath>
@@ -347,6 +348,9 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	this->coplay_name = settings->GetCoPlayName();
 	this->coplay_address = settings->GetCoPlayAddress();
 	this->coplay_mix_mode = settings->GetCoPlayMixMode();
+	QFile avatar_file(settings->GetCoPlayAvatar());
+	if(!settings->GetCoPlayAvatar().isEmpty() && avatar_file.open(QIODevice::ReadOnly))
+		this->coplay_avatar = avatar_file.read(64 * 1024);
 }
 
 static void AudioSettingsCb(uint32_t channels, uint32_t rate, void *user);
@@ -1273,6 +1277,7 @@ void StreamSession::UpdateGamepads()
 			}
 		}
 	}
+	CoPlayUpdateControllerKind();
 	SendFeedbackState();
 #endif
 }

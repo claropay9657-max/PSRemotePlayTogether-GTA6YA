@@ -20,6 +20,7 @@
 
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QJsonArray>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QVariantMap>
@@ -45,14 +46,88 @@ struct CoPlayState
 	uint64_t bitrate_window_start_ms = 0;
 	uint64_t bitrate_window_bytes = 0;
 
+	std::vector<coplay::Participant> participants; // receiving thread only
+
 	// both
 	ChiakiAudioSink opus_sink = {};
-	QMutex mutex; // players, mix_mode, invite
+	QMutex mutex; // everything below
 	QVariantList players;
 	int mix_mode = 0;
 	QString invite;
+	coplay::PadState local_pad;       // our own controllers, before merging
+	coplay::InputsSnapshot guest_inputs;
+	bool have_guest_inputs = false;
+	QHash<QString, QString> avatar_urls; // picture id -> data: URL for the QML side
 	std::atomic<bool> video_enabled{true};
+
+	// ourselves
+	QString own_name;
+	std::vector<uint8_t> own_avatar;
+	coplay::BlobRef own_avatar_ref;
+	std::atomic<int> own_controller{0};
 };
+
+static QString AvatarId(const coplay::BlobRef &ref)
+{
+	if(!ref.Valid())
+		return QString();
+	return QString::fromLatin1(QByteArray(reinterpret_cast<const char *>(ref.hash.data()), static_cast<int>(ref.hash.size())).toHex());
+}
+
+static bool AvatarHash(const QString &id, coplay::BlobHash &hash)
+{
+	QByteArray raw = QByteArray::fromHex(id.toLatin1());
+	if(raw.size() != static_cast<int>(hash.size()) || id.size() != static_cast<int>(hash.size()) * 2)
+		return false;
+	memcpy(hash.data(), raw.constData(), hash.size());
+	return true;
+}
+
+static const char *ImageMime(const uint8_t *data, size_t size)
+{
+	if(size >= 8 && memcmp(data, "\x89PNG\r\n\x1a\n", 8) == 0)
+		return "image/png";
+	if(size >= 3 && data[0] == 0xff && data[1] == 0xd8 && data[2] == 0xff)
+		return "image/jpeg";
+	if(size >= 12 && memcmp(data, "RIFF", 4) == 0 && memcmp(data + 8, "WEBP", 4) == 0)
+		return "image/webp";
+	return nullptr;
+}
+
+/** Picture as a data: URL the QML side can show; empty if it is not an image we know. */
+static QString AvatarUrl(const coplay::BlobData &data)
+{
+	if(!data || data->empty())
+		return QString();
+	const char *mime = ImageMime(data->data(), data->size());
+	if(!mime)
+		return QString();
+	QByteArray raw(reinterpret_cast<const char *>(data->data()), static_cast<int>(data->size()));
+	return QStringLiteral("data:%1;base64,%2").arg(QLatin1String(mime), QString::fromLatin1(raw.toBase64()));
+}
+
+static QJsonObject PadJson(uint32_t buttons, int l2, int r2, int lx, int ly, int rx, int ry)
+{
+	QJsonObject o;
+	o["b"] = static_cast<qint64>(buttons);
+	o["l2"] = l2;
+	o["r2"] = r2;
+	o["lx"] = lx;
+	o["ly"] = ly;
+	o["rx"] = rx;
+	o["ry"] = ry;
+	return o;
+}
+
+static QJsonObject PadJson(const coplay::PlayerInput &p)
+{
+	return PadJson(p.buttons, p.l2, p.r2, p.left_x, p.left_y, p.right_x, p.right_y);
+}
+
+static QJsonObject PadJson(const coplay::PadState &p)
+{
+	return PadJson(p.buttons, p.l2, p.r2, p.left_x, p.left_y, p.right_x, p.right_y);
+}
 
 static coplay::PadState ToPad(const ChiakiControllerState &s)
 {
@@ -117,6 +192,12 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	coplay = new CoPlayState;
 	chiaki_opus_decoder_get_sink(&opus_decoder, &coplay->opus_sink);
 	coplay->mix_mode = connect_info.coplay_mix_mode;
+	coplay->own_name = connect_info.coplay_name.trimmed();
+	if(!connect_info.coplay_avatar.isEmpty() && connect_info.coplay_avatar.size() <= static_cast<int>(coplay::kMaxAvatarSize))
+	{
+		coplay->own_avatar.assign(connect_info.coplay_avatar.constBegin(), connect_info.coplay_avatar.constEnd());
+		coplay->own_avatar_ref = coplay::MakeBlobRef(coplay->own_avatar);
+	}
 
 	coplay->client = connect_info.coplay_client;
 	if(coplay->client)
@@ -137,6 +218,7 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 		? connect_info.coplay_port : coplay::kDefaultPort);
 	coplay->host_name = connect_info.coplay_name.trimmed().isEmpty() ? tr("Host") : connect_info.coplay_name.trimmed();
 	config.name = coplay->host_name.toStdString();
+	config.avatar = coplay->own_avatar;
 
 	coplay::HostCallbacks callbacks;
 	// These arrive on the sharing thread; the work happens on ours
@@ -257,7 +339,8 @@ void StreamSession::SetCoPlayVideoEnabled(bool enabled)
 		return;
 	coplay->video_enabled = enabled;
 	// Controller only: no picture and no sound, but still rumble, haptics and triggers
-	coplay->client->SetWant(enabled ? coplay::kWantAll : coplay::kWantHaptics);
+	uint8_t inputs = coplay->client->Want() & coplay::kWantInputs;
+	coplay->client->SetWant(static_cast<uint8_t>((enabled ? coplay::kWantAll : coplay::kWantHaptics) | inputs));
 	emit CoPlayChanged();
 }
 
@@ -284,6 +367,11 @@ void StreamSession::coplayCopyInvite()
 
 void StreamSession::SendControllerState(ChiakiControllerState *state)
 {
+	if(coplay)
+	{
+		QMutexLocker locker(&coplay->mutex);
+		coplay->local_pad = ToPad(*state);
+	}
 	if(IsCoPlayGuest())
 	{
 		coplay->client->SetInput(ToPad(*state));
@@ -314,6 +402,9 @@ void StreamSession::CoPlayUpdatePlayers()
 		me["canControl"] = true;
 		me["inControl"] = coplay->host->HostInControl();
 		me["video"] = true;
+		me["controller"] = coplay->own_controller.load();
+		me["avatar"] = AvatarId(coplay->own_avatar_ref);
+		me["avatarUrl"] = AvatarUrl(coplay->host->Avatar(coplay->own_avatar_ref.hash));
 		players.append(me);
 		for(const coplay::GuestInfo &g : coplay->host->Guests())
 		{
@@ -327,6 +418,9 @@ void StreamSession::CoPlayUpdatePlayers()
 			p["video"] = (g.want & coplay::kWantVideo) != 0;
 			p["address"] = QString::fromStdString(g.address);
 			p["rttMs"] = static_cast<int>(g.rtt_ms);
+			p["controller"] = static_cast<int>(g.controller);
+			p["avatar"] = AvatarId(g.avatar);
+			p["avatarUrl"] = g.avatar.Valid() ? AvatarUrl(coplay->host->Avatar(g.avatar.hash)) : QString();
 			players.append(p);
 		}
 	}
@@ -519,7 +613,36 @@ void StreamSession::CoPlayStartGuest()
 	callbacks.on_haptics = [this](const uint8_t *data, size_t size) {
 		PushHapticsFrame(const_cast<uint8_t *>(data), size);
 	};
-	callbacks.on_state = [this](const coplay::SessionState &s) {
+	// Runs on the receiving thread, like everything that touches coplay->participants
+	auto rebuild_players = [this](uint8_t your_slot, int mix_mode) {
+		QVariantList players;
+		for(const coplay::Participant &p : coplay->participants)
+		{
+			QVariantMap m;
+			m["slot"] = p.slot;
+			m["name"] = QString::fromStdString(p.name);
+			m["host"] = (p.flags & coplay::kParticipantHost) != 0;
+			m["you"] = p.slot == your_slot;
+			m["canControl"] = (p.flags & coplay::kParticipantCanControl) != 0;
+			m["inControl"] = (p.flags & coplay::kParticipantInControl) != 0;
+			m["controller"] = static_cast<int>(p.controller);
+			// Only once the picture itself is here
+			coplay::BlobData data = p.avatar.Valid() ? coplay->client->Avatar(p.avatar.hash) : nullptr;
+			m["avatar"] = data ? AvatarId(p.avatar) : QString();
+			m["avatarUrl"] = AvatarUrl(data);
+			players.append(m);
+		}
+		bool changed;
+		{
+			QMutexLocker locker(&coplay->mutex);
+			changed = players != coplay->players || coplay->mix_mode != mix_mode;
+			coplay->players = players;
+			coplay->mix_mode = mix_mode;
+		}
+		if(changed)
+			emit CoPlayChanged();
+	};
+	callbacks.on_state = [this, rebuild_players](const coplay::SessionState &s) {
 		// Sound format, once the host knows it
 		if(ValidAudioHeader(s.audio) && !(s.audio == coplay->applied_audio))
 		{
@@ -591,27 +714,22 @@ void StreamSession::CoPlayStartGuest()
 		a = f;
 		coplay->applied_any = true;
 
-		QVariantList players;
-		for(const coplay::Participant &p : s.participants)
-		{
-			QVariantMap m;
-			m["slot"] = p.slot;
-			m["name"] = QString::fromStdString(p.name);
-			m["host"] = (p.flags & coplay::kParticipantHost) != 0;
-			m["you"] = p.slot == s.your_slot;
-			m["canControl"] = (p.flags & coplay::kParticipantCanControl) != 0;
-			m["inControl"] = (p.flags & coplay::kParticipantInControl) != 0;
-			players.append(m);
-		}
-		bool changed;
+		coplay->participants = s.participants;
+		rebuild_players(s.your_slot, static_cast<int>(s.mix_mode));
+	};
+	callbacks.on_avatar = [this, rebuild_players](const coplay::BlobRef &) {
+		// A picture arrived: the list can show it now
+		int mode;
 		{
 			QMutexLocker locker(&coplay->mutex);
-			changed = players != coplay->players || coplay->mix_mode != static_cast<int>(s.mix_mode);
-			coplay->players = players;
-			coplay->mix_mode = static_cast<int>(s.mix_mode);
+			mode = coplay->mix_mode;
 		}
-		if(changed)
-			emit CoPlayChanged();
+		rebuild_players(coplay->client->Welcome().slot, mode);
+	};
+	callbacks.on_inputs = [this](const coplay::InputsSnapshot &inputs) {
+		QMutexLocker locker(&coplay->mutex);
+		coplay->guest_inputs = inputs;
+		coplay->have_guest_inputs = true;
 	};
 	callbacks.on_disconnected = [this](coplay::DisconnectReason reason) {
 		switch(reason)
@@ -655,4 +773,154 @@ void StreamSession::CoPlayStopGuest()
 	event.type = CHIAKI_EVENT_QUIT;
 	event.quit.reason = CHIAKI_QUIT_REASON_STOPPED;
 	Event(&event);
+}
+
+// ------------------------------------------------------------------ overlay
+
+void StreamSession::CoPlayUpdateControllerKind()
+{
+	if(!coplay)
+		return;
+	coplay::ControllerKind kind = coplay::ControllerKind::None;
+#if CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
+	for(auto controller : controllers)
+	{
+		coplay::ControllerKind k = coplay::ControllerKind::Other;
+		if(controller->IsDualSense() || controller->IsDualSenseEdge())
+			k = coplay::ControllerKind::DualSense;
+		else if(controller->GetController())
+		{
+			switch(SDL_GameControllerGetType(controller->GetController()))
+			{
+				case SDL_CONTROLLER_TYPE_PS5:
+					k = coplay::ControllerKind::DualSense;
+					break;
+				case SDL_CONTROLLER_TYPE_PS3:
+				case SDL_CONTROLLER_TYPE_PS4:
+					k = coplay::ControllerKind::DualShock4;
+					break;
+				case SDL_CONTROLLER_TYPE_XBOX360:
+				case SDL_CONTROLLER_TYPE_XBOXONE:
+					k = coplay::ControllerKind::Xbox;
+					break;
+				default:
+					break;
+			}
+		}
+		// With several controllers connected a DualSense wins: it is the one with all the features
+		if(kind == coplay::ControllerKind::None || k == coplay::ControllerKind::DualSense)
+			kind = k;
+	}
+#endif
+	if(coplay->own_controller.exchange(static_cast<int>(kind)) == static_cast<int>(kind))
+		return;
+	if(coplay->host)
+	{
+		coplay->host->SetController(kind);
+		CoPlayUpdatePlayers();
+	}
+	if(coplay->client)
+		coplay->client->SetController(kind);
+}
+
+QByteArray StreamSession::CoPlayAvatarData(const QString &id)
+{
+	coplay::BlobHash hash;
+	if(!coplay || !AvatarHash(id, hash))
+		return QByteArray();
+	coplay::BlobData data;
+	if(coplay->host)
+		data = coplay->host->Avatar(hash);
+	else if(coplay->client)
+		data = coplay->client->Avatar(hash);
+	if(data)
+		return QByteArray(reinterpret_cast<const char *>(data->data()), static_cast<int>(data->size()));
+	if(coplay->own_avatar_ref.Valid() && hash == coplay->own_avatar_ref.hash)
+		return QByteArray(reinterpret_cast<const char *>(coplay->own_avatar.data()), static_cast<int>(coplay->own_avatar.size()));
+	return QByteArray();
+}
+
+QJsonObject StreamSession::OverlayState()
+{
+	QJsonObject state;
+	if(!coplay || !connected)
+	{
+		state["active"] = false;
+		return state;
+	}
+	state["active"] = true;
+
+	QVariantList players;
+	int mix_mode;
+	coplay::PadState local;
+	coplay::InputsSnapshot inputs;
+	bool have_inputs = false;
+	{
+		QMutexLocker locker(&coplay->mutex);
+		players = coplay->players;
+		mix_mode = coplay->mix_mode;
+		local = coplay->local_pad;
+		if(coplay->client)
+		{
+			inputs = coplay->guest_inputs;
+			have_inputs = coplay->have_guest_inputs;
+		}
+	}
+	if(IsCoPlayHosting())
+	{
+		inputs = coplay->host->Inputs();
+		have_inputs = true;
+	}
+
+	if(players.isEmpty())
+	{
+		// Playing alone: the overlay still shows our own controller
+		QVariantMap me;
+		me["slot"] = 0;
+		me["name"] = coplay->own_name;
+		me["host"] = false;
+		me["you"] = true;
+		me["canControl"] = true;
+		me["inControl"] = true;
+		me["controller"] = coplay->own_controller.load();
+		me["avatar"] = AvatarId(coplay->own_avatar_ref);
+		players.append(me);
+		mix_mode = 0;
+	}
+
+	QJsonArray list;
+	for(const QVariant &entry : std::as_const(players))
+	{
+		QVariantMap p = entry.toMap();
+		QJsonObject o;
+		int slot = p.value("slot").toInt();
+		o["slot"] = slot;
+		o["name"] = p.value("name").toString();
+		o["host"] = p.value("host").toBool();
+		o["you"] = p.value("you").toBool();
+		o["canControl"] = p.value("canControl").toBool();
+		o["inControl"] = p.value("inControl").toBool();
+		o["controller"] = p.value("controller").toInt();
+		o["avatar"] = p.value("avatar").toString();
+		QJsonObject pad = PadJson(coplay::PadState());
+		if(p.value("you").toBool())
+			pad = PadJson(local); // our own without the detour over the host
+		else if(have_inputs)
+		{
+			for(const coplay::PlayerInput &input : inputs.players)
+			{
+				if(input.slot == slot)
+				{
+					pad = PadJson(input);
+					break;
+				}
+			}
+		}
+		o["pad"] = pad;
+		list.append(o);
+	}
+	state["mixMode"] = mix_mode;
+	state["players"] = list;
+	state["combined"] = have_inputs ? PadJson(inputs.combined) : PadJson(local);
+	return state;
 }

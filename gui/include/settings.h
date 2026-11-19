@@ -274,6 +274,27 @@ class Settings : public QObject
 		void SetCoPlayLastInvite(const QString &i)	{ settings.setValue("coplay/last_invite", i); }
 		bool GetCoPlayControllerOnly() const	{ return settings.value("coplay/controller_only", false).toBool(); }
 		void SetCoPlayControllerOnly(bool on)	{ settings.setValue("coplay/controller_only", on); }
+		/** File with the player's picture, already scaled down. */
+		QString GetCoPlayAvatar() const			{ return settings.value("coplay/avatar").toString(); }
+		void SetCoPlayAvatar(const QString &p)	{ settings.setValue("coplay/avatar", p); }
+
+		// Stream overlay (OBS browser source)
+		bool GetOverlayEnabled() const			{ return settings.value("overlay/enabled", false).toBool(); }
+		void SetOverlayEnabled(bool enabled)	{ settings.setValue("overlay/enabled", enabled); }
+		int GetOverlayPort() const				{ return settings.value("overlay/port", 9412).toInt(); }
+		void SetOverlayPort(int port)			{ settings.setValue("overlay/port", port); }
+		bool GetOverlayPlayers() const			{ return settings.value("overlay/players", true).toBool(); }
+		void SetOverlayPlayers(bool on)			{ settings.setValue("overlay/players", on); }
+		bool GetOverlayPads() const				{ return settings.value("overlay/pads", true).toBool(); }
+		void SetOverlayPads(bool on)			{ settings.setValue("overlay/pads", on); }
+		bool GetOverlayCombined() const			{ return settings.value("overlay/combined", true).toBool(); }
+		void SetOverlayCombined(bool on)		{ settings.setValue("overlay/combined", on); }
+		QString GetOverlaySkin() const			{ return settings.value("overlay/skin", "auto").toString(); }
+		void SetOverlaySkin(const QString &s)	{ settings.setValue("overlay/skin", s); }
+		int GetOverlayScale() const				{ return settings.value("overlay/scale", 30).toInt(); }
+		void SetOverlayScale(int percent)		{ settings.setValue("overlay/scale", percent); }
+		QString GetOverlayLayout() const		{ return settings.value("overlay/layout", "row").toString(); }
+		void SetOverlayLayout(const QString &l)	{ settings.setValue("overlay/layout", l); }
 
 		bool GetLogVerbose() const 				{ return settings.value("settings/log_verbose", false).toBool(); }
 		void SetLogVerbose(bool enabled)		{ settings.setValue("settings/log_verbose", enabled); }

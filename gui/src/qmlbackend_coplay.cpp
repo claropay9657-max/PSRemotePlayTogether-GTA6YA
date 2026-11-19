@@ -4,11 +4,15 @@
 
 #include "qmlbackend.h"
 #include "qmlmainwindow.h"
+#include "overlayserver.h"
 
 #include <coplay/client.h>
 #include <coplay/invite.h>
 
+#include <QClipboard>
+#include <QFile>
 #include <QFutureWatcher>
+#include <QGuiApplication>
 #include <QtConcurrentRun>
 
 void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, bool controller_only)
@@ -34,6 +38,10 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
     config.name = player.toStdString();
     // Controller only: no picture and no sound, but rumble, haptics and triggers still work
     config.want = controller_only ? coplay::kWantHaptics : coplay::kWantAll;
+    // The overlay shows what everybody presses
+    if (settings->GetOverlayEnabled())
+        config.want |= coplay::kWantInputs;
+    // The session corrects this as soon as it has opened the controllers
     config.controller = coplay::ControllerKind::None;
     for (QmlController *controller : qmlControllers()) {
         if (controller->isDualSense() || controller->isDualSenseEdge()) {
@@ -41,6 +49,12 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
             break;
         }
         config.controller = coplay::ControllerKind::Other;
+    }
+    QFile avatar_file(settings->GetCoPlayAvatar());
+    if (!settings->GetCoPlayAvatar().isEmpty() && avatar_file.open(QIODevice::ReadOnly)) {
+        QByteArray avatar = avatar_file.read(static_cast<qint64>(coplay::kMaxAvatarSize) + 1);
+        if (avatar.size() <= static_cast<int>(coplay::kMaxAvatarSize))
+            config.avatar.assign(avatar.constBegin(), avatar.constEnd());
     }
 
     auto client = std::make_shared<coplay::Client>(config);
@@ -123,4 +137,33 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
             return QString();
         return QString::fromStdString(failure.empty() ? "Could not connect" : failure);
     }));
+}
+
+// ------------------------------------------------------------------ stream overlay
+
+void QmlBackend::initOverlay()
+{
+    overlay = new OverlayServer(settings, this);
+    connect(overlay, &OverlayServer::StateChanged, this, &QmlBackend::overlayStateChanged);
+    connect(settings_qml, &QmlSettings::overlayChanged, overlay, &OverlayServer::ApplySettings);
+    connect(this, &QmlBackend::sessionChanged, overlay, [this](StreamSession *s) {
+        overlay->SetSession(s);
+    });
+    overlay->ApplySettings();
+}
+
+QString QmlBackend::overlayUrl() const
+{
+    return overlay ? overlay->Url() : QString();
+}
+
+QString QmlBackend::overlayError() const
+{
+    return overlay ? overlay->LastError() : QString();
+}
+
+void QmlBackend::copyOverlayUrl()
+{
+    if (!overlayUrl().isEmpty())
+        QGuiApplication::clipboard()->setText(overlayUrl());
 }

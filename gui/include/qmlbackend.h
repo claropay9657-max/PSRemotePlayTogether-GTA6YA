@@ -87,6 +87,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(QVariantList hiddenHosts READ hiddenHosts NOTIFY hiddenHostsChanged)
     Q_PROPERTY(bool autoConnect READ autoConnect NOTIFY autoConnectChanged)
     Q_PROPERTY(bool coplayJoining READ coplayJoining NOTIFY coplayJoiningChanged)
+    Q_PROPERTY(QString overlayUrl READ overlayUrl NOTIFY overlayStateChanged)
+    Q_PROPERTY(QString overlayError READ overlayError NOTIFY overlayStateChanged)
     Q_PROPERTY(PsnConnectState connectState READ connectState WRITE setConnectState NOTIFY connectStateChanged)
     Q_PROPERTY(QVariantList currentControllerMapping READ currentControllerMapping NOTIFY currentControllerMappingChanged)
     Q_PROPERTY(QString currentControllerType READ currentControllerType NOTIFY currentControllerTypeChanged)
@@ -192,6 +194,11 @@ public:
     Q_INVOKABLE void stopSession(bool sleep);
     // Play Together, see qmlbackend_coplay.cpp
     bool coplayJoining() const { return coplay_joining; }
+    /** Address of the stream overlay for OBS; empty while it is switched off. */
+    QString overlayUrl() const;
+    QString overlayError() const;
+    Q_INVOKABLE void copyOverlayUrl();
+    void initOverlay();
     /** Joins a session somebody else shares. Answers with coplayJoinFinished. */
     Q_INVOKABLE void joinCoPlay(const QString &invite, const QString &name, bool controller_only);
     Q_INVOKABLE void sessionGoHome();
@@ -250,6 +257,7 @@ signals:
     void error(const QString &title, const QString &text);
     void sessionError(const QString &title, const QString &text);
     void coplayJoiningChanged();
+    void overlayStateChanged();
     void coplayJoinFinished(bool ok, const QString &message);
     void sessionPinDialogRequested();
     void sessionStopDialogRequested();
@@ -338,6 +346,7 @@ private:
     bool enable_analog_stick_mapping = false;
     bool resume_session = false;
     bool coplay_joining = false;
+    class OverlayServer *overlay = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};
     QString auto_connect_nickname = "";
