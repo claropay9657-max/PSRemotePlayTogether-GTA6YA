@@ -13,6 +13,7 @@
 #include <coplay/stun.h>
 #include <coplay/video.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
