@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
+import "controls"
+
 Item {
     id: dialog
     property alias header: headerLabel.text
@@ -49,6 +51,10 @@ Item {
         }
     }
 
+    NovaBackground {
+        anchors.fill: parent
+    }
+
     ToolBar {
         id: toolBar
         anchors {
@@ -57,6 +63,7 @@ Item {
             right: parent.right
         }
         height: 80
+        background: GlassBar { }
 
         RowLayout {
             anchors {

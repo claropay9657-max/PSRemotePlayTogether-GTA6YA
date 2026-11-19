@@ -23,6 +23,9 @@
     <file>ControllerMappingDialog.qml</file>
     <file>AutoConnectView.qml</file>
     <file>PsnView.qml</file>
+    <file>controls/NovaBackground.qml</file>
+    <file>controls/GradientText.qml</file>
+    <file>controls/GlassBar.qml</file>
     <file>controls/Button.qml</file>
     <file>controls/CheckBox.qml</file>
     <file>controls/ComboBox.qml</file>

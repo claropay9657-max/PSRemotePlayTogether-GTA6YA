@@ -3136,7 +3136,8 @@ DialogView {
                     Layout.preferredWidth: 400
                     verticalAlignment: Text.AlignTop
                     wrapMode: Text.Wrap
-                    text: "<h1>chiaki-ng</h1> by Street Pea, version %1
+                    text: "<h1>PSRemotePlayTogether</h1> powered by GamerNova.net
+                        <h2>Built on chiaki-ng</h2> by Street Pea, version %1
                         <h2>Fork of Chiaki</h2> by Florian Markl at version 2.1.1
 
                         <p>This program is free software: you can redistribute it and/or modify

@@ -5,9 +5,12 @@ import QtQuick.Controls.Material
 
 import org.streetpea.chiaking
 
+import "controls" as C
+
 Pane {
     padding: 0
     id: consolePane
+    background: C.NovaBackground { }
     StackView.onActivated: {
         forceActiveFocus(Qt.TabFocusReason);
         if(!Chiaki.autoConnect && !root.initialAsk && !Chiaki.window.directStream)
@@ -80,6 +83,7 @@ Pane {
             right: parent.right
         }
         height: 80
+        background: C.GlassBar { }
 
         RowLayout {
             anchors {
@@ -90,21 +94,32 @@ Pane {
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 100
+                Layout.preferredWidth: 80
                 flat: true
                 text: "×"
-                font.pixelSize: 60
+                font.pixelSize: 44
                 focusPolicy: Qt.NoFocus
                 onClicked: Qt.quit()
                 Material.roundedScale: Material.SmallScale
+            }
+
+            C.GradientText {
+                Layout.alignment: Qt.AlignVCenter
+                Layout.leftMargin: 6
+                // Makes room for the buttons in a narrow window
+                visible: toolBar.width >= 1400
+                text: "PSRemotePlayTogether"
+                font.pixelSize: 26
+                font.bold: true
             }
 
             Item { Layout.fillWidth: true }
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 350
+                Layout.preferredWidth: 270
                 flat: true
+                font.pixelSize: 17
                 text: "Create Steam Shortcut"
                 focusPolicy: Qt.NoFocus
                 onClicked: root.showSteamShortcutDialog(false)
@@ -125,8 +140,9 @@ Pane {
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 400
+                Layout.preferredWidth: 250
                 flat: true
+                font.pixelSize: 17
                 text: "Refresh PSN Hosts"
                 icon.source: "qrc:/icons/r1.svg"
                 focusPolicy: Qt.NoFocus
@@ -137,8 +153,9 @@ Pane {
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 400
+                Layout.preferredWidth: 250
                 flat: true
+                font.pixelSize: 17
                 focusPolicy: Qt.NoFocus
                 Material.roundedScale: Material.SmallScale
                 visible: !Chiaki.settings.psnAuthToken
@@ -146,19 +163,25 @@ Pane {
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 260
-                flat: true
+                Layout.preferredWidth: 200
+                Layout.topMargin: 14
+                Layout.bottomMargin: 14
+                Layout.leftMargin: 8
+                Layout.rightMargin: 8
                 text: qsTr("Play Together")
+                font.pixelSize: 17
+                font.bold: true
                 focusPolicy: Qt.NoFocus
                 onClicked: root.showPlayTogetherDialog()
-                Material.roundedScale: Material.SmallScale
-                highlighted: Chiaki.settings.coplayHostEnabled
+                Material.roundedScale: Material.FullScale
+                highlighted: true
             }
 
             Button {
                 Layout.fillHeight: true
-                Layout.preferredWidth: 300
+                Layout.preferredWidth: 240
                 flat: true
+                font.pixelSize: 17
                 text: "Add Manual Host"
                 focusPolicy: Qt.NoFocus
                 onClicked: root.showManualHostDialog()
@@ -179,7 +202,7 @@ Pane {
             Button {
                 id: settingsButton
                 Layout.fillHeight: true
-                Layout.preferredWidth: 100
+                Layout.preferredWidth: 80
                 flat: true
                 icon.source: "qrc:/icons/settings-20px.svg";
                 icon.width: 50
@@ -223,9 +246,21 @@ Pane {
         delegate: ItemDelegate {
             visible: modelData.display
             id: delegate
-            width: parent ? parent.width : 0
+            width: parent ? parent.width - 40 : 0
+            x: 20
             height: modelData.display ? 180 : 0
             highlighted: ListView.isCurrentItem
+            // A glass card; the selected one glows
+            background: Rectangle {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                anchors.bottomMargin: 8
+                radius: 18
+                color: delegate.hovered || delegate.highlighted ? Qt.rgba(40 / 255, 30 / 255, 80 / 255, 0.72) : Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.72)
+                border.width: delegate.highlighted ? 2 : 1
+                border.color: delegate.highlighted ? "#8c52ff" : Qt.rgba(1, 1, 1, 0.09)
+                Behavior on color { ColorAnimation { duration: 150 } }
+            }
             onClicked: connectToHost()
 
             function connectToHost() {
@@ -430,23 +465,62 @@ Pane {
             bottom: parent.bottom
             margins: 20
         }
+        opacity: 0.6
         text: Qt.application.version
     }
 
-    Image {
-        id: logoImage
+    // Shown while there is no console in the list yet
+    ColumnLayout {
+        id: hero
         anchors.centerIn: parent
-        source: "qrc:/icons/chiaking-logo-white.svg"
-        sourceSize: Qt.size(Math.min(parent.width, parent.height) / 2, Math.min(parent.width, parent.height) / 2)
+        spacing: 10
+        visible: {
+            for (let i = 0; i < Chiaki.hosts.length; ++i) {
+                if (Chiaki.hosts[i].display)
+                    return false;
+            }
+            return true;
+        }
 
-        PropertyAnimation {
-            target: logoImage
-            property: "opacity"
-            from: 0.05
-            to: 0.20
-            duration: 1000
-            easing.type: Easing.OutCubic
-            running: true
+        C.GradientText {
+            Layout.alignment: Qt.AlignHCenter
+            text: "PSRemotePlayTogether"
+            font.pixelSize: 54
+            font.bold: true
+        }
+
+        Label {
+            Layout.alignment: Qt.AlignHCenter
+            opacity: 0.75
+            font.pixelSize: 22
+            text: qsTr("One console. One controller. Everyone plays.")
+        }
+
+        Label {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 16
+            opacity: 0.55
+            horizontalAlignment: Text.AlignHCenter
+            text: qsTr("Looking for your PlayStation on this network…\nA friend sent you an invite? Open Play Together.")
+        }
+    }
+
+    Label {
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            bottom: parent.bottom
+            margins: 22
+        }
+        textFormat: Text.StyledText
+        linkColor: "#00f2ff"
+        opacity: 0.85
+        text: qsTr("powered by %1").arg("<a href=\"https://gamernova.net/\">GamerNova.net</a>")
+        onLinkActivated: (link) => Qt.openUrlExternally(link)
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton
+            cursorShape: parent.hoveredLink ? Qt.PointingHandCursor : Qt.ArrowCursor
         }
     }
 }

@@ -50,10 +50,11 @@ DialogView {
 
                 // ---------------------------------------------------- profile
 
-                Label {
+                C.GradientText {
                     text: qsTr("Your profile")
                     font.bold: true
-                    font.pixelSize: 22
+                    font.pixelSize: 24
+                    to: "#7c86ff"
                 }
 
                 RowLayout {
@@ -143,15 +144,21 @@ DialogView {
                     Layout.topMargin: 16
                     Layout.bottomMargin: 6
                     height: 1
-                    color: Material.dividerColor
+                    opacity: 0.45
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "#8c52ff" }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
                 }
 
                 // ---------------------------------------------------- join
 
-                Label {
+                C.GradientText {
                     text: qsTr("Join a friend")
                     font.bold: true
-                    font.pixelSize: 22
+                    font.pixelSize: 24
+                    to: "#7c86ff"
                 }
 
                 Label {
@@ -204,15 +211,21 @@ DialogView {
                     Layout.topMargin: 16
                     Layout.bottomMargin: 6
                     height: 1
-                    color: Material.dividerColor
+                    opacity: 0.45
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "#8c52ff" }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
                 }
 
                 // ---------------------------------------------------- share
 
-                Label {
+                C.GradientText {
                     text: qsTr("Share your console")
                     font.bold: true
-                    font.pixelSize: 22
+                    font.pixelSize: 24
+                    to: "#7c86ff"
                 }
 
                 Label {
@@ -340,15 +353,21 @@ DialogView {
                     Layout.topMargin: 16
                     Layout.bottomMargin: 6
                     height: 1
-                    color: Material.dividerColor
+                    opacity: 0.45
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "#8c52ff" }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
                 }
 
                 // ---------------------------------------------------- overlay
 
-                Label {
+                C.GradientText {
                     text: qsTr("Stream overlay for OBS")
                     font.bold: true
-                    font.pixelSize: 22
+                    font.pixelSize: 24
+                    to: "#7c86ff"
                 }
 
                 Label {

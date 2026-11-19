@@ -5,14 +5,19 @@ import QtQuick.Controls.Material
 
 import org.streetpea.chiaking
 
+import "controls"
+
 Item {
     id: root
     property list<Item> restoreFocusItems
     property bool initialAsk: false
     readonly property bool preferSeparateStreamSettingsWindows: Chiaki.window.runtimeRendererBackend === 1 && Chiaki.session
     property bool useSeparateStreamSettingsWindows: false
+    // Colours of GamerNova.net
     Material.theme: Material.Dark
-    Material.accent: "#00a7ff"
+    Material.accent: "#8c52ff"
+    Material.primary: "#161230"
+    Material.background: "#0d0b1f"
 
     function controllerButton(name) {
         let type = "deck";
@@ -253,7 +258,7 @@ Item {
             stack.replace(stack.get(0), autoConnectViewComponent, {}, StackView.Immediate);
     }
 
-    Pane {
+    NovaBackground {
         anchors.fill: parent
         visible: !Chiaki.window.hasVideo && !Chiaki.window.keepVideo
     }

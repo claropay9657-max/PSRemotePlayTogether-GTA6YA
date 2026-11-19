@@ -2893,9 +2893,9 @@ void QmlMainWindow::setSettings(Settings *new_settings)
     QString profile = settings->GetCurrentProfile();
     qCCritical(chiakiGui) << "Current Profile: " << profile;
     if(profile.isEmpty())
-        QGuiApplication::setApplicationDisplayName("chiaki-ng");
+        QGuiApplication::setApplicationDisplayName("PSRemotePlayTogether");
     else
-        QGuiApplication::setApplicationDisplayName(QString("chiaki-ng:%1").arg(profile));
+        QGuiApplication::setApplicationDisplayName(QString("PSRemotePlayTogether:%1").arg(profile));
     this->setTitle(QGuiApplication::applicationDisplayName());
 }
 
