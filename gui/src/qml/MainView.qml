@@ -139,10 +139,12 @@ Pane {
                 Layout.fillHeight: true
                 Layout.fillWidth: true
                 Layout.minimumWidth: 110
-                Layout.preferredWidth: 240
-                Layout.maximumWidth: 240
+                Layout.preferredWidth: 260
+                Layout.maximumWidth: 260
                 flat: true
                 font.pixelSize: 17
+                // Keeps the text clear of the controller button drawn at the right edge
+                rightPadding: 46
                 text: "Create Steam Shortcut"
                 focusPolicy: Qt.NoFocus
                 onClicked: root.showSteamShortcutDialog(false)
@@ -201,6 +203,8 @@ Pane {
                 Layout.maximumWidth: 220
                 flat: true
                 font.pixelSize: 17
+                // Keeps the text clear of the controller button drawn at the left edge
+                leftPadding: 46
                 text: "Add Manual Host"
                 focusPolicy: Qt.NoFocus
                 onClicked: root.showManualHostDialog()
