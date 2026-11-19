@@ -148,5 +148,49 @@
     <file>overlay.css</file>
     <file>overlay.js</file>
     <file>pad.js</file>
+    <file>cryptopad/static/images/PS5 (nova pink)/base.png</file>
+    <file>cryptopad/static/images/PS5 (nova pink)/button.png</file>
+    <file>cryptopad/static/ps5-nova-pink-controller.css</file>
+    <file>cryptopad/templates/PS5 (nova pink)/index.html</file>
+    <file>cryptopad/static/images/PS5 (starlight blue)/base.png</file>
+    <file>cryptopad/static/images/PS5 (starlight blue)/button.png</file>
+    <file>cryptopad/static/ps5-starlight-blue-controller.css</file>
+    <file>cryptopad/templates/PS5 (starlight blue)/index.html</file>
+    <file>cryptopad/static/images/PS5 (galactic purple)/base.png</file>
+    <file>cryptopad/static/images/PS5 (galactic purple)/button.png</file>
+    <file>cryptopad/static/ps5-galactic-purple-controller.css</file>
+    <file>cryptopad/templates/PS5 (galactic purple)/index.html</file>
+    <file>cryptopad/static/images/PS5 (gray camouflage)/base.png</file>
+    <file>cryptopad/static/images/PS5 (gray camouflage)/button.png</file>
+    <file>cryptopad/static/ps5-gray-camouflage-controller.css</file>
+    <file>cryptopad/templates/PS5 (gray camouflage)/index.html</file>
+    <file>cryptopad/static/images/PS5 (volcanic red)/base.png</file>
+    <file>cryptopad/static/images/PS5 (volcanic red)/button.png</file>
+    <file>cryptopad/static/ps5-volcanic-red-controller.css</file>
+    <file>cryptopad/templates/PS5 (volcanic red)/index.html</file>
+    <file>cryptopad/static/images/PS5 (cobalt blue)/base.png</file>
+    <file>cryptopad/static/images/PS5 (cobalt blue)/button.png</file>
+    <file>cryptopad/static/ps5-cobalt-blue-controller.css</file>
+    <file>cryptopad/templates/PS5 (cobalt blue)/index.html</file>
+    <file>cryptopad/static/images/PS5 (sterling silver)/base.png</file>
+    <file>cryptopad/static/images/PS5 (sterling silver)/button.png</file>
+    <file>cryptopad/static/ps5-sterling-silver-controller.css</file>
+    <file>cryptopad/templates/PS5 (sterling silver)/index.html</file>
+    <file>cryptopad/static/images/PS5 (chroma pearl)/base.png</file>
+    <file>cryptopad/static/images/PS5 (chroma pearl)/button.png</file>
+    <file>cryptopad/static/ps5-chroma-pearl-controller.css</file>
+    <file>cryptopad/templates/PS5 (chroma pearl)/index.html</file>
+    <file>cryptopad/static/images/PS5 (chroma indigo)/base.png</file>
+    <file>cryptopad/static/images/PS5 (chroma indigo)/button.png</file>
+    <file>cryptopad/static/ps5-chroma-indigo-controller.css</file>
+    <file>cryptopad/templates/PS5 (chroma indigo)/index.html</file>
+    <file>cryptopad/static/images/PS5 (chroma teal)/base.png</file>
+    <file>cryptopad/static/images/PS5 (chroma teal)/button.png</file>
+    <file>cryptopad/static/ps5-chroma-teal-controller.css</file>
+    <file>cryptopad/templates/PS5 (chroma teal)/index.html</file>
+    <file>cryptopad/static/images/PS5 (30th anniversary)/base.png</file>
+    <file>cryptopad/static/images/PS5 (30th anniversary)/button.png</file>
+    <file>cryptopad/static/ps5-30th-anniversary-controller.css</file>
+    <file>cryptopad/templates/PS5 (30th anniversary)/index.html</file>
   </qresource>
 </RCC>

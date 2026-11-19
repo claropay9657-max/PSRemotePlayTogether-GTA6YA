@@ -4967,7 +4967,7 @@ void QmlMainWindow::init(Settings *settings, bool exit_app_on_stream_exit)
             // The last launch closed before Vulkan showed a frame, which is how a crash inside the
             // Vulkan driver or a third-party Vulkan layer looks; keep OpenGL until switched back
             settings->SetRenderBackend(RenderBackend::OpenGL);
-            fallbackToOpenGL(tr("chiaki-ng closed while starting Vulkan last time, so it now uses OpenGL. "
+            fallbackToOpenGL(tr("PSRemotePlayTogether closed while starting Vulkan last time, so it now uses OpenGL. "
                                 "You can switch back under Settings > Video > Renderer Backend."));
             goto renderer_backend_ready;
         }
