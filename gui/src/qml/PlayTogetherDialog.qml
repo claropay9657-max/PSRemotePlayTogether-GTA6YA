@@ -468,9 +468,16 @@ DialogView {
                         }
 
                         C.CheckBox {
+                            id: showCamsCheck
                             text: qsTr("Show the other players' webcams")
                             checked: Chiaki.settings.coplayShowCams
                             onToggled: Chiaki.settings.coplayShowCams = checked
+                        }
+
+                        C.CheckBox {
+                            text: qsTr("Keep the webcams in a corner of the game picture while playing")
+                            checked: Chiaki.settings.coplayCamsOnStream
+                            onToggled: Chiaki.settings.coplayCamsOnStream = checked
                         }
                     }
 

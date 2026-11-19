@@ -30,6 +30,7 @@ static const double kGateRms = 160.0;
 static const qint64 kHangoverMs = 450;
 static const qint64 kLevelHoldMs = 250;
 static const int kTapMaxBytes = VoiceChat::kRate * 2 * 2; // two seconds
+static const double kPi = 3.14159265358979323846;
 
 static qint64 NowMs()
 {
@@ -245,7 +246,7 @@ void VoiceChat::TestVoiceMain()
 		double freq = base * (static_cast<int>(second / 1.6) % 2 ? 1.25 : 1.0);
 		for(int i = 0; i < kFrameSamples; i++)
 		{
-			phase += 2.0 * M_PI * freq / kRate;
+			phase += 2.0 * kPi * freq / kRate;
 			frame[i] = sounding ? static_cast<int16_t>(7000.0 * std::sin(phase)) : 0;
 		}
 		n++;

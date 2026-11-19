@@ -145,6 +145,8 @@ Item {
     }
 
     function showStreamView() {
+        // A notice from before would stay on the game picture, where nothing can close it
+        infoDialog.close();
         stack.replace(stack.get(0), streamViewComponent);
     }
 

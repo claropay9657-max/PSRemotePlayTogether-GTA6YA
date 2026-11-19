@@ -373,6 +373,17 @@ void QmlSettings::setCoplayShowCams(bool on)
     emit coplayChanged();
 }
 
+bool QmlSettings::coplayCamsOnStream() const
+{
+    return settings->GetCoPlayCamsOnStream();
+}
+
+void QmlSettings::setCoplayCamsOnStream(bool on)
+{
+    settings->SetCoPlayCamsOnStream(on);
+    emit coplayChanged();
+}
+
 bool QmlSettings::coplayCameraSupported() const
 {
     return CoPlayCamera::Supported();

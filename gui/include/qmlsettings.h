@@ -100,6 +100,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(int coplayCameraQuality READ coplayCameraQuality WRITE setCoplayCameraQuality NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayCameraOnStart READ coplayCameraOnStart WRITE setCoplayCameraOnStart NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayShowCams READ coplayShowCams WRITE setCoplayShowCams NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayCamsOnStream READ coplayCamsOnStream WRITE setCoplayCamsOnStream NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayCameraSupported READ coplayCameraSupported CONSTANT)
     // Stream overlay for OBS
     Q_PROPERTY(bool overlayEnabled READ overlayEnabled WRITE setOverlayEnabled NOTIFY overlayChanged)
@@ -622,6 +623,8 @@ public:
     void setCoplayCameraOnStart(bool on);
     bool coplayShowCams() const;
     void setCoplayShowCams(bool on);
+    bool coplayCamsOnStream() const;
+    void setCoplayCamsOnStream(bool on);
     bool coplayCameraSupported() const;
     /** The cameras to choose from, the system's default first. */
     Q_INVOKABLE QStringList coplayCameraDevices() const;

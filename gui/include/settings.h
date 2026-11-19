@@ -296,6 +296,9 @@ class Settings : public QObject
 		/** Receive and show the other players' webcams. */
 		bool GetCoPlayShowCams() const			{ return settings.value("coplay/show_cams", true).toBool(); }
 		void SetCoPlayShowCams(bool on)			{ settings.setValue("coplay/show_cams", on); }
+		/** Keep the webcams in a corner of the game picture while playing. */
+		bool GetCoPlayCamsOnStream() const		{ return settings.value("coplay/cams_on_stream", true).toBool(); }
+		void SetCoPlayCamsOnStream(bool on)		{ settings.setValue("coplay/cams_on_stream", on); }
 
 		// Stream overlay (OBS browser source)
 		bool GetOverlayEnabled() const			{ return settings.value("overlay/enabled", false).toBool(); }
