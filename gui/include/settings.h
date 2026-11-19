@@ -264,6 +264,12 @@ class Settings : public QObject
 		/** Address written into invites; empty = this computer's address on the local network. */
 		QString GetCoPlayAddress() const		{ return settings.value("coplay/address").toString(); }
 		void SetCoPlayAddress(const QString &a)	{ settings.setValue("coplay/address", a); }
+		/**
+		 * Whom to ask for this computer's address on the internet: "host:port" of a STUN
+		 * server; empty = the built-in ones, "off" = nobody, ever.
+		 */
+		QString GetCoPlayStunServer() const		{ return settings.value("coplay/stun_server").toString(); }
+		void SetCoPlayStunServer(const QString &s)	{ settings.setValue("coplay/stun_server", s); }
 		QString GetCoPlaySecret() const			{ return settings.value("coplay/secret").toString(); }
 		void SetCoPlaySecret(const QString &s)	{ settings.setValue("coplay/secret", s); }
 		QString GetCoPlayName() const			{ return settings.value("coplay/name").toString(); }

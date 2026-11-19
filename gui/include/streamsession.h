@@ -137,6 +137,7 @@ class SdeckHapticsWorker;
 		QString coplay_secret;
 		QString coplay_name;
 		QString coplay_address;
+		QString coplay_stun_server;
 		int coplay_mix_mode = 0;
 		/** The player's picture as image file bytes; shown to the others and in the overlay. */
 		QByteArray coplay_avatar;
@@ -190,6 +191,9 @@ class StreamSession : public QObject
 	Q_PROPERTY(bool coplayGuest READ IsCoPlayGuest CONSTANT)
 	Q_PROPERTY(bool coplayHosting READ IsCoPlayHosting NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInvite READ GetCoPlayInvite NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayInviteLan READ GetCoPlayInviteLan NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayInvitePublic READ GetCoPlayInvitePublic NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayInviteIPv6 READ GetCoPlayInviteIPv6 NOTIFY CoPlayChanged)
 	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
 	Q_PROPERTY(int coplayMixMode READ GetCoPlayMixMode WRITE SetCoPlayMixMode NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayVideoEnabled READ GetCoPlayVideoEnabled WRITE SetCoPlayVideoEnabled NOTIFY CoPlayChanged)
@@ -364,6 +368,8 @@ class StreamSession : public QObject
 		void CoPlayStartGuest();
 		void CoPlayStopGuest();
 		void CoPlayOnEvent(ChiakiEvent *event);
+		void CoPlayOnSharingStarted();
+		QString CoPlayInviteFor(const QString &host) const;
 		void CoPlayOnHaptics(uint8_t *buf, size_t buf_size);
 		void CoPlayUpdatePlayers();
 		void CoPlayUpdateControllerKind();
@@ -427,6 +433,12 @@ class StreamSession : public QObject
 		bool IsCoPlayGuest() const;
 		bool IsCoPlayHosting() const;
 		QString GetCoPlayInvite() const;
+		/** With this computer's address on the local network. */
+		QString GetCoPlayInviteLan() const;
+		/** With its address on the internet; empty until that is known. */
+		QString GetCoPlayInvitePublic() const;
+		/** With its global IPv6 address; empty if it has none. */
+		QString GetCoPlayInviteIPv6() const;
 		QVariantList GetCoPlayPlayers() const;
 		int GetCoPlayMixMode() const;
 		void SetCoPlayMixMode(int mode);
@@ -435,6 +447,9 @@ class StreamSession : public QObject
 		Q_INVOKABLE void coplayKick(int slot);
 		Q_INVOKABLE void coplaySetCanControl(int slot, bool allowed);
 		Q_INVOKABLE void coplayCopyInvite();
+		Q_INVOKABLE void coplayCopyInviteLan();
+		Q_INVOKABLE void coplayCopyInvitePublic();
+		Q_INVOKABLE void coplayCopyInviteIPv6();
 		/** Sharing our session, or taking part in somebody else's. */
 		bool IsCoPlayActive() const;
 		bool GetCoPlayVoiceOn() const;

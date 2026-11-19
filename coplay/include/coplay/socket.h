@@ -85,6 +85,19 @@ class UdpSocket
  */
 std::string GuessLocalAddress();
 
+/**
+ * This machine's IPv6 address that the whole internet can reach it under, for
+ * example "2001:db8:12:34::5". Empty if it has none; addresses that only work
+ * on the own link or the own site do not count. Does not send anything.
+ */
+std::string GuessGlobalIPv6Address();
+
+/** Whether an IPv6 address in text form is one the whole internet can reach. */
+bool IsGlobalIPv6Address(const std::string &address);
+
+/** "192.0.2.1" from 4 bytes, "2001:db8::1" from 16; empty for any other size. */
+std::string AddressBytesToString(const uint8_t *bytes, size_t size);
+
 /** Milliseconds on a monotonic clock. */
 uint64_t NowMs();
 /** Microseconds on a monotonic clock. */

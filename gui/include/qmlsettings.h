@@ -92,6 +92,14 @@ class QmlSettings : public QObject
     Q_PROPERTY(bool coplayControllerOnly READ coplayControllerOnly WRITE setCoplayControllerOnly NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayInvite READ coplayInvite NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayLocalAddress READ coplayLocalAddress CONSTANT)
+    Q_PROPERTY(QString coplayInviteLan READ coplayInviteLan NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayInvitePublic READ coplayInvitePublic NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayInviteIPv6 READ coplayInviteIPv6 NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayPublicAddress READ coplayPublicAddress NOTIFY coplayChanged)
+    Q_PROPERTY(int coplayPublicLookupState READ coplayPublicLookupState NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayPublicLookupError READ coplayPublicLookupError NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayIPv6Address READ coplayIPv6Address NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayStunServer READ coplayStunServer WRITE setCoplayStunServer NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayAvatarUrl READ coplayAvatarUrl NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayVoiceEnabled READ coplayVoiceEnabled WRITE setCoplayVoiceEnabled NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayVoiceStartMuted READ coplayVoiceStartMuted WRITE setCoplayVoiceStartMuted NOTIFY coplayChanged)
@@ -603,6 +611,39 @@ public:
     /** Replaces the session key: invites handed out before stop working. */
     Q_INVOKABLE void coplayNewKey();
     Q_INVOKABLE void coplayCopyInvite();
+
+    // One invite for each way of reaching this computer, see qmlsettings_coplay.cpp
+    /** For people in the same home: this computer's address on the local network. */
+    QString coplayInviteLan() const;
+    /** For friends elsewhere; empty for as long as coplayPublicAddress is. */
+    QString coplayInvitePublic() const;
+    /** For friends elsewhere over IPv6; empty if this computer has no global IPv6 address. */
+    QString coplayInviteIPv6() const;
+    /**
+     * This computer's address on the internet: what the user wrote into
+     * "Address in the invite", otherwise what a lookup has found, otherwise empty.
+     */
+    QString coplayPublicAddress() const;
+    /** 0 = not looked up, 1 = looking, 2 = known (found, or written down by the user), 3 = failed. */
+    int coplayPublicLookupState() const;
+    /** After a failed lookup: why, in the words of the network code. */
+    QString coplayPublicLookupError() const;
+    QString coplayIPv6Address() const;
+    /** "host:port" of the STUN server to ask; empty = the built-in ones, "off" = never look up. */
+    QString coplayStunServer() const;
+    void setCoplayStunServer(const QString &server);
+    /**
+     * Looks the public address up without holding up the caller; the result arrives
+     * through coplayChanged. This asks a server on the internet, so call it when the
+     * user shares sessions or wants this invite, not at every start. An address found
+     * within the last minutes is not asked for again.
+     */
+    Q_INVOKABLE void coplayLookupPublicAddress();
+    /** The same, but asks in any case: for a button that says so. */
+    Q_INVOKABLE void coplayRefreshPublicAddress();
+    Q_INVOKABLE void coplayCopyInviteLan();
+    Q_INVOKABLE void coplayCopyInvitePublic();
+    Q_INVOKABLE void coplayCopyInviteIPv6();
     /** Address of the picture file for showing it, changes whenever the picture does. */
     QString coplayAvatarUrl() const;
     /** Lets the user pick an image and makes it the player's picture. */
@@ -873,6 +914,8 @@ signals:
     void placeboChanged();
 
 private:
+    QString coplayInviteFor(const QString &host) const;
+
     Settings *settings = {};
     QStringList audio_in_devices;
     QStringList audio_out_devices;

@@ -9,6 +9,8 @@
 #include <coplay/invite.h>
 #include <coplay/media.h>
 #include <coplay/mixer.h>
+#include <coplay/socket.h>
+#include <coplay/stun.h>
 #include <coplay/video.h>
 
 #include <atomic>
@@ -18,6 +20,7 @@
 #include <cstring>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <string>
@@ -2498,6 +2501,640 @@ TEST(net_webcam_pictures_arrive_whole_or_not_at_all)
 	CHECK(intact);
 	// 7 fragments each way at 3 % loss: about two thirds get through
 	CHECK(got > 60 && got < 150);
+}
+
+// ---------------------------------------------------------------- public address (STUN)
+
+// The STUN messages for these tests are put together by hand, so that they do
+// not share a mistake with the code they test.
+
+static const uint8_t kStunCookie[4] = { 0x21, 0x12, 0xa4, 0x42 };
+static const uint16_t kStunSuccess = 0x0101;
+static const uint16_t kStunError = 0x0111;
+static const uint16_t kStunMapped = 0x0001;
+static const uint16_t kStunXorMapped = 0x0020;
+
+using Datagrams = std::vector<std::vector<uint8_t>>;
+
+static void PutU16(std::vector<uint8_t> &out, uint16_t v)
+{
+	out.push_back(static_cast<uint8_t>(v >> 8));
+	out.push_back(static_cast<uint8_t>(v));
+}
+
+static std::vector<uint8_t> StunAttr(uint16_t type, const std::vector<uint8_t> &value)
+{
+	std::vector<uint8_t> out;
+	PutU16(out, type);
+	PutU16(out, static_cast<uint16_t>(value.size()));
+	out.insert(out.end(), value.begin(), value.end());
+	while(out.size() % 4)
+		out.push_back(0);
+	return out;
+}
+
+/** Value of XOR-MAPPED-ADDRESS (or, not xored, of MAPPED-ADDRESS) for 4 or 16 address bytes. */
+static std::vector<uint8_t> StunAddress(bool xored, const uint8_t *id, std::vector<uint8_t> address, uint16_t port)
+{
+	if(xored)
+	{
+		port ^= 0x2112;
+		for(size_t i = 0; i < address.size(); i++)
+			address[i] ^= i < 4 ? kStunCookie[i] : id[i - 4];
+	}
+	std::vector<uint8_t> out = { 0, static_cast<uint8_t>(address.size() == 4 ? 1 : 2) };
+	PutU16(out, port);
+	out.insert(out.end(), address.begin(), address.end());
+	return out;
+}
+
+static std::vector<uint8_t> StunMessage(uint16_t type, const uint8_t *id, const std::vector<std::vector<uint8_t>> &attrs)
+{
+	std::vector<uint8_t> body;
+	for(const auto &a : attrs)
+		body.insert(body.end(), a.begin(), a.end());
+	std::vector<uint8_t> out;
+	PutU16(out, type);
+	PutU16(out, static_cast<uint16_t>(body.size()));
+	out.insert(out.end(), kStunCookie, kStunCookie + 4);
+	out.insert(out.end(), id, id + 12);
+	out.insert(out.end(), body.begin(), body.end());
+	return out;
+}
+
+/** The usual answer: here is your address. */
+static std::vector<uint8_t> StunAnswer(const uint8_t *id, const std::vector<uint8_t> &address, uint16_t port)
+{
+	return StunMessage(kStunSuccess, id, { StunAttr(kStunXorMapped, StunAddress(true, id, address, port)) });
+}
+
+// The transaction id and the answers of the test vectors in RFC 5769 (sections 2.2 and 2.3)
+static const StunTransactionId kRfcStunId = { 0xb7, 0xe7, 0xa7, 0x01, 0xbc, 0x34, 0xd6, 0x86, 0xfa, 0x87, 0xdf, 0xae };
+static const uint8_t kRfcStunAnswerIPv4[] = {
+	0x01, 0x01, 0x00, 0x3c, 0x21, 0x12, 0xa4, 0x42, 0xb7, 0xe7, 0xa7, 0x01, 0xbc, 0x34, 0xd6, 0x86,
+	0xfa, 0x87, 0xdf, 0xae,
+	// SOFTWARE
+	0x80, 0x22, 0x00, 0x0b, 0x74, 0x65, 0x73, 0x74, 0x20, 0x76, 0x65, 0x63, 0x74, 0x6f, 0x72, 0x20,
+	// XOR-MAPPED-ADDRESS
+	0x00, 0x20, 0x00, 0x08, 0x00, 0x01, 0xa1, 0x47, 0xe1, 0x12, 0xa6, 0x43,
+	// MESSAGE-INTEGRITY
+	0x00, 0x08, 0x00, 0x14, 0x2b, 0x91, 0xf5, 0x99, 0xfd, 0x9e, 0x90, 0xc3, 0x8c, 0x74, 0x89, 0xf9,
+	0x2f, 0x2a, 0xf9, 0xba, 0x53, 0xf0, 0x6b, 0xe7,
+	// FINGERPRINT
+	0x80, 0x28, 0x00, 0x04, 0xc0, 0x7d, 0x4c, 0x96
+};
+static const uint8_t kRfcStunAnswerIPv6[] = {
+	0x01, 0x01, 0x00, 0x48, 0x21, 0x12, 0xa4, 0x42, 0xb7, 0xe7, 0xa7, 0x01, 0xbc, 0x34, 0xd6, 0x86,
+	0xfa, 0x87, 0xdf, 0xae,
+	0x80, 0x22, 0x00, 0x0b, 0x74, 0x65, 0x73, 0x74, 0x20, 0x76, 0x65, 0x63, 0x74, 0x6f, 0x72, 0x20,
+	0x00, 0x20, 0x00, 0x14, 0x00, 0x02, 0xa1, 0x47, 0x01, 0x13, 0xa9, 0xfa, 0xa5, 0xd3, 0xf1, 0x79,
+	0xbc, 0x25, 0xf4, 0xb5, 0xbe, 0xd2, 0xb9, 0xd9,
+	0x00, 0x08, 0x00, 0x14, 0xa3, 0x82, 0x95, 0x4e, 0x4b, 0xe6, 0x7b, 0xf1, 0x17, 0x84, 0xc9, 0x7c,
+	0x82, 0x92, 0xc2, 0x75, 0xbf, 0xe3, 0xed, 0x41,
+	0x80, 0x28, 0x00, 0x04, 0xc8, 0xfb, 0x0b, 0x4c
+};
+
+static const std::vector<uint8_t> kStunTestIPv4 = { 198, 51, 100, 23 };
+static const std::vector<uint8_t> kStunTestIPv6 = { 0x20, 0x01, 0x0d, 0xb8, 0x85, 0xa3, 0, 0, 0, 0, 0x8a, 0x2e, 0x03, 0x70, 0x73, 0x34 };
+
+TEST(stun_request_and_rfc5769_answers)
+{
+	std::vector<uint8_t> request = StunBindingRequest(kRfcStunId);
+	static const uint8_t header[8] = { 0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42 };
+	CHECK(request.size() == 20);
+	CHECK(request.size() == 20 && std::memcmp(request.data(), header, 8) == 0);
+	CHECK(request.size() == 20 && std::memcmp(request.data() + 8, kRfcStunId.data(), 12) == 0);
+
+	std::string address, error;
+	uint16_t port = 0;
+	CHECK(StunParseBindingResponse(kRfcStunAnswerIPv4, sizeof(kRfcStunAnswerIPv4), kRfcStunId, address, &port, &error));
+	CHECK(address == "192.0.2.1" && port == 32853);
+	port = 0;
+	CHECK(StunParseBindingResponse(kRfcStunAnswerIPv6, sizeof(kRfcStunAnswerIPv6), kRfcStunId, address, &port, &error));
+	CHECK(address == "2001:db8:1234:5678:11:2233:4455:6677" && port == 32853);
+	// the port and the reason are optional
+	address.clear();
+	CHECK(StunParseBindingResponse(kRfcStunAnswerIPv4, sizeof(kRfcStunAnswerIPv4), kRfcStunId, address, nullptr, nullptr));
+	CHECK(address == "192.0.2.1");
+}
+
+TEST(stun_takes_the_right_address_attribute)
+{
+	const uint8_t *id = kRfcStunId.data();
+	const std::vector<uint8_t> b = { 203, 0, 113, 7 };
+	std::string address, error;
+	uint16_t port = 0;
+
+	// both kinds: the scrambled one counts, in whichever order they come
+	std::vector<uint8_t> m = StunMessage(kStunSuccess, id,
+		{ StunAttr(kStunMapped, StunAddress(false, id, b, 1111)), StunAttr(kStunXorMapped, StunAddress(true, id, kStunTestIPv4, 40001)) });
+	CHECK(StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(address == "198.51.100.23" && port == 40001);
+	m = StunMessage(kStunSuccess, id,
+		{ StunAttr(kStunXorMapped, StunAddress(true, id, kStunTestIPv4, 40001)), StunAttr(kStunMapped, StunAddress(false, id, b, 1111)) });
+	CHECK(StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(address == "198.51.100.23" && port == 40001);
+
+	// a server from before RFC 5389 only sends the plain one
+	m = StunMessage(kStunSuccess, id, { StunAttr(kStunMapped, StunAddress(false, id, b, 1111)) });
+	CHECK(StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(address == "203.0.113.7" && port == 1111);
+
+	// the number the scrambled one had in the drafts
+	m = StunMessage(kStunSuccess, id, { StunAttr(0x8020, StunAddress(true, id, kStunTestIPv4, 40002)) });
+	CHECK(StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(address == "198.51.100.23" && port == 40002);
+
+	// a scrambled one that cannot be read does not hide a plain one that can
+	m = StunMessage(kStunSuccess, id,
+		{ StunAttr(kStunXorMapped, { 0, 9, 1, 2, 3, 4, 5, 6 }), StunAttr(kStunMapped, StunAddress(false, id, b, 1111)) });
+	CHECK(StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(address == "203.0.113.7" && port == 1111);
+
+	// attributes we do not know are skipped, padding included
+	m = StunMessage(kStunSuccess, id,
+		{ StunAttr(0x8022, { 'a', 'b', 'c', 'd', 'e' }), StunAttr(0x7777, {}),
+			StunAttr(kStunXorMapped, StunAddress(true, id, kStunTestIPv4, 40001)), StunAttr(0x8028, { 1, 2, 3, 4 }) });
+	CHECK(StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(address == "198.51.100.23" && port == 40001);
+
+	// IPv6, both ways of writing it
+	m = StunMessage(kStunSuccess, id, { StunAttr(kStunXorMapped, StunAddress(true, id, kStunTestIPv6, 9410)) });
+	CHECK(StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(address == "2001:db8:85a3::8a2e:370:7334" && port == 9410);
+	m = StunMessage(kStunSuccess, id, { StunAttr(kStunMapped, StunAddress(false, id, kStunTestIPv6, 9411)) });
+	CHECK(StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(address == "2001:db8:85a3::8a2e:370:7334" && port == 9411);
+}
+
+TEST(stun_rejects_what_is_not_an_answer)
+{
+	const uint8_t *id = kRfcStunId.data();
+	const std::vector<uint8_t> good = StunAnswer(id, kStunTestIPv4, 40001);
+	std::string address, error;
+	uint16_t port = 0;
+	CHECK(StunParseBindingResponse(good.data(), good.size(), kRfcStunId, address, &port, &error));
+	// turned away with a reason, and without touching what the caller has
+	auto rejected = [&](const std::vector<uint8_t> &m) {
+		std::string addr = "untouched", err;
+		uint16_t p = 7;
+		bool ok = StunParseBindingResponse(m.data(), m.size(), kRfcStunId, addr, &p, &err);
+		return !ok && !err.empty() && addr == "untouched" && p == 7;
+	};
+
+	// cut off anywhere, or with something behind it
+	for(size_t n = 0; n < good.size(); n++)
+		CHECK(rejected(std::vector<uint8_t>(good.begin(), good.begin() + static_cast<std::ptrdiff_t>(n))));
+	std::vector<uint8_t> m = good;
+	m.push_back(0);
+	CHECK(rejected(m));
+	m.insert(m.end(), 3, 0);
+	CHECK(rejected(m));
+	CHECK(!StunParseBindingResponse(nullptr, 0, kRfcStunId, address, &port, &error));
+
+	// an answer to somebody else's request
+	StunTransactionId other = kRfcStunId;
+	other[11] ^= 1;
+	error.clear();
+	CHECK(!StunParseBindingResponse(good.data(), good.size(), other, address, &port, &error));
+	CHECK(!error.empty());
+
+	// not the magic cookie
+	m = good;
+	m[5] ^= 0x10;
+	CHECK(rejected(m));
+
+	// a request, an indication, and no STUN at all
+	m = good;
+	m[0] = 0x00;
+	m[1] = 0x01;
+	CHECK(rejected(m));
+	m[1] = 0x11;
+	CHECK(rejected(m));
+	m[0] = 0x81;
+	m[1] = 0x01;
+	CHECK(rejected(m));
+
+	// the server says no
+	m = StunMessage(kStunError, id, { StunAttr(0x0009, { 0, 0, 4, 20, 'n', 'o' }) });
+	CHECK(rejected(m));
+	error.clear();
+	CHECK(!StunParseBindingResponse(m.data(), m.size(), kRfcStunId, address, &port, &error));
+	CHECK(error.find("420") != std::string::npos);
+	// ... even if it adds an address
+	CHECK(rejected(StunMessage(kStunError, id, { StunAttr(kStunXorMapped, StunAddress(true, id, kStunTestIPv4, 40001)) })));
+
+	// success without an address
+	CHECK(rejected(StunMessage(kStunSuccess, id, {})));
+	CHECK(rejected(StunMessage(kStunSuccess, id, { StunAttr(0x8022, { 'x' }) })));
+
+	// an attribute that claims to be longer than the message
+	m = good;
+	m[23] = 200;
+	CHECK(rejected(m));
+
+	// address attributes that make no sense: unknown family, too short for the family, no address
+	CHECK(rejected(StunMessage(kStunSuccess, id, { StunAttr(kStunXorMapped, { 0, 3, 0x12, 0x34, 1, 2, 3, 4 }) })));
+	CHECK(rejected(StunMessage(kStunSuccess, id, { StunAttr(kStunXorMapped, { 0, 1, 0x12, 0x34, 1, 2, 3 }) })));
+	CHECK(rejected(StunMessage(kStunSuccess, id, { StunAttr(kStunXorMapped, { 0, 2, 0x12, 0x34, 1, 2, 3, 4, 5, 6, 7, 8 }) })));
+	CHECK(rejected(StunMessage(kStunSuccess, id, { StunAttr(kStunMapped, { 0, 1 }) })));
+	CHECK(rejected(StunMessage(kStunSuccess, id, { StunAttr(kStunMapped, StunAddress(false, id, { 0, 0, 0, 0 }, 1234)) })));
+	CHECK(rejected(StunMessage(kStunSuccess, id, { StunAttr(kStunXorMapped, StunAddress(true, id, std::vector<uint8_t>(16, 0), 1234)) })));
+
+	// whatever arrives, the parser neither crashes nor reads past the end
+	std::mt19937 rng(7);
+	for(int i = 0; i < 4000; i++)
+	{
+		std::vector<uint8_t> junk;
+		if(i % 2)
+		{
+			junk.resize(rng() % 200);
+			for(auto &v : junk)
+				v = static_cast<uint8_t>(rng());
+		}
+		else
+		{
+			// a real answer with a few bytes changed gets much further into the parser
+			junk.assign(kRfcStunAnswerIPv6, kRfcStunAnswerIPv6 + sizeof(kRfcStunAnswerIPv6));
+			int changes = 1 + static_cast<int>(rng() % 3);
+			for(int k = 0; k < changes; k++)
+				junk[rng() % junk.size()] = static_cast<uint8_t>(rng());
+			if(rng() % 4 == 0)
+				junk.resize(rng() % junk.size());
+		}
+		// in a buffer of exactly this size, so that a memory checker sees a read past the end
+		std::unique_ptr<uint8_t[]> exact(new uint8_t[junk.size() ? junk.size() : 1]);
+		if(!junk.empty())
+			std::memcpy(exact.get(), junk.data(), junk.size());
+		std::string addr;
+		if(StunParseBindingResponse(exact.get(), junk.size(), kRfcStunId, addr, &port, &error))
+			CHECK(!addr.empty());
+	}
+}
+
+TEST(stun_server_text)
+{
+	StunServer s;
+	CHECK(ParseStunServer("stun.example.org", s) && s.host == "stun.example.org" && s.port == 3478);
+	CHECK(ParseStunServer("  stun.example.org:19302\n", s) && s.host == "stun.example.org" && s.port == 19302);
+	CHECK(ParseStunServer("192.0.2.1:3479", s) && s.host == "192.0.2.1" && s.port == 3479);
+	CHECK(ParseStunServer("2001:db8::1", s) && s.host == "2001:db8::1" && s.port == 3478);
+	CHECK(ParseStunServer("[2001:db8::1]", s) && s.host == "2001:db8::1" && s.port == 3478);
+	CHECK(ParseStunServer("[2001:db8::1]:5000", s) && s.host == "2001:db8::1" && s.port == 5000);
+
+	s.host = "untouched";
+	s.port = 7;
+	CHECK(!ParseStunServer("", s));
+	CHECK(!ParseStunServer("   ", s));
+	CHECK(!ParseStunServer(":3478", s));
+	CHECK(!ParseStunServer("host:", s));
+	CHECK(!ParseStunServer("host:0", s));
+	CHECK(!ParseStunServer("host:65536", s));
+	CHECK(!ParseStunServer("host:12x", s));
+	CHECK(!ParseStunServer("[2001:db8::1", s));
+	CHECK(!ParseStunServer("[2001:db8::1]5000", s));
+	CHECK(!ParseStunServer("[2001:db8::1]:", s));
+	CHECK(!ParseStunServer("[]:5000", s));
+	CHECK(!ParseStunServer("stun://host", s));
+	CHECK(!ParseStunServer("two words", s));
+	CHECK(s.host == "untouched" && s.port == 7);
+
+	// the servers asked without a setting can be read the same way
+	std::vector<StunServer> defaults = DefaultStunServers();
+	CHECK(defaults.size() >= 2);
+	for(const StunServer &d : defaults)
+	{
+		StunServer again;
+		CHECK(ParseStunServer(d.host + ":" + std::to_string(d.port), again) && again.host == d.host && again.port == d.port);
+	}
+}
+
+TEST(global_ipv6_addresses)
+{
+	CHECK(IsGlobalIPv6Address("2a02:8109:9a40:1b3c:1c2d:3e4f:5a6b:7c8d"));
+	CHECK(IsGlobalIPv6Address("2003:e2:af12:3400::17"));
+	CHECK(IsGlobalIPv6Address("2600::1"));
+	CHECK(!IsGlobalIPv6Address("fe80::1c2d:3e4f:5a6b:7c8d")); // only on the own link
+	CHECK(!IsGlobalIPv6Address("fd12:3456:789a::1"));         // only on the own site
+	CHECK(!IsGlobalIPv6Address("fc00::1"));
+	CHECK(!IsGlobalIPv6Address("::1"));
+	CHECK(!IsGlobalIPv6Address("::"));
+	CHECK(!IsGlobalIPv6Address("ff02::1"));
+	CHECK(!IsGlobalIPv6Address("::ffff:192.0.2.1"));
+	CHECK(!IsGlobalIPv6Address("2001:db8::1"));                      // documentation
+	CHECK(!IsGlobalIPv6Address("2001:0:53aa:64c:0:fbff:ad4d:21a9")); // Teredo
+	CHECK(!IsGlobalIPv6Address("2002:c000:201::1"));                 // 6to4
+	CHECK(!IsGlobalIPv6Address("192.0.2.1"));
+	CHECK(!IsGlobalIPv6Address("not an address"));
+	CHECK(!IsGlobalIPv6Address(""));
+
+	const uint8_t v4[4] = { 192, 0, 2, 1 };
+	const uint8_t v6[16] = { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+	CHECK(AddressBytesToString(v4, 4) == "192.0.2.1");
+	CHECK(AddressBytesToString(v6, 16) == "2001:db8::1");
+	CHECK(AddressBytesToString(v6, 5).empty());
+	CHECK(AddressBytesToString(nullptr, 4).empty());
+
+	// Whether this machine has one depends on where the test runs; what it reports must be one
+	std::string mine = GuessGlobalIPv6Address();
+	CHECK(mine.empty() || IsGlobalIPv6Address(mine));
+	std::printf("    this machine has %s global IPv6 address\n", mine.empty() ? "no" : "a");
+}
+
+/**
+ * A STUN server on the loopback interface that answers whatever the test tells it to.
+ *
+ * About the numbers of requests checked below: a client that gets no answer in
+ * time rightly asks again, and on a machine busy with other things "in time"
+ * can be missed by a thread that simply was not woken up. So the tests that
+ * want an exact number give the client far more time than it will need, and
+ * the others accept one request more.
+ */
+struct FakeStunServer
+{
+	// The datagrams to send back for the n-th request (counting from 1) with this transaction id
+	using Responder = std::function<Datagrams(int n, const uint8_t *id)>;
+	// For what the server itself cannot do, like an answer from another address
+	using Observer = std::function<void(const uint8_t *id, const Address &from)>;
+
+	UdpSocket socket;
+	std::thread thread;
+	std::atomic<bool> quit{false};
+	std::atomic<int> requests{0};
+	std::atomic<int> malformed{0};
+	uint16_t port = 0;
+
+	explicit FakeStunServer(Responder responder, Observer observer = nullptr)
+	{
+		std::string error;
+		if(!socket.Bind(0, &error))
+			std::printf("    fake STUN server: %s\n", error.c_str());
+		port = socket.LocalPort();
+		thread = std::thread([this, responder, observer] {
+			uint8_t buf[1500];
+			while(!quit)
+			{
+				Address from;
+				int r = socket.RecvFrom(buf, sizeof(buf), from, 10);
+				if(r <= 0)
+					continue;
+				// A Binding Request without attributes, as RFC 5389 wants it
+				static const uint8_t header[8] = { 0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42 };
+				if(r != 20 || std::memcmp(buf, header, 8) != 0)
+				{
+					malformed++;
+					continue;
+				}
+				int n = ++requests;
+				if(observer)
+					observer(buf + 8, from);
+				for(const auto &datagram : responder(n, buf + 8))
+				{
+					// An empty vector stands for an empty datagram, which still needs a buffer to point at
+					static const uint8_t nothing = 0;
+					socket.SendTo(datagram.empty() ? &nothing : datagram.data(), datagram.size(), from);
+				}
+			}
+		});
+	}
+
+	~FakeStunServer()
+	{
+		quit = true;
+		thread.join();
+	}
+
+	/** For requests that may still be on their way when the client has given up. */
+	bool WaitForRequests(int count)
+	{
+		return WaitFor([&] { return requests >= count; }, 2000) && requests == count;
+	}
+};
+
+// Long enough that the client never asks twice when the first answer comes
+static const uint32_t kStunPlenty = 30000;
+
+TEST(net_stun_finds_the_public_address)
+{
+	{
+		FakeStunServer server([](int, const uint8_t *id) {
+			return Datagrams{ StunMessage(kStunSuccess, id,
+				{ StunAttr(0x8022, { 't', 'e', 's', 't' }), StunAttr(kStunXorMapped, StunAddress(true, id, kStunTestIPv4, 40001)) }) };
+		});
+		std::string address, error;
+		uint16_t port = 0;
+		CHECK(StunQuery("127.0.0.1", server.port, kStunPlenty, address, &port, &error));
+		CHECK(address == "198.51.100.23" && port == 40001);
+		CHECK(server.requests == 1 && server.malformed == 0);
+		// asked for by kind of address, and without wanting the port or a reason
+		address.clear();
+		CHECK(StunQuery("127.0.0.1", server.port, kStunPlenty, address, nullptr, nullptr, StunFamily::IPv4));
+		CHECK(address == "198.51.100.23");
+		CHECK(server.requests == 2 && server.malformed == 0);
+		// 127.0.0.1 has no IPv6 address to ask
+		address = "untouched";
+		CHECK(!StunQuery("127.0.0.1", server.port, kStunPlenty, address, &port, &error, StunFamily::IPv6));
+		CHECK(address == "untouched" && !error.empty());
+		CHECK(server.requests == 2);
+	}
+	{
+		// an old server: only the plain attribute
+		FakeStunServer server([](int, const uint8_t *id) {
+			return Datagrams{ StunMessage(kStunSuccess, id, { StunAttr(kStunMapped, StunAddress(false, id, { 203, 0, 113, 7 }, 9410)) }) };
+		});
+		std::string address, error;
+		uint16_t port = 0;
+		CHECK(StunQuery("127.0.0.1", server.port, kStunPlenty, address, &port, &error));
+		CHECK(address == "203.0.113.7" && port == 9410);
+	}
+	{
+		// an IPv6 address in the answer
+		FakeStunServer server([](int, const uint8_t *id) { return Datagrams{ StunAnswer(id, kStunTestIPv6, 50000) }; });
+		std::string address, error;
+		uint16_t port = 0;
+		CHECK(StunQuery("127.0.0.1", server.port, kStunPlenty, address, &port, &error));
+		CHECK(address == "2001:db8:85a3::8a2e:370:7334" && port == 50000);
+	}
+}
+
+TEST(net_stun_over_ipv6)
+{
+	FakeStunServer server([](int, const uint8_t *id) { return Datagrams{ StunAnswer(id, kStunTestIPv6, 50000) }; });
+	// Not every machine that runs the tests has IPv6, not even on the loopback interface
+	std::vector<Address> loopback;
+	UdpSocket probe;
+	uint8_t byte = 0;
+	bool have_ipv6 = Resolve("::1", server.port, loopback, nullptr) && probe.OpenFor(loopback[0], nullptr)
+		&& probe.SendTo(&byte, 1, loopback[0]) && WaitFor([&] { return server.malformed == 1; }, 300);
+	if(!have_ipv6)
+	{
+		std::printf("    skipped: no IPv6 on the loopback interface\n");
+		return;
+	}
+	std::string address, error;
+	uint16_t port = 0;
+	CHECK(StunQuery("::1", server.port, kStunPlenty, address, &port, &error, StunFamily::IPv6));
+	CHECK(address == "2001:db8:85a3::8a2e:370:7334" && port == 50000);
+	CHECK(server.requests == 1);
+	address.clear();
+	CHECK(StunQuery("::1", server.port, kStunPlenty, address, &port, &error));
+	CHECK(address == "2001:db8:85a3::8a2e:370:7334");
+	// ::1 has no IPv4 address to ask
+	address = "untouched";
+	CHECK(!StunQuery("::1", server.port, kStunPlenty, address, &port, &error, StunFamily::IPv4));
+	CHECK(address == "untouched" && !error.empty());
+	CHECK(server.requests == 2);
+}
+
+TEST(net_stun_repeats_a_lost_request)
+{
+	// the first request "gets lost"
+	FakeStunServer server([](int n, const uint8_t *id) {
+		return n >= 2 ? Datagrams{ StunAnswer(id, kStunTestIPv4, 40001) } : Datagrams{};
+	});
+	std::string address, error;
+	uint16_t port = 0;
+	uint64_t start = NowMs();
+	CHECK(StunQuery("127.0.0.1", server.port, 1400, address, &port, &error));
+	uint64_t took = NowMs() - start;
+	CHECK(address == "198.51.100.23" && port == 40001);
+	CHECK(server.requests == 2 || server.requests == 3);
+	// the second request goes out after a seventh of the time
+	CHECK(took >= 190);
+}
+
+TEST(net_stun_ignores_answers_that_are_not_ours)
+{
+	const std::vector<uint8_t> wrong = { 203, 0, 113, 66 };
+	// an answer to a request we never made, noise, half an answer and nothing at all
+	auto not_ours = [wrong](const uint8_t *id) {
+		uint8_t other[12];
+		std::memcpy(other, id, 12);
+		other[0] ^= 0x80;
+		std::vector<uint8_t> half = StunAnswer(id, wrong, 2);
+		half.resize(half.size() - 3);
+		return Datagrams{ StunAnswer(other, wrong, 1), { 0xde, 0xad, 0xbe, 0xef, 0x00 }, half, {} };
+	};
+	{
+		// only such answers: the wrong address is never taken, the request is repeated, and then it is over
+		FakeStunServer server([&](int, const uint8_t *id) { return not_ours(id); });
+		std::string address = "untouched", error;
+		uint16_t port = 7;
+		uint64_t start = NowMs();
+		CHECK(!StunQuery("127.0.0.1", server.port, 350, address, &port, &error));
+		uint64_t took = NowMs() - start;
+		CHECK(address == "untouched" && port == 7);
+		CHECK(!error.empty());
+		CHECK(took >= 330 && took < 5000);
+		CHECK(server.WaitForRequests(3));
+	}
+	{
+		// the real answer after them is found
+		FakeStunServer server([&](int, const uint8_t *id) {
+			Datagrams out = not_ours(id);
+			out.push_back(StunAnswer(id, kStunTestIPv4, 40001));
+			return out;
+		});
+		std::string address, error;
+		uint16_t port = 0;
+		CHECK(StunQuery("127.0.0.1", server.port, kStunPlenty, address, &port, &error));
+		CHECK(address == "198.51.100.23" && port == 40001);
+		CHECK(server.requests == 1);
+	}
+	{
+		// Somebody else who has seen the request answers it, with the right transaction id but
+		// from another address than the one asked. That does not count; the server's own
+		// answer to the repeated request does.
+		UdpSocket stranger;
+		CHECK(stranger.Bind(0, nullptr));
+		std::atomic<int> forged{0};
+		FakeStunServer server(
+			[](int n, const uint8_t *id) { return n >= 2 ? Datagrams{ StunAnswer(id, kStunTestIPv4, 40001) } : Datagrams{}; },
+			[&](const uint8_t *id, const Address &from) {
+				std::vector<uint8_t> lie = StunAnswer(id, wrong, 3);
+				if(stranger.SendTo(lie.data(), lie.size(), from))
+					forged++;
+			});
+		std::string address, error;
+		uint16_t port = 0;
+		CHECK(StunQuery("127.0.0.1", server.port, 1400, address, &port, &error));
+		CHECK(address == "198.51.100.23" && port == 40001);
+		CHECK(forged >= 2);
+	}
+}
+
+TEST(net_stun_gives_up_after_the_timeout)
+{
+	{
+		// a server that never answers
+		FakeStunServer server([](int, const uint8_t *) { return Datagrams{}; });
+		std::string address = "untouched", error;
+		uint16_t port = 7;
+		uint64_t start = NowMs();
+		CHECK(!StunQuery("127.0.0.1", server.port, 420, address, &port, &error));
+		uint64_t took = NowMs() - start;
+		CHECK(address == "untouched" && port == 7);
+		CHECK(error.find("No answer") != std::string::npos);
+		CHECK(took >= 400 && took < 5000);
+		// sent three times: at once, after 1/7 and after 3/7 of the time
+		CHECK(server.WaitForRequests(3));
+		CHECK(server.malformed == 0);
+	}
+	{
+		// nobody there at all
+		uint16_t closed_port = 0;
+		{
+			UdpSocket s;
+			CHECK(s.Bind(0, nullptr));
+			closed_port = s.LocalPort();
+		}
+		std::string address = "untouched", error;
+		uint64_t start = NowMs();
+		CHECK(!StunQuery("127.0.0.1", closed_port, 200, address, nullptr, &error));
+		CHECK(address == "untouched" && !error.empty());
+		CHECK(NowMs() - start < 5000);
+	}
+}
+
+TEST(net_stun_server_that_refuses)
+{
+	FakeStunServer server([](int, const uint8_t *id) {
+		return Datagrams{ StunMessage(kStunError, id, { StunAttr(0x0009, { 0, 0, 5, 0, 'b', 'u', 's', 'y' }) }) };
+	});
+	std::string address = "untouched", error;
+	uint64_t start = NowMs();
+	CHECK(!StunQuery("127.0.0.1", server.port, kStunPlenty, address, nullptr, &error));
+	// a clear no is not waited out
+	CHECK(NowMs() - start < 10000);
+	CHECK(address == "untouched");
+	CHECK(error.find("500") != std::string::npos);
+	CHECK(server.requests == 1);
+}
+
+TEST(net_stun_asks_the_next_server_when_one_is_silent)
+{
+	FakeStunServer silent([](int, const uint8_t *) { return Datagrams{}; });
+	FakeStunServer refusing([](int, const uint8_t *id) { return Datagrams{ StunMessage(kStunError, id, {}) }; });
+	FakeStunServer working([](int, const uint8_t *id) { return Datagrams{ StunAnswer(id, kStunTestIPv4, 40001) }; });
+	FakeStunServer spare([](int, const uint8_t *id) { return Datagrams{ StunAnswer(id, { 203, 0, 113, 66 }, 1) }; });
+	std::vector<StunServer> servers = {
+		{ "127.0.0.1", silent.port }, { "127.0.0.1", refusing.port }, { "127.0.0.1", working.port }, { "127.0.0.1", spare.port } };
+	std::string address, error;
+	uint16_t port = 0;
+	CHECK(StunQueryFirst(servers, 280, address, &port, &error, StunFamily::IPv4));
+	CHECK(address == "198.51.100.23" && port == 40001);
+	// every server before the one that answers was asked, none after it
+	CHECK(silent.WaitForRequests(3));
+	CHECK(refusing.requests >= 1 && working.requests >= 1 && spare.requests == 0);
+
+	// nobody answers: the reason is the last server's
+	servers = { { "127.0.0.1", refusing.port }, { "127.0.0.1", silent.port } };
+	address = "untouched";
+	CHECK(!StunQueryFirst(servers, 280, address, &port, &error));
+	CHECK(address == "untouched" && error.find("No answer") != std::string::npos);
+	error.clear();
+	CHECK(!StunQueryFirst({}, 280, address, &port, &error));
+	CHECK(address == "untouched" && !error.empty());
 }
 
 int main(int argc, char **argv)

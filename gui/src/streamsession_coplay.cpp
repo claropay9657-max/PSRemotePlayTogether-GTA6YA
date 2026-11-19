@@ -11,6 +11,7 @@
 //        controller code a console session uses.
 
 #include <streamsession.h>
+#include <coplayaddress.h>
 #include <coplaycamera.h>
 #include <voicechat.h>
 
@@ -19,6 +20,7 @@
 #include <coplay/client.h>
 #include <coplay/host.h>
 #include <coplay/invite.h>
+#include <coplay/socket.h>
 
 #include <QClipboard>
 #include <QGuiApplication>
@@ -59,6 +61,12 @@ struct CoPlayState
 	QVariantList players;
 	int mix_mode = 0;
 	QString invite;
+	// What the invites are made of; set once before sharing starts
+	coplay::Secret invite_secret{};
+	uint16_t invite_port = 0;
+	QString invite_address; // what the user wants in the invite, if anything
+	QString invite_lan;
+	QString stun_server;
 	coplay::PadState local_pad;       // our own controllers, before merging
 	coplay::InputsSnapshot guest_inputs;
 	bool have_guest_inputs = false;
@@ -307,14 +315,27 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	info.dualsense = connect_info.enable_dualsense;
 	coplay->host->SetStreamInfo(info);
 
+	coplay->invite_secret = config.secret;
+	coplay->invite_port = config.port;
+	coplay->invite_address = connect_info.coplay_address.trimmed();
+	coplay->stun_server = connect_info.coplay_stun_server;
+	QString local = QString::fromStdString(coplay::GuessLocalAddress());
+	coplay->invite_lan = CoPlayInviteFor(local.isEmpty() ? QStringLiteral("127.0.0.1") : local);
+	coplay->invite = coplay->invite_address.isEmpty() ? coplay->invite_lan : CoPlayInviteFor(coplay->invite_address);
+	// The invite for friends elsewhere appears when the address on the internet is found
+	connect(CoPlayPublicAddress::Instance(), &CoPlayPublicAddress::Changed, this, &StreamSession::CoPlayChanged);
+}
+
+/** The invite to this session under the given address; none without an address. */
+QString StreamSession::CoPlayInviteFor(const QString &host) const
+{
+	if(!coplay || !coplay->host || host.isEmpty())
+		return QString();
 	coplay::Invite invite;
-	QString address = connect_info.coplay_address.trimmed();
-	invite.host = address.isEmpty() ? coplay::GuessLocalAddress() : address.toStdString();
-	if(invite.host.empty())
-		invite.host = "127.0.0.1";
-	invite.port = config.port;
-	invite.secret = config.secret;
-	coplay->invite = QString::fromStdString(coplay::EncodeInvite(invite));
+	invite.host = host.toStdString();
+	invite.port = coplay->invite_port;
+	invite.secret = coplay->invite_secret;
+	return QString::fromStdString(coplay::EncodeInvite(invite));
 }
 
 void StreamSession::CoPlayStopThreads()
@@ -366,6 +387,31 @@ QString StreamSession::GetCoPlayInvite() const
 		return QString();
 	QMutexLocker locker(&coplay->mutex);
 	return coplay->invite;
+}
+
+QString StreamSession::GetCoPlayInviteLan() const
+{
+	if(!IsCoPlayHosting())
+		return QString();
+	return coplay->invite_lan;
+}
+
+QString StreamSession::GetCoPlayInvitePublic() const
+{
+	if(!IsCoPlayHosting())
+		return QString();
+	// As in the settings: an address the user wrote down is the one for friends elsewhere,
+	// otherwise the one that was looked up, which the settings and every session share
+	if(!coplay->invite_address.isEmpty())
+		return CoPlayInviteFor(coplay->invite_address);
+	return CoPlayInviteFor(CoPlayPublicAddress::Instance()->Address());
+}
+
+QString StreamSession::GetCoPlayInviteIPv6() const
+{
+	if(!IsCoPlayHosting())
+		return QString();
+	return CoPlayInviteFor(QString::fromStdString(coplay::GuessGlobalIPv6Address()));
 }
 
 QVariantList StreamSession::GetCoPlayPlayers() const
@@ -431,6 +477,27 @@ void StreamSession::coplaySetCanControl(int slot, bool allowed)
 void StreamSession::coplayCopyInvite()
 {
 	QString invite = GetCoPlayInvite();
+	if(!invite.isEmpty())
+		QGuiApplication::clipboard()->setText(invite);
+}
+
+void StreamSession::coplayCopyInviteLan()
+{
+	QString invite = GetCoPlayInviteLan();
+	if(!invite.isEmpty())
+		QGuiApplication::clipboard()->setText(invite);
+}
+
+void StreamSession::coplayCopyInvitePublic()
+{
+	QString invite = GetCoPlayInvitePublic();
+	if(!invite.isEmpty())
+		QGuiApplication::clipboard()->setText(invite);
+}
+
+void StreamSession::coplayCopyInviteIPv6()
+{
+	QString invite = GetCoPlayInviteIPv6();
 	if(!invite.isEmpty())
 		QGuiApplication::clipboard()->setText(invite);
 }
@@ -509,6 +576,17 @@ void StreamSession::CoPlayUpdatePlayers()
 	emit CoPlayChanged();
 }
 
+/** On our own thread, once the session is open to guests. */
+void StreamSession::CoPlayOnSharingStarted()
+{
+	if(!IsCoPlayHosting())
+		return;
+	// Friends elsewhere need this computer's address on the internet in their invite.
+	// Sharing is the user's word that it may be asked for; nothing to ask if they wrote one down.
+	if(coplay->invite_address.isEmpty())
+		CoPlayPublicAddress::Instance()->LookupIfStale(coplay->stun_server);
+}
+
 void StreamSession::CoPlayOnEvent(ChiakiEvent *event)
 {
 	if(!coplay || !coplay->host)
@@ -523,6 +601,7 @@ void StreamSession::CoPlayOnEvent(ChiakiEvent *event)
 				coplay->hosting = true;
 				CHIAKI_LOGI(GetChiakiLog(), "Play Together: sharing this session on UDP port %u", host->Port());
 				QMetaObject::invokeMethod(this, [this] { CoPlayStartMedia(); }, Qt::QueuedConnection);
+				QMetaObject::invokeMethod(this, [this] { CoPlayOnSharingStarted(); }, Qt::QueuedConnection);
 			}
 			else
 			{
