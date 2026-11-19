@@ -29,21 +29,39 @@ DialogView {
 
     Item {
         // Controller Mapping
-        GridLayout {
-            anchors {
-                top: parent.top
-                horizontalCenter: parent.horizontalCenter
-                topMargin: 20
+        Flickable {
+            id: mappingFlick
+            anchors.fill: parent
+            clip: true
+            contentWidth: width
+            contentHeight: mappingColumn.implicitHeight + 48
+            flickableDirection: Flickable.VerticalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar {
+                visible: mappingFlick.contentHeight > mappingFlick.height
             }
+        ColumnLayout {
+            id: mappingColumn
+            x: Math.max(28, Math.round((mappingFlick.width - width) / 2))
+            y: 24
+            width: Math.min(mappingFlick.width - 56, 980)
+            spacing: 18
+        C.SettingsSection {
+            title: qsTr("Button mapping")
+            description: qsTr("Click a button below, then press the one on your controller that should do it. Save with the button at the top right.")
+        GridLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 12
+            Layout.bottomMargin: 4
             columns: 3
-            rowSpacing: 10
-            columnSpacing: 10
+            rowSpacing: 6
+            columnSpacing: 18
 
         CheckBox {
             id: analogStickMapping
             property bool firstInFocusChain: true
             property bool lastInFocusChain: false
-            text: qsTr("Allow mapping analog sticks and L2/R2")
+            text: qsTr("Also map the sticks and L2 / R2")
             checked: Chiaki.enableAnalogStickMapping
             onToggled: Chiaki.enableAnalogStickMapping = checked
             Keys.onPressed: (event) => {
@@ -92,15 +110,20 @@ DialogView {
                     spacing: 20
 
                     Label {
-                        Layout.preferredWidth: 150
-                        horizontalAlignment: Text.AlignRight
+                        Layout.preferredWidth: 130
+                        horizontalAlignment: Text.AlignLeft
+                        elide: Text.ElideRight
+                        opacity: 0.8
+                        font.pixelSize: 13
                         text: modelData.buttonName
                     }
 
                     Button {
                         property bool firstInFocusChain: false
                         property bool lastInFocusChain: false
-                        Layout.preferredHeight: 52
+                        Layout.preferredWidth: 120
+                        Layout.preferredHeight: 44
+                        font.pixelSize: 14
                         text: {
                             if(modelData.physicalButton.length > 0)
                                 modelData.physicalButton[0]
@@ -274,6 +297,9 @@ DialogView {
                     }
                 }
             }
+        }
+        }
+        }
         }
 
         Dialog {

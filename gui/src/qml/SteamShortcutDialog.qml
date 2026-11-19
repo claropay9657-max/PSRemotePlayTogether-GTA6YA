@@ -12,7 +12,7 @@ DialogView {
     property bool opening: false
     property bool succeeded: false
     property bool fromReminder
-    title: qsTr("Create Non-Steam Game")
+    title: qsTr("Steam shortcut")
     buttonText: qsTr("Create")
     buttonEnabled: name.text.trim() && !opening
     function close() {
@@ -46,21 +46,20 @@ DialogView {
     }
 
     Item {
+        C.FormCard {
+            title: qsTr("Start from Steam")
+            text: qsTr("Adds PSRemotePlayTogether to Steam as a non-Steam game, with artwork and a controller layout. Steam has to be restarted afterwards.")
+
         GridLayout {
             id: shortcutGrid
-            anchors {
-                top: parent.top
-                horizontalCenter: parent.horizontalCenter
-                topMargin: 20
-            }
             columns: 2
-            rowSpacing: 40
+            rowSpacing: 18
             columnSpacing: 20
             property var steamBasePath: ""
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("Steam Game Name")
+                text: qsTr("Name in Steam")
             }
 
             C.TextField {
@@ -72,7 +71,7 @@ DialogView {
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("Launch Options [Optional]")
+                text: qsTr("Launch options (optional)")
             }
 
             C.TextField {
@@ -83,13 +82,14 @@ DialogView {
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("Custom Steam Base Path (Optional)")
+                text: qsTr("Steam folder (optional)")
             }
 
             Label {
-                Layout.alignment: Qt.AlignRight
                 Layout.preferredWidth: 400
-                text: shortcutGrid.steamBasePath
+                elide: Text.ElideMiddle
+                opacity: 0.7
+                text: shortcutGrid.steamBasePath ? shortcutGrid.steamBasePath : qsTr("Found by itself")
             }
 
             Label {
@@ -97,12 +97,13 @@ DialogView {
 
             C.Button {
                 id: choosePathButton
-                text: qsTr("Choose new steam base path")
+                text: qsTr("Choose another Steam folder")
                 onClicked: {
                     shortcutGrid.steamBasePath = Chiaki.settings.chooseSteamBasePath();
                 }
                 Material.roundedScale: Material.SmallScale
             }
+        }
         }
 
         Item {

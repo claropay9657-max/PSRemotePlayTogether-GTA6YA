@@ -175,6 +175,31 @@ DialogView {
                 }
             }
 
+            // A card behind the form
+
+            Rectangle {
+
+                visible: nativeErrorGrid.visible
+
+                anchors {
+
+                    fill: nativeErrorGrid
+
+                    margins: -28
+
+                }
+
+                radius: 18
+
+                color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.72)
+
+                border.width: 1
+
+                border.color: Qt.rgba(1, 1, 1, 0.09)
+
+            }
+
+
             GridLayout {
                 id: nativeErrorGrid
                 visible: false
@@ -185,7 +210,7 @@ DialogView {
                     topMargin: 50
                 }
                 columns: 2
-                rowSpacing: 10
+                rowSpacing: 18
                 columnSpacing: 20
                 Label {
                     id: nativeErrorHeader
@@ -290,6 +315,19 @@ DialogView {
                 }
             }
         }
+        // A card behind the form
+        Rectangle {
+            visible: linkgrid.visible
+            anchors {
+                fill: linkgrid
+                margins: -28
+            }
+            radius: 18
+            color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.72)
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.09)
+        }
+
         GridLayout {
             id: linkgrid
             visible: false
@@ -299,11 +337,11 @@ DialogView {
                 topMargin: 50
             }
             columns: 2
-            rowSpacing: 10
+            rowSpacing: 18
             columnSpacing: 20
 
             Label {
-                text: qsTr("Open Web Browser with copied URL")
+                text: qsTr("The login address was copied: open it in your web browser")
                 visible: psnurl
             }
 
@@ -317,7 +355,7 @@ DialogView {
 
             C.Button {
                 id: copyUrl
-                text: qsTr("Click to Re-Copy URL")
+                text: qsTr("Copy the address again")
                 onClicked: {
                     openurl.selectAll()
                     openurl.copy()
@@ -329,7 +367,7 @@ DialogView {
             }
 
             Label {
-                text: qsTr("Redirect URL from Web Browser")
+                text: qsTr("Address you were sent to after logging in")
             }
 
             TextField {
@@ -352,7 +390,7 @@ DialogView {
                 KeyNavigation.right: pasteUrl
                 C.Button {
                     id: pasteUrl
-                    text: qsTr("Click to Paste URL")
+                    text: qsTr("Paste")
                     anchors {
                         left: parent.right
                         verticalCenter: parent.verticalCenter
