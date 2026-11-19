@@ -78,6 +78,10 @@ struct HostCallbacks
 	std::function<void(uint8_t slot, const uint8_t *data, size_t size)> on_voice;
 	/** A complete picture of a guest's webcam. */
 	std::function<void(uint8_t slot, const std::vector<uint8_t> &jpeg)> on_cam_frame;
+	/** A guest wrote in the chat (the host's own messages come back from SendChat()). */
+	std::function<void(const ChatMessage &)> on_chat;
+	/** The picture of a link preview has arrived; fetch it with Host::ChatImage(). */
+	std::function<void(const BlobRef &)> on_chat_image;
 	std::function<void(const std::string &)> on_log;
 };
 
@@ -126,6 +130,15 @@ class Host
 		uint8_t LocalMedia();
 		/** Stops (or resumes) passing a guest's microphone on to everybody else. */
 		void SetGuestSilenced(uint8_t slot, bool silenced);
+
+		/**
+		 * Writes in the chat as the host. image is the preview picture of the
+		 * embed (JPEG, at most kMaxChatImageSize) or empty. @return the message as
+		 * everybody gets it; seq is 0 if it could not be sent
+		 */
+		ChatMessage SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image);
+		/** The picture of a link preview, or null if it is not (yet) here. */
+		BlobData ChatImage(const BlobHash &hash);
 
 		void SetRumble(uint8_t left, uint8_t right);
 		void SetTriggerEffects(uint8_t type_left, uint8_t type_right, const uint8_t left[10], const uint8_t right[10]);
@@ -193,6 +206,15 @@ class Host
 			bool silenced = false;
 			VoiceSequence voice_seq;
 			CamAssembler cam;
+			/** Chat messages it has not acknowledged yet. */
+			struct PendingChat
+			{
+				uint64_t first_ms = 0;
+				uint64_t last_ms = 0;
+				bool history = false;
+			};
+			std::map<uint32_t, PendingChat> chat_pending; // by seq
+			std::deque<uint32_t> chat_up_seen; // its own numbers of what it wrote lately
 		};
 
 		/** Things to do once the lock is released. */
@@ -204,6 +226,8 @@ class Host
 			std::vector<std::string> logs;
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, Opus frame
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
+			std::vector<ChatMessage> chats;
+			std::vector<BlobRef> chat_images;
 		};
 
 		void StopWith(ByeReason reason);
@@ -226,6 +250,13 @@ class Host
 		void BuildInputs(uint64_t now_ms, InputsSnapshot &s);
 		void SendInputs(uint64_t now_ms);
 		void PollBlobs(uint64_t now_ms);
+		void HandleChatUp(Guest &g, ByteReader &r, uint64_t now_ms, Deferred &d);
+		/** Adds a message to the log and sends it to every guest. */
+		void PostChat(ChatMessage &m, uint64_t now_ms);
+		void SendChatTo(Guest &g, uint32_t seq, uint64_t now_ms, bool history);
+		void ResendChats(uint64_t now_ms);
+		/** Keeps the pictures of link previews to a few. */
+		void TrackChatImage(const BlobHash &hash);
 		void BumpSeq(uint16_t &seq);
 		Guest *FindBySlot(uint8_t slot);
 
@@ -265,6 +296,13 @@ class Host
 
 		BlobStore blobs;
 		BlobRef own_avatar;
+
+		std::deque<ChatMessage> chat_log;
+		uint32_t chat_seq = 0;
+		BlobStore chat_blobs;
+		std::deque<BlobHash> chat_blob_order;
+		std::map<BlobHash, uint32_t> chat_blob_from; // picture -> conn_id of the guest that has it
+		uint64_t last_chat_resend_ms = 0;
 		InputsSnapshot last_inputs;
 		uint64_t last_inputs_ms = 0;
 		uint64_t last_blob_poll_ms = 0;

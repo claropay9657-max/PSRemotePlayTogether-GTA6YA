@@ -20,6 +20,7 @@ FocusScope {
     signal placeboSettingsRequested()
     signal displayPanelRequested()
     signal mainViewRequested()
+    signal chatRequested()
 
     readonly property color accent: "#8c52ff"
     readonly property color pink: "#f0469b"
@@ -281,9 +282,41 @@ FocusScope {
                 Item { Layout.fillWidth: true }
 
                 MenuButton {
+                    id: chatButton
+                    visible: !!menu.session && menu.session.coplayActive
+                    readonly property int unread: menu.session ? menu.session.coplayChatUnread : 0
+                    text: qsTr("Chat")
+                    onClicked: menu.chatRequested()
+                    KeyNavigation.right: resumeButton
+                    KeyNavigation.down: menu.upFromControls === resumeButton ? volDown : menu.upFromControls
+
+                    Rectangle {
+                        visible: chatButton.unread > 0
+                        anchors {
+                            right: parent.right
+                            top: parent.top
+                            rightMargin: -6
+                            topMargin: -6
+                        }
+                        width: Math.max(20, unreadLabel.implicitWidth + 10)
+                        height: 20
+                        radius: 10
+                        color: menu.pink
+                        Label {
+                            id: unreadLabel
+                            anchors.centerIn: parent
+                            font.pixelSize: 11
+                            font.bold: true
+                            text: chatButton.unread > 99 ? "99+" : chatButton.unread
+                        }
+                    }
+                }
+
+                MenuButton {
                     id: resumeButton
                     text: qsTr("Back to game")
                     onClicked: menu.closeRequested()
+                    KeyNavigation.left: chatButton.visible ? chatButton : null
                     KeyNavigation.right: leaveButton
                     KeyNavigation.down: menu.upFromControls === resumeButton ? volDown : menu.upFromControls
                 }

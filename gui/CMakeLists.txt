@@ -66,6 +66,9 @@ set(SOURCE_FILES
 	include/coplaycamera.h
 	src/coplaycamera.cpp
 	include/coplayaddress.h
+	include/coplaylinkpreview.h
+	src/coplaylinkpreview.cpp
+	src/streamsession_chat.cpp
 	src/coplayaddress.cpp
 	include/qmlsvgprovider.h
 	src/qmlsvgprovider.cpp

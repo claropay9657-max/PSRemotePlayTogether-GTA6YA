@@ -179,6 +179,8 @@ signals:
     void zoomFactorChanged();
     void videoPresetChanged();
     void menuRequested();
+    /** Ctrl+T (⌘T): the Play Together chat. */
+    void chatRequested();
     void directStreamChanged();
     void queueDepthAverageChanged();
     void pendingFrameAgeChanged();

@@ -612,6 +612,19 @@ DialogView {
                                 checked: Chiaki.hud.values.cams_show
                                 onToggled: Chiaki.hud.values.cams_show = checked
                             }
+
+                            C.CheckBox {
+                                text: qsTr("Chat: show a preview of links I post (my app opens the link once)")
+                                checked: Chiaki.settings.coplayChatPreviews
+                                onToggled: Chiaki.settings.coplayChatPreviews = checked
+                            }
+
+                            C.CheckBox {
+                                text: qsTr("Chat: show new messages on the game picture for a few seconds")
+                                // The same switch as on the Overlays page
+                                checked: Chiaki.hud.values.chat
+                                onToggled: Chiaki.hud.values.chat = checked
+                            }
                         }
 
                         Item {

@@ -23,6 +23,8 @@ Window {
     /** False while something else is in front (the stream menu, an error). */
     property bool allowed: true
     property bool editing: false
+    /** The chat window is open: new messages are seen there, no notes needed. */
+    property bool chatOpen: false
 
     readonly property var cfg: Chiaki.hud.values
     readonly property var session: Chiaki.session
@@ -68,7 +70,7 @@ Window {
     readonly property bool separatePads: !!cfg.pads_separate
     visible: allowed && !!session && (editing || playersElement.wanted || camsElement.wanted || padsElement.wanted
                                       || combinedElement.wanted || (separatePads && cfg.pads_show && players.length > 0)
-                                      || toasts.count > 0)
+                                      || toasts.count > 0 || chatNotes.count > 0)
 
     onEditingChanged: {
         if (editing) {
@@ -662,6 +664,105 @@ Window {
                     PauseAnimation { duration: 3800 }
                     NumberAnimation { target: toast; property: "opacity"; to: 0; duration: 400 }
                     ScriptAction { script: toasts.remove(0) }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ chat
+
+    ListModel {
+        id: chatNotes
+    }
+
+    Connections {
+        target: hud.session
+        function onCoPlayChatMessage(message) {
+            if (!hud.cfg.chat || hud.chatOpen || hud.editing)
+                return;
+            let player = null;
+            for (let i = 0; i < hud.players.length; ++i) {
+                if (hud.players[i].slot === message.slot)
+                    player = hud.players[i];
+            }
+            let text = message.text || "";
+            if (!text && message.embed)
+                text = message.embed.title || message.embed.url || "";
+            chatNotes.append({
+                name: message.name || qsTr("Player %1").arg(message.slot + 1),
+                text: text,
+                avatar: player ? (player.avatarUrl || "") : "",
+                link: !!message.embed
+            });
+            while (chatNotes.count > 4)
+                chatNotes.remove(0);
+        }
+    }
+
+    Column {
+        anchors {
+            left: parent.left
+            bottom: parent.bottom
+            leftMargin: 18
+            bottomMargin: 18
+        }
+        spacing: 6
+        width: Math.min(460, hud.width * 0.45)
+
+        Repeater {
+            model: chatNotes
+
+            Rectangle {
+                id: note
+                required property string name
+                required property string text
+                required property string avatar
+                required property bool link
+                width: Math.min(parent.width, noteRow.implicitWidth + 24)
+                height: noteRow.implicitHeight + 14
+                radius: 14
+                color: hud.plain ? Qt.rgba(0, 0, 0, 0.45) : hud.boxColor
+                border.width: hud.plain ? 0 : 1
+                border.color: Qt.rgba(1, 1, 1, 0.14)
+                opacity: 0
+
+                Row {
+                    id: noteRow
+                    x: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    C.Avatar {
+                        width: 24
+                        height: 24
+                        anchors.verticalCenter: parent.verticalCenter
+                        source: note.avatar
+                        name: note.name
+                    }
+
+                    Text {
+                        width: Math.min(implicitWidth, note.parent.width - 60)
+                        anchors.verticalCenter: parent.verticalCenter
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                        color: "white"
+                        font.pixelSize: 14
+                        textFormat: Text.StyledText
+                        style: hud.plain ? Text.Outline : Text.Normal
+                        styleColor: Qt.rgba(0, 0, 0, 0.6)
+                        text: "<b>" + note.name.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</b>  "
+                              + note.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                              + (note.link ? "  🔗" : "")
+                    }
+                }
+
+                SequentialAnimation {
+                    running: true
+                    NumberAnimation { target: note; property: "opacity"; to: 1; duration: 200 }
+                    PauseAnimation { duration: 7000 }
+                    NumberAnimation { target: note; property: "opacity"; to: 0; duration: 500 }
+                    ScriptAction { script: if (chatNotes.count > 0) chatNotes.remove(0) }
                 }
             }
         }

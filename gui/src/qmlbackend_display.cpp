@@ -57,6 +57,8 @@ void QmlBackend::initDisplays()
         { "solo", false },
         // "Pixel joined", "Pixel left"
         { "notices", true },
+        // New chat messages for a few seconds, bottom left
+        { "chat", true },
         // Everybody's controller as one row, or each one placed by itself
         { "pads_separate", false },
     };
@@ -93,6 +95,8 @@ void QmlBackend::initDisplays()
         { "scale", 30 },
         { "layout", QString("row") },
         { "notices", true },
+        // The latest chat messages, for the viewers
+        { "chat", true },
         // Free placement: every player's card and the console's controller where they were dragged to
         { "free", false },
         { "combined_x", 0.0, true },

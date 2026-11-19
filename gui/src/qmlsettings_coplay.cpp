@@ -485,6 +485,17 @@ void QmlSettings::setCoplayCameraOnStart(bool on)
     emit coplayChanged();
 }
 
+bool QmlSettings::coplayChatPreviews() const
+{
+    return settings->GetCoPlayChatPreviews();
+}
+
+void QmlSettings::setCoplayChatPreviews(bool on)
+{
+    settings->SetCoPlayChatPreviews(on);
+    emit coplayChanged();
+}
+
 bool QmlSettings::coplayShowCams() const
 {
     return settings->GetCoPlayShowCams();

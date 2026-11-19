@@ -17,6 +17,7 @@ Window {
     signal placeboSettingsRequested()
     signal mainViewRequested()
     signal displayPanelRequested()
+    signal chatRequested()
     signal closeAnimationFinished()
 
     visible: open || closing
@@ -82,5 +83,6 @@ Window {
         onPlaceboSettingsRequested: streamMenuWindow.placeboSettingsRequested()
         onDisplayPanelRequested: streamMenuWindow.displayPanelRequested()
         onMainViewRequested: streamMenuWindow.mainViewRequested()
+        onChatRequested: streamMenuWindow.chatRequested()
     }
 }

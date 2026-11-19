@@ -109,6 +109,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(int coplayCameraQuality READ coplayCameraQuality WRITE setCoplayCameraQuality NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayCameraOnStart READ coplayCameraOnStart WRITE setCoplayCameraOnStart NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayShowCams READ coplayShowCams WRITE setCoplayShowCams NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayChatPreviews READ coplayChatPreviews WRITE setCoplayChatPreviews NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayCamsOnStream READ coplayCamsOnStream WRITE setCoplayCamsOnStream NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayCameraSupported READ coplayCameraSupported CONSTANT)
     // Stream overlay for OBS
@@ -667,6 +668,9 @@ public:
     bool coplayCameraOnStart() const;
     void setCoplayCameraOnStart(bool on);
     bool coplayShowCams() const;
+    /** Chat: this app looks at the first link of one's own message and sends a preview along. */
+    bool coplayChatPreviews() const;
+    void setCoplayChatPreviews(bool on);
     void setCoplayShowCams(bool on);
     bool coplayCamsOnStream() const;
     void setCoplayCamsOnStream(bool on);

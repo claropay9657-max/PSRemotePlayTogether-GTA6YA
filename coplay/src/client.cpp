@@ -2,6 +2,7 @@
 
 #include <coplay/client.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 
@@ -263,6 +264,86 @@ void Client::SendVoice(const uint8_t *data, size_t size)
 	Send(PacketType::VoiceUp, payload);
 }
 
+// ------------------------------------------------------------------ chat
+
+static const uint32_t kChatResendMs = 400;
+static const uint32_t kChatGiveUpMs = 20000;
+static const size_t kChatSeenSize = 256;
+static const size_t kMaxChatImages = 24;
+
+uint32_t Client::SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image)
+{
+	if(!connected || lost)
+		return 0;
+	ChatMessage m;
+	m.text = TruncateUtf8(text, kMaxChatText);
+	m.embed = embed;
+	if(m.text.empty() && !m.embed.Valid())
+		return 0;
+	m.embed.image = BlobRef();
+	if(m.embed.Valid() && !image.empty() && image.size() <= kMaxChatImageSize)
+	{
+		// The host asks us for it, see HandlePacket
+		std::lock_guard<std::mutex> lock(blob_mutex);
+		m.embed.image = chat_blobs.Put(image);
+		if(m.embed.image.Valid())
+		{
+			chat_blob_order.push_back(m.embed.image.hash);
+			while(chat_blob_order.size() > kMaxChatImages)
+			{
+				chat_blobs.Forget(chat_blob_order.front());
+				chat_blob_order.pop_front();
+			}
+		}
+	}
+	PendingChat pending;
+	uint32_t id;
+	{
+		std::lock_guard<std::mutex> lock(chat_mutex);
+		id = ++chat_up_seq;
+		m.seq = id;
+		ByteWriter w(pending.payload);
+		WriteChatMessage(w, m);
+		pending.first_ms = pending.last_ms = NowMs();
+		chat_out[id] = pending;
+	}
+	Send(PacketType::ChatUp, pending.payload);
+	return id;
+}
+
+BlobData Client::ChatImage(const BlobHash &hash)
+{
+	std::lock_guard<std::mutex> lock(blob_mutex);
+	return chat_blobs.Get(hash);
+}
+
+void Client::ResendChats(uint64_t now_ms)
+{
+	if(now_ms - last_chat_resend_ms < kChatResendMs / 4)
+		return;
+	last_chat_resend_ms = now_ms;
+	std::vector<std::vector<uint8_t>> due;
+	{
+		std::lock_guard<std::mutex> lock(chat_mutex);
+		for(auto it = chat_out.begin(); it != chat_out.end();)
+		{
+			if(now_ms - it->second.first_ms > kChatGiveUpMs)
+			{
+				it = chat_out.erase(it);
+				continue;
+			}
+			if(now_ms - it->second.last_ms >= kChatResendMs)
+			{
+				it->second.last_ms = now_ms;
+				due.push_back(it->second.payload);
+			}
+			++it;
+		}
+	}
+	for(const auto &payload : due)
+		Send(PacketType::ChatUp, payload);
+}
+
 void Client::SendCamFrame(const uint8_t *data, size_t size)
 {
 	if(!data || !size || size > kMaxCamFrameSize || !connected || lost)
@@ -408,13 +489,24 @@ void Client::HandlePacket(const uint8_t *data, size_t size, const Address &from,
 			break;
 		}
 		case PacketType::BlobRequest: {
-			// The host asks for our picture
+			// The host asks for our picture, or for the preview picture of something we wrote
 			BlobHash hash;
 			uint16_t index;
-			if(!ReadBlobRequest(r, hash, index) || !own_avatar.Valid() || hash != own_avatar.hash)
+			if(!ReadBlobRequest(r, hash, index))
 				break;
 			std::vector<uint8_t> chunk;
-			if(BuildBlobChunk(hash, config.avatar, index, chunk))
+			if(own_avatar.Valid() && hash == own_avatar.hash)
+			{
+				if(BuildBlobChunk(hash, config.avatar, index, chunk))
+					Send(PacketType::BlobChunk, chunk);
+				break;
+			}
+			BlobData data;
+			{
+				std::lock_guard<std::mutex> lock(blob_mutex);
+				data = chat_blobs.Get(hash);
+			}
+			if(data && BuildBlobChunk(hash, *data, index, chunk))
 				Send(PacketType::BlobChunk, chunk);
 			break;
 		}
@@ -423,18 +515,62 @@ void Client::HandlePacket(const uint8_t *data, size_t size, const Address &from,
 			if(!ReadBlobChunkHeader(r, chunk))
 				break;
 			bool complete;
+			bool chat_image;
 			BlobRef ref;
 			{
 				std::lock_guard<std::mutex> lock(blob_mutex);
-				complete = blobs.OnChunk(chunk, r.cursor(), r.remaining());
+				chat_image = chat_blobs.Wanted(chunk.hash);
+				complete = (chat_image ? chat_blobs : blobs).OnChunk(chunk, r.cursor(), r.remaining());
 				if(complete)
 				{
 					ref.hash = chunk.hash;
 					ref.size = static_cast<uint16_t>(chunk.total_size);
 				}
 			}
-			if(complete && callbacks.on_avatar)
+			if(complete && chat_image && callbacks.on_chat_image)
+				callbacks.on_chat_image(ref);
+			else if(complete && !chat_image && callbacks.on_avatar)
 				callbacks.on_avatar(ref);
+			break;
+		}
+		case PacketType::Chat: {
+			ChatMessage m;
+			if(!ReadChatMessage(r, m))
+				break;
+			// Always acknowledged: the earlier answer may have been lost
+			std::vector<uint8_t> ack;
+			ByteWriter w(ack);
+			w.U32(m.seq);
+			Send(PacketType::ChatAck, ack);
+			if(std::find(chat_seen.begin(), chat_seen.end(), m.seq) != chat_seen.end())
+				break;
+			chat_seen.push_back(m.seq);
+			if(chat_seen.size() > kChatSeenSize)
+				chat_seen.pop_front();
+			if(m.embed.image.Valid())
+			{
+				std::lock_guard<std::mutex> lock(blob_mutex);
+				if(!chat_blobs.Has(m.embed.image))
+				{
+					chat_blobs.Want(m.embed.image);
+					chat_blob_order.push_back(m.embed.image.hash);
+					while(chat_blob_order.size() > kMaxChatImages)
+					{
+						chat_blobs.Forget(chat_blob_order.front());
+						chat_blob_order.pop_front();
+					}
+				}
+			}
+			if(callbacks.on_chat)
+				callbacks.on_chat(m);
+			break;
+		}
+		case PacketType::ChatUpAck: {
+			uint32_t id = r.U32();
+			if(!r.ok())
+				break;
+			std::lock_guard<std::mutex> lock(chat_mutex);
+			chat_out.erase(id);
 			break;
 		}
 		case PacketType::VideoConfig: {
@@ -591,6 +727,8 @@ void Client::Tick(uint64_t now_ms)
 			SendInput(now_ms);
 	}
 
+	ResendChats(now_ms);
+
 	if(now_ms - last_blob_poll_ms >= 50)
 	{
 		last_blob_poll_ms = now_ms;
@@ -598,6 +736,9 @@ void Client::Tick(uint64_t now_ms)
 		{
 			std::lock_guard<std::mutex> lock(blob_mutex);
 			blobs.Poll(now_ms, requests);
+			std::vector<BlobStore::Request> more;
+			chat_blobs.Poll(now_ms, more, 4);
+			requests.insert(requests.end(), more.begin(), more.end());
 		}
 		for(const BlobStore::Request &request : requests)
 		{

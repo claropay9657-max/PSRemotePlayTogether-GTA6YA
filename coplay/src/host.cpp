@@ -17,6 +17,19 @@ static const size_t kMaxRetransmitFragmentsPerNack = 256;
 static const uint32_t kInputsMinIntervalMs = 16;
 static const uint32_t kInputsRefreshMs = 500;
 static const uint32_t kBlobPollIntervalMs = 50;
+/** An unacknowledged chat message goes out again after this long, until this long has passed. */
+static const uint32_t kChatResendMs = 400;
+static const uint32_t kChatGiveUpMs = 20000;
+static const size_t kChatLogSize = 100;
+/** Link preview pictures kept for the guests to fetch. */
+static const size_t kMaxChatImages = 24;
+static const size_t kChatUpSeenSize = 64;
+
+static uint64_t WallClockMs()
+{
+	return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::system_clock::now().time_since_epoch()).count());
+}
 /** A requested key frame that has not shown up after this long is requested again. */
 static const uint32_t kKeyframeOutstandingMs = 1000;
 
@@ -149,6 +162,16 @@ void Host::Fire(Deferred &d)
 	{
 		for(const auto &c : d.cams)
 			callbacks.on_cam_frame(c.first, c.second);
+	}
+	if(callbacks.on_chat)
+	{
+		for(const ChatMessage &m : d.chats)
+			callbacks.on_chat(m);
+	}
+	if(callbacks.on_chat_image)
+	{
+		for(const BlobRef &ref : d.chat_images)
+			callbacks.on_chat_image(ref);
 	}
 	if(d.keyframe_needed && callbacks.on_keyframe_needed)
 		callbacks.on_keyframe_needed();
@@ -401,6 +424,10 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 		}
 		state_seq++;
 		BroadcastState(now_ms);
+		// What was said lately, so that the newcomer knows what the others are talking about
+		size_t skip = chat_log.size() > kChatHistorySize ? chat_log.size() - kChatHistorySize : 0;
+		for(size_t i = skip; i < chat_log.size(); i++)
+			SendChatTo(g, chat_log[i].seq, now_ms, true);
 	}
 
 	ByteReader r(payload.data(), payload.size());
@@ -504,6 +531,15 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 		case PacketType::Nack:
 			HandleNack(g, payload);
 			break;
+		case PacketType::ChatUp:
+			HandleChatUp(g, r, now_ms, d);
+			break;
+		case PacketType::ChatAck: {
+			uint32_t seq = r.U32();
+			if(r.ok())
+				g.chat_pending.erase(seq);
+			break;
+		}
 		case PacketType::KeyframeRequest:
 			if(g.want & kWantVideo)
 				RequestKeyframe(now_ms, d);
@@ -514,6 +550,8 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 			if(!ReadBlobRequest(r, hash, index))
 				break;
 			BlobData data = blobs.Get(hash);
+			if(!data)
+				data = chat_blobs.Get(hash);
 			std::vector<uint8_t> chunk;
 			if(data && BuildBlobChunk(hash, *data, index, chunk))
 				SendToGuest(g, PacketType::BlobChunk, chunk);
@@ -521,9 +559,23 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 		}
 		case PacketType::BlobChunk: {
 			BlobChunkHeader chunk;
-			// A guest can only hand in the picture it announced for itself
-			if(!ReadBlobChunkHeader(r, chunk) || !g.avatar.Valid() || chunk.hash != g.avatar.hash)
+			if(!ReadBlobChunkHeader(r, chunk))
 				break;
+			// A guest can only hand in its own picture, or the preview picture of a message it wrote
+			if(!g.avatar.Valid() || chunk.hash != g.avatar.hash)
+			{
+				auto from = chat_blob_from.find(chunk.hash);
+				if(from == chat_blob_from.end() || from->second != g.conn_id || !chat_blobs.Wanted(chunk.hash))
+					break;
+				if(chat_blobs.OnChunk(chunk, r.cursor(), r.remaining()))
+				{
+					BlobRef ref;
+					ref.hash = chunk.hash;
+					ref.size = static_cast<uint16_t>(chunk.total_size);
+					d.chat_images.push_back(ref);
+				}
+				break;
+			}
 			if(blobs.OnChunk(chunk, r.cursor(), r.remaining()))
 			{
 				// Complete: from now on the others are told about it
@@ -643,6 +695,7 @@ void Host::Tick(uint64_t now_ms, Deferred &d)
 	UpdateControl(now_ms, d);
 	SendInputs(now_ms);
 	PollBlobs(now_ms);
+	ResendChats(now_ms);
 
 	// Right after a change the state goes out a few times in quick succession, so that
 	// a lost packet does not leave a controller rumbling for long
@@ -1185,6 +1238,19 @@ void Host::PollBlobs(uint64_t now_ms)
 		return;
 	last_blob_poll_ms = now_ms;
 	std::vector<BlobStore::Request> requests;
+	chat_blobs.Poll(now_ms, requests, 4);
+	for(const BlobStore::Request &request : requests)
+	{
+		// Ask the guest whose message it came with
+		auto from = chat_blob_from.find(request.hash);
+		auto it = from == chat_blob_from.end() ? guests.end() : guests.find(from->second);
+		if(it == guests.end() || !it->second->confirmed)
+			continue;
+		std::vector<uint8_t> payload;
+		ByteWriter w(payload);
+		WriteBlobRequest(w, request.hash, request.index);
+		SendToGuest(*it->second, PacketType::BlobRequest, payload);
+	}
 	blobs.Poll(now_ms, requests);
 	for(const BlobStore::Request &request : requests)
 	{
@@ -1202,6 +1268,145 @@ void Host::PollBlobs(uint64_t now_ms)
 			}
 		}
 	}
+}
+
+// ------------------------------------------------------------------ chat
+
+void Host::HandleChatUp(Guest &g, ByteReader &r, uint64_t now_ms, Deferred &d)
+{
+	ChatMessage m;
+	if(!ReadChatMessage(r, m))
+		return;
+	// Always acknowledged: the earlier answer may have been lost
+	std::vector<uint8_t> ack;
+	ByteWriter w(ack);
+	w.U32(m.seq);
+	SendToGuest(g, PacketType::ChatUpAck, ack);
+	if(std::find(g.chat_up_seen.begin(), g.chat_up_seen.end(), m.seq) != g.chat_up_seen.end())
+		return;
+	g.chat_up_seen.push_back(m.seq);
+	if(g.chat_up_seen.size() > kChatUpSeenSize)
+		g.chat_up_seen.pop_front();
+
+	m.up_id = m.seq;
+	m.slot = g.slot;
+	m.name = g.name;
+	m.flags = 0;
+	if(m.embed.image.Valid())
+	{
+		// The others will ask us for it, and we ask the writer
+		chat_blob_from[m.embed.image.hash] = g.conn_id;
+		chat_blobs.Want(m.embed.image);
+		TrackChatImage(m.embed.image.hash);
+	}
+	PostChat(m, now_ms);
+	d.chats.push_back(m);
+}
+
+void Host::PostChat(ChatMessage &m, uint64_t now_ms)
+{
+	m.seq = ++chat_seq;
+	m.time_ms = WallClockMs();
+	chat_log.push_back(m);
+	if(chat_log.size() > kChatLogSize)
+		chat_log.pop_front();
+	for(auto &entry : guests)
+	{
+		Guest &g = *entry.second;
+		if(g.confirmed)
+			SendChatTo(g, m.seq, now_ms, false);
+	}
+}
+
+void Host::SendChatTo(Guest &g, uint32_t seq, uint64_t now_ms, bool history)
+{
+	auto it = std::find_if(chat_log.begin(), chat_log.end(), [seq](const ChatMessage &m) { return m.seq == seq; });
+	if(it == chat_log.end())
+	{
+		g.chat_pending.erase(seq); // too old by now
+		return;
+	}
+	ChatMessage m = *it;
+	if(history)
+		m.flags |= kChatHistory;
+	std::vector<uint8_t> payload;
+	ByteWriter w(payload);
+	WriteChatMessage(w, m);
+	SendToGuest(g, PacketType::Chat, payload);
+	Guest::PendingChat &p = g.chat_pending[seq];
+	if(!p.first_ms)
+		p.first_ms = now_ms;
+	p.last_ms = now_ms;
+	p.history = history;
+}
+
+void Host::ResendChats(uint64_t now_ms)
+{
+	if(now_ms - last_chat_resend_ms < kChatResendMs / 4)
+		return;
+	last_chat_resend_ms = now_ms;
+	for(auto &entry : guests)
+	{
+		Guest &g = *entry.second;
+		if(!g.confirmed)
+			continue;
+		std::vector<std::pair<uint32_t, bool>> due;
+		for(auto it = g.chat_pending.begin(); it != g.chat_pending.end();)
+		{
+			if(now_ms - it->second.first_ms > kChatGiveUpMs)
+				it = g.chat_pending.erase(it);
+			else
+			{
+				if(now_ms - it->second.last_ms >= kChatResendMs)
+					due.emplace_back(it->first, it->second.history);
+				++it;
+			}
+		}
+		for(const auto &item : due)
+			SendChatTo(g, item.first, now_ms, item.second);
+	}
+}
+
+void Host::TrackChatImage(const BlobHash &hash)
+{
+	if(std::find(chat_blob_order.begin(), chat_blob_order.end(), hash) != chat_blob_order.end())
+		return;
+	chat_blob_order.push_back(hash);
+	while(chat_blob_order.size() > kMaxChatImages)
+	{
+		chat_blobs.Forget(chat_blob_order.front());
+		chat_blob_from.erase(chat_blob_order.front());
+		chat_blob_order.pop_front();
+	}
+}
+
+ChatMessage Host::SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image)
+{
+	ChatMessage m;
+	m.text = TruncateUtf8(text, kMaxChatText);
+	m.embed = embed;
+	if(m.text.empty() && !m.embed.Valid())
+		return m;
+	m.name = config.name;
+	m.slot = 0;
+	std::lock_guard<std::mutex> lock(mutex);
+	if(!running)
+		return m;
+	if(m.embed.Valid() && !image.empty() && image.size() <= kMaxChatImageSize)
+	{
+		m.embed.image = chat_blobs.Put(image);
+		TrackChatImage(m.embed.image.hash);
+	}
+	else
+		m.embed.image = BlobRef();
+	PostChat(m, NowMs());
+	return m;
+}
+
+BlobData Host::ChatImage(const BlobHash &hash)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return chat_blobs.Get(hash);
 }
 
 InputsSnapshot Host::Inputs()

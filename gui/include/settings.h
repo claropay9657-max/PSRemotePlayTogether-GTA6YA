@@ -304,6 +304,9 @@ class Settings : public QObject
 		void SetCoPlayCameraOnStart(bool on)	{ settings.setValue("coplay/camera_on_start", on); }
 		/** Receive and show the other players' webcams. */
 		bool GetCoPlayShowCams() const			{ return settings.value("coplay/show_cams", true).toBool(); }
+		/** Chat: look at the first link of one's own message and send a preview along. */
+		bool GetCoPlayChatPreviews() const		{ return settings.value("coplay/chat_previews", true).toBool(); }
+		void SetCoPlayChatPreviews(bool on)		{ settings.setValue("coplay/chat_previews", on); }
 		void SetCoPlayShowCams(bool on)			{ settings.setValue("coplay/show_cams", on); }
 		/** Keep the webcams in a corner of the game picture while playing. */
 		bool GetCoPlayCamsOnStream() const		{ return settings.value("coplay/cams_on_stream", true).toBool(); }

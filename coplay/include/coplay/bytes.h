@@ -54,6 +54,14 @@ class ByteWriter
 			Bytes(reinterpret_cast<const uint8_t *>(s.data()), n);
 		}
 
+		/** Length-prefixed (two bytes) string, truncated to 65535 bytes. */
+		void Str16(const std::string &s)
+		{
+			size_t n = s.size() > 65535 ? 65535 : s.size();
+			U16(static_cast<uint16_t>(n));
+			Bytes(reinterpret_cast<const uint8_t *>(s.data()), n);
+		}
+
 	private:
 		std::vector<uint8_t> &out;
 };
@@ -128,6 +136,16 @@ class ByteReader
 		std::string Str8()
 		{
 			size_t len = U8();
+			if(!Need(len))
+				return std::string();
+			std::string s(reinterpret_cast<const char *>(p + pos), len);
+			pos += len;
+			return s;
+		}
+
+		std::string Str16()
+		{
+			size_t len = U16();
 			if(!Need(len))
 				return std::string();
 			std::string s(reinterpret_cast<const char *>(p + pos), len);

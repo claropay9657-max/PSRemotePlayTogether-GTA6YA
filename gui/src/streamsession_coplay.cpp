@@ -277,6 +277,7 @@ static void FromPad(const coplay::PadState &p, ChiakiControllerState *s)
 void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 {
 	coplay = new CoPlayState;
+	CoPlayChatInit(connect_info.coplay_chat_previews);
 	chiaki_opus_decoder_get_sink(&opus_decoder, &coplay->opus_sink);
 	coplay->mix_mode = connect_info.coplay_mix_mode;
 	coplay->own_name = connect_info.coplay_name.trimmed();
@@ -336,6 +337,12 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	};
 	callbacks.on_cam_frame = [this](uint8_t slot, const std::vector<uint8_t> &jpeg) {
 		CoPlayOnCamFrame(slot, QByteArray(reinterpret_cast<const char *>(jpeg.data()), static_cast<int>(jpeg.size())));
+	};
+	callbacks.on_chat = [this](const coplay::ChatMessage &m) {
+		QMetaObject::invokeMethod(this, [this, m] { CoPlayOnChat(m); }, Qt::QueuedConnection);
+	};
+	callbacks.on_chat_image = [this](const coplay::BlobRef &ref) {
+		QMetaObject::invokeMethod(this, [this, ref] { CoPlayOnChatImage(ref); }, Qt::QueuedConnection);
 	};
 	ChiakiLog *session_log = GetChiakiLog();
 	callbacks.on_log = [session_log](const std::string &line) {
@@ -418,7 +425,31 @@ void StreamSession::CoPlayFini()
 	CoPlayCamProvider::ClearAll();
 	delete coplay;
 	coplay = nullptr;
+	CoPlayChatFini();
 }
+
+coplay::Host *StreamSession::CoPlayHost() const
+{
+	return coplay ? coplay->host.get() : nullptr;
+}
+
+QString StreamSession::CoPlayOwnName() const
+{
+	if(!coplay)
+		return QString();
+	if(!coplay->own_name.isEmpty())
+		return coplay->own_name;
+	return IsCoPlayGuest() ? tr("You") : coplay->host_name;
+}
+
+std::shared_ptr<coplay::Client> StreamSession::CoPlayClient() const
+{
+	if(!coplay)
+		return nullptr;
+	QMutexLocker locker(&coplay->client_mutex);
+	return coplay->client;
+}
+
 
 bool StreamSession::IsCoPlayActive() const
 {
@@ -954,6 +985,12 @@ void StreamSession::CoPlayStartGuest()
 	};
 	callbacks.on_cam_frame = [this](uint8_t slot, const std::vector<uint8_t> &jpeg) {
 		CoPlayOnCamFrame(slot, QByteArray(reinterpret_cast<const char *>(jpeg.data()), static_cast<int>(jpeg.size())));
+	};
+	callbacks.on_chat = [this](const coplay::ChatMessage &m) {
+		QMetaObject::invokeMethod(this, [this, m] { CoPlayOnChat(m); }, Qt::QueuedConnection);
+	};
+	callbacks.on_chat_image = [this](const coplay::BlobRef &ref) {
+		QMetaObject::invokeMethod(this, [this, ref] { CoPlayOnChatImage(ref); }, Qt::QueuedConnection);
 	};
 	callbacks.on_disconnected = [this](coplay::DisconnectReason reason) {
 		// On the receiving thread, which ends as soon as this returns

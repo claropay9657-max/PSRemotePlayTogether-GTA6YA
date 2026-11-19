@@ -4,7 +4,9 @@
 #define COPLAY_CLIENT_H
 
 #include <atomic>
+#include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -70,6 +72,10 @@ struct ClientCallbacks
 	std::function<void(uint8_t slot, const uint8_t *, size_t)> on_voice;
 	/** A complete picture of another player's webcam. Needs kWantCams. */
 	std::function<void(uint8_t slot, const std::vector<uint8_t> &jpeg)> on_cam_frame;
+	/** A chat message, ours included once the host has it (see ChatMessage::up_id). */
+	std::function<void(const ChatMessage &)> on_chat;
+	/** The picture of a link preview has arrived; fetch it with Client::ChatImage(). */
+	std::function<void(const BlobRef &)> on_chat_image;
 	/** Not called after Stop(). */
 	std::function<void(DisconnectReason)> on_disconnected;
 };
@@ -126,6 +132,14 @@ class Client
 		void SendVoice(const uint8_t *data, size_t size);
 		/** One picture of our webcam. */
 		void SendCamFrame(const uint8_t *data, size_t size);
+		/**
+		 * Writes in the chat. It is sent again until the host has it. image is the
+		 * preview picture of the embed (JPEG, at most kMaxChatImageSize) or empty.
+		 * @return our number for it (the up_id of the message when it comes back), 0 if not sent
+		 */
+		uint32_t SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image);
+		/** The picture of a link preview, or null if it is not (yet) here. */
+		BlobData ChatImage(const BlobHash &hash);
 		ClientStats Stats();
 		BlobRef OwnAvatar() const { return own_avatar; }
 		/** A player's picture, or null if it is not (yet) here. */
@@ -141,6 +155,7 @@ class Client
 		bool Send(PacketType type, const std::vector<uint8_t> &payload);
 		void SendInput(uint64_t now_ms);
 		void SendPing(uint64_t now_ms);
+		void ResendChats(uint64_t now_ms);
 
 		ClientConfig config;
 		ClientCallbacks callbacks;
@@ -201,6 +216,21 @@ class Client
 		std::mutex blob_mutex;
 		BlobStore blobs;
 		BlobRef own_avatar;
+		BlobStore chat_blobs; // with blob_mutex
+		std::deque<BlobHash> chat_blob_order; // with blob_mutex
+
+		struct PendingChat
+		{
+			std::vector<uint8_t> payload;
+			uint64_t first_ms = 0;
+			uint64_t last_ms = 0;
+		};
+		std::mutex chat_mutex;
+		std::map<uint32_t, PendingChat> chat_out; // what the host has not confirmed yet
+		uint32_t chat_up_seq = 0;
+		// Network thread only
+		std::deque<uint32_t> chat_seen;
+		uint64_t last_chat_resend_ms = 0;
 		bool have_inputs = false;
 		uint32_t last_inputs_seq = 0;
 		uint64_t last_blob_poll_ms = 0;

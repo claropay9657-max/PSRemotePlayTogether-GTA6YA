@@ -66,6 +66,7 @@ class OverlayServer : public QObject
 		void Tick();
 		QByteArray ConfigJson() const;
 		QByteArray StateJson() const;
+		QByteArray ChatJson() const;
 
 		Settings *settings;
 		QTcpServer server;
@@ -84,6 +85,7 @@ class OverlayServer : public QObject
 		QPointer<StreamSession> tap_session;
 		QTimer timer;
 		QByteArray last_state;
+		QByteArray last_chat;
 		QByteArray last_config;
 		qint64 last_keepalive_ms = 0;
 		QString last_error;

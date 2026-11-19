@@ -491,4 +491,62 @@ bool ReadCamFragmentHeader(ByteReader &r, CamFragmentHeader &h)
 	return r.remaining() == expected;
 }
 
+std::string TruncateUtf8(const std::string &s, size_t max)
+{
+	if(s.size() <= max)
+		return s;
+	size_t end = max;
+	// Back to the first byte of the character that would be cut
+	while(end > 0 && (static_cast<uint8_t>(s[end]) & 0xc0) == 0x80)
+		end--;
+	return s.substr(0, end);
+}
+
+void WriteChatMessage(ByteWriter &w, const ChatMessage &m)
+{
+	w.U32(m.seq);
+	w.U32(m.up_id);
+	w.U8(m.slot);
+	w.U8(m.flags);
+	w.U64(m.time_ms);
+	w.Str8(TruncateUtf8(m.name, kMaxNameLength));
+	w.Str16(TruncateUtf8(m.text, kMaxChatText));
+	w.U8(m.embed.Valid() ? 1 : 0);
+	if(!m.embed.Valid())
+		return;
+	w.Str16(TruncateUtf8(m.embed.url, kMaxChatUrl));
+	w.Str8(TruncateUtf8(m.embed.site, kMaxChatSite));
+	w.Str8(TruncateUtf8(m.embed.title, kMaxChatTitle));
+	w.Str16(TruncateUtf8(m.embed.description, kMaxChatDescription));
+	WriteBlobRef(w, m.embed.image);
+}
+
+bool ReadChatMessage(ByteReader &r, ChatMessage &m)
+{
+	m.seq = r.U32();
+	m.up_id = r.U32();
+	m.slot = r.U8();
+	m.flags = r.U8();
+	m.time_ms = r.U64();
+	m.name = r.Str8();
+	m.text = r.Str16();
+	uint8_t has_embed = r.U8();
+	if(!r.ok() || m.name.size() > kMaxNameLength || m.text.size() > kMaxChatText)
+		return false;
+	m.embed = ChatEmbed();
+	if(!has_embed)
+		return !m.text.empty();
+	m.embed.url = r.Str16();
+	m.embed.site = r.Str8();
+	m.embed.title = r.Str8();
+	m.embed.description = r.Str16();
+	if(!r.ok() || !ReadBlobRef(r, m.embed.image))
+		return false;
+	if(m.embed.url.empty() || m.embed.url.size() > kMaxChatUrl || m.embed.site.size() > kMaxChatSite
+			|| m.embed.title.size() > kMaxChatTitle || m.embed.description.size() > kMaxChatDescription
+			|| m.embed.image.size > kMaxChatImageSize)
+		return false;
+	return true;
+}
+
 } // namespace coplay

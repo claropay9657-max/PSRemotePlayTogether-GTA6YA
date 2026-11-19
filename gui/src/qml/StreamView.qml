@@ -478,6 +478,10 @@ Item {
                 menuController.close();
                 displayPanel.open = true;
             }
+            onChatRequested: {
+                menuController.close();
+                chatPanel.open = true;
+            }
             onMainViewRequested: root.showMainView()
         }
     }
@@ -523,11 +527,18 @@ Item {
     StreamHud {
         id: streamHud
         view: view
+        chatOpen: chatPanel.open
         allowed: !menuController.open && !menuController.closing
                  && !view.sessionLoading && !view.sessionError
                  && Chiaki.window.visibility !== Window.Hidden
                  && Chiaki.window.visibility !== Window.Minimized
                  && view.StackView.status === StackView.Active
+    }
+
+    // Play Together text chat, from the stream menu or with Ctrl+T (⌘T)
+    StreamChatPanel {
+        id: chatPanel
+        view: view
     }
 
     // The display options, opened from the stream menu
@@ -631,6 +642,10 @@ Item {
         onDisplayPanelRequested: {
             menuController.close();
             displayPanel.open = true;
+        }
+        onChatRequested: {
+            menuController.close();
+            chatPanel.open = true;
         }
         onCloseAnimationFinished: {
             if (view.hostWindow)
@@ -1015,6 +1030,12 @@ Item {
                 return;
             menuController.toggle();
             Chiaki.window.requestOverlayUpdate();
+        }
+
+        function onChatRequested() {
+            if (menuController.open)
+                menuController.close();
+            chatPanel.open = !chatPanel.open;
         }
     }
     Connections {

@@ -69,6 +69,7 @@ static void Usage()
 		"      --loss PERCENT      drop this share of outgoing packets\n"
 		"      --seconds N         stop after N seconds\n"
 		"      --voice             the host talks: a short tone every two seconds (needs Opus)\n"
+		"      --chat              the host writes in the chat now and then; prints what others write\n"
 		"      --cam A.jpg,B.jpg   the host has a webcam: these pictures in turn, 8 per second\n"
 		"    Ends on SIGINT or SIGTERM like a host that stops sharing. On SIGUSR1 it ends like\n"
 		"    one that lost its console and is getting it back, so that the guests wait for it;\n"
@@ -107,6 +108,7 @@ struct Options
 	bool no_video = false;
 	bool press = false;
 	bool voice = false;
+	bool chat = false;
 	std::string cam;
 };
 
@@ -136,6 +138,7 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--seconds") { if(!value(v)) return false; o.seconds = std::atoi(v.c_str()); }
 		else if(a == "--cam") { if(!value(o.cam)) return false; }
 		else if(a == "--voice") o.voice = true;
+		else if(a == "--chat") o.chat = true;
 		else if(a == "--no-video") o.no_video = true;
 		else if(a == "--press") o.press = true;
 		else if(!a.empty() && a[0] == '-') return false;
@@ -402,6 +405,12 @@ static int RunHost(const Options &o)
 		std::printf("[host] %s\n", line.c_str());
 		std::fflush(stdout);
 	};
+	cb.on_chat = [&](const ChatMessage &m) {
+		std::lock_guard<std::mutex> lock(print_mutex);
+		std::printf("[chat] %s: %s%s%s\n", m.name.c_str(), m.text.c_str(), m.embed.Valid() ? "  [preview: " : "",
+			m.embed.Valid() ? (m.embed.title + (m.embed.image.Valid() ? ", with picture]" : "]")).c_str() : "");
+		std::fflush(stdout);
+	};
 	Host host(config, cb);
 	if(!host.Start(&error))
 	{
@@ -505,11 +514,34 @@ static int RunHost(const Options &o)
 		}
 	}
 
+	auto next_chat = clock::now() + std::chrono::seconds(4);
+	int chat_count = 0;
 	while(!g_quit)
 	{
 		auto now = clock::now();
 		if(o.seconds > 0 && now - start >= std::chrono::seconds(o.seconds))
 			break;
+
+		if(o.chat && now >= next_chat)
+		{
+			next_chat = now + std::chrono::seconds(12);
+			static const char *lines[] = {
+				"Hi everybody, welcome to the session \xF0\x9F\x91\x8B",
+				"Who takes the next mission? \xF0\x9F\x8E\xAE",
+				"gg, that was close \xF0\x9F\x94\xA5",
+				"Look: https://gamernova.net",
+			};
+			const char *line = lines[chat_count++ % 4];
+			ChatEmbed embed;
+			if(std::strstr(line, "https://"))
+			{
+				embed.url = "https://gamernova.net";
+				embed.site = "GamerNova.net";
+				embed.title = "GamerNova - tools for players";
+				embed.description = "A made-up preview from the simulator";
+			}
+			host.SendChat(line, embed, {});
+		}
 
 		if(now >= next_frame)
 		{

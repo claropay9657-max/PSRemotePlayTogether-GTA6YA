@@ -1045,6 +1045,8 @@ struct TestHost
 	std::mutex mutex;
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
+	std::vector<ChatMessage> chats;
+	std::vector<BlobRef> chat_images;
 
 	~TestHost() { host->Stop(); } // before the counters the callbacks touch go away
 
@@ -1066,6 +1068,14 @@ struct TestHost
 		cb.on_cam_frame = [this](uint8_t slot, const std::vector<uint8_t> &jpeg) {
 			std::lock_guard<std::mutex> lock(mutex);
 			cams.emplace_back(slot, jpeg);
+		};
+		cb.on_chat = [this](const ChatMessage &m) {
+			std::lock_guard<std::mutex> lock(mutex);
+			chats.push_back(m);
+		};
+		cb.on_chat_image = [this](const BlobRef &ref) {
+			std::lock_guard<std::mutex> lock(mutex);
+			chat_images.push_back(ref);
 		};
 		host = std::make_unique<Host>(config, cb);
 		std::string error;
@@ -1106,6 +1116,8 @@ struct TestGuest
 	std::vector<BlobRef> avatars;
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
+	std::vector<ChatMessage> chats;
+	std::vector<BlobRef> chat_images;
 
 	~TestGuest() { client->Stop(); } // callbacks use the members below
 
@@ -1173,6 +1185,14 @@ struct TestGuest
 				std::lock_guard<std::mutex> lock(mutex);
 				cams.emplace_back(slot, jpeg);
 			};
+			cb.on_chat = [this](const ChatMessage &m) {
+				std::lock_guard<std::mutex> lock(mutex);
+				chats.push_back(m);
+			};
+			cb.on_chat_image = [this](const BlobRef &ref) {
+				std::lock_guard<std::mutex> lock(mutex);
+				chat_images.push_back(ref);
+			};
 			client->Start(cb);
 		}
 		return ok;
@@ -1197,6 +1217,12 @@ struct TestGuest
 		for(const auto &v : voice)
 			n += slot < 0 || v.first == slot;
 		return n;
+	}
+
+	std::vector<ChatMessage> Chats()
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		return chats;
 	}
 
 	size_t CamCount(int slot = -1)
@@ -3135,6 +3161,181 @@ TEST(net_stun_asks_the_next_server_when_one_is_silent)
 	error.clear();
 	CHECK(!StunQueryFirst({}, 280, address, &port, &error));
 	CHECK(address == "untouched" && !error.empty());
+}
+
+// ---------------------------------------------------------------- chat
+
+TEST(chat_message_round_trip)
+{
+	ChatMessage m;
+	m.seq = 7;
+	m.up_id = 3;
+	m.slot = 2;
+	m.flags = kChatHistory;
+	m.time_ms = 1795000000123ull;
+	m.name = "Nova";
+	m.text = "gg \xF0\x9F\x8E\xAE https://example.com/a";
+	m.embed.url = "https://example.com/a";
+	m.embed.site = "Example";
+	m.embed.title = "A page";
+	m.embed.description = "Something to read";
+	m.embed.image.hash[0] = 9;
+	m.embed.image.size = 1234;
+	std::vector<uint8_t> buf;
+	ByteWriter w(buf);
+	WriteChatMessage(w, m);
+	CHECK(buf.size() <= kMaxPayload);
+	ChatMessage back;
+	ByteReader r(buf.data(), buf.size());
+	CHECK(ReadChatMessage(r, back));
+	CHECK(back.seq == 7 && back.up_id == 3 && back.slot == 2 && back.flags == kChatHistory);
+	CHECK(back.time_ms == m.time_ms && back.name == "Nova" && back.text == m.text);
+	CHECK(back.embed.url == m.embed.url && back.embed.site == "Example" && back.embed.title == "A page");
+	CHECK(back.embed.description == m.embed.description && back.embed.image == m.embed.image);
+
+	// the largest message still fits one packet
+	ChatMessage big;
+	big.name = std::string(100, 'n');
+	big.text = std::string(5000, 'x');
+	big.embed.url = std::string(1000, 'u');
+	big.embed.site = std::string(1000, 's');
+	big.embed.title = std::string(1000, 't');
+	big.embed.description = std::string(1000, 'd');
+	big.embed.image.size = 100;
+	buf.clear();
+	ByteWriter w2(buf);
+	WriteChatMessage(w2, big);
+	CHECK(buf.size() <= kMaxPayload);
+	ByteReader r2(buf.data(), buf.size());
+	CHECK(ReadChatMessage(r2, back));
+	CHECK(back.text.size() == kMaxChatText && back.embed.url.size() == kMaxChatUrl);
+
+	// nothing to say is not a message
+	ChatMessage empty;
+	buf.clear();
+	ByteWriter w3(buf);
+	WriteChatMessage(w3, empty);
+	ByteReader r3(buf.data(), buf.size());
+	CHECK(!ReadChatMessage(r3, back));
+}
+
+TEST(chat_text_is_cut_between_characters)
+{
+	std::string s = "ab\xC3\xA4\xF0\x9F\x98\x80"; // a b ä 😀
+	CHECK(TruncateUtf8(s, 100) == s);
+	CHECK(TruncateUtf8(s, 3) == "ab");
+	CHECK(TruncateUtf8(s, 4) == "ab\xC3\xA4");
+	CHECK(TruncateUtf8(s, 7) == "ab\xC3\xA4");
+	CHECK(TruncateUtf8(s, 8) == s);
+	CHECK(TruncateUtf8(s, 0).empty());
+}
+
+TEST(net_chat_reaches_everyone_and_newcomers_get_what_was_said)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A");
+	TestGuest b(h.MakeInvite(), "B");
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	uint8_t slot_a = a.client->Welcome().slot;
+
+	uint32_t id = a.client->SendChat("hello from A", ChatEmbed(), {});
+	CHECK(id != 0);
+	CHECK(WaitFor([&] { return b.Chats().size() == 1 && a.Chats().size() == 1; }, 2000));
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(h.mutex);
+		return h.chats.size() == 1;
+	}, 2000));
+	ChatMessage got = b.Chats()[0];
+	CHECK(got.text == "hello from A" && got.slot == slot_a && got.name == "A" && got.time_ms > 0 && !(got.flags & kChatHistory));
+	// the writer recognises its own message
+	CHECK(a.Chats()[0].up_id == id && a.Chats()[0].slot == slot_a);
+
+	ChatMessage mine = h.host->SendChat("hello from the host", ChatEmbed(), {});
+	CHECK(mine.seq != 0 && mine.slot == 0 && mine.name == "Host");
+	CHECK(WaitFor([&] { return a.Chats().size() == 2 && b.Chats().size() == 2; }, 2000));
+	CHECK(b.Chats()[1].text == "hello from the host" && b.Chats()[1].slot == 0 && b.Chats()[1].seq > got.seq);
+
+	// a newcomer gets both, marked as said before it came
+	TestGuest c(h.MakeInvite(), "C");
+	CHECK(c.Connect());
+	CHECK(WaitFor([&] { return c.Chats().size() == 2; }, 2000));
+	std::vector<ChatMessage> history = c.Chats();
+	CHECK(history[0].text == "hello from A" && (history[0].flags & kChatHistory));
+	CHECK(history[1].text == "hello from the host" && (history[1].flags & kChatHistory));
+	SleepMs(600);
+	CHECK(c.Chats().size() == 2); // acknowledged, so nothing comes twice
+}
+
+TEST(net_chat_gets_through_heavy_loss_exactly_once)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll, 3000);
+	TestGuest b(h.MakeInvite(), "B", kWantAll, 3000);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	h.host->SetSimulatedLoss(0.4, 11);
+	a.client->SetSimulatedLoss(0.4, 12);
+	for(int i = 0; i < 10; i++)
+		a.client->SendChat("message " + std::to_string(i), ChatEmbed(), {});
+	CHECK(WaitFor([&] { return b.Chats().size() >= 10; }, 8000));
+	SleepMs(1500);
+	std::vector<ChatMessage> got = b.Chats();
+	CHECK(got.size() == 10);
+	std::vector<std::string> texts;
+	for(const ChatMessage &m : got)
+		texts.push_back(m.text);
+	std::sort(texts.begin(), texts.end());
+	bool all = texts.size() == 10;
+	for(int i = 0; all && i < 10; i++)
+		all = texts[static_cast<size_t>(i)] == "message " + std::to_string(i);
+	CHECK(all);
+	h.host->SetSimulatedLoss(0.0);
+	a.client->SetSimulatedLoss(0.0);
+}
+
+TEST(net_chat_link_preview_picture_travels)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A");
+	TestGuest b(h.MakeInvite(), "B");
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+
+	std::vector<uint8_t> picture(5000);
+	for(size_t i = 0; i < picture.size(); i++)
+		picture[i] = static_cast<uint8_t>(i * 7);
+	ChatEmbed embed;
+	embed.url = "https://example.com/clip";
+	embed.title = "A clip";
+	a.client->SendChat("look https://example.com/clip", embed, picture);
+	CHECK(WaitFor([&] { return b.Chats().size() == 1; }, 2000));
+	ChatMessage m = b.Chats()[0];
+	CHECK(m.embed.Valid() && m.embed.title == "A clip" && m.embed.image.Valid());
+	// it went from A to the host, and from the host to B
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(b.mutex);
+		return b.chat_images.size() == 1;
+	}, 3000));
+	BlobData at_b = b.client->ChatImage(m.embed.image.hash);
+	CHECK(at_b && *at_b == picture);
+	BlobData at_host = h.host->ChatImage(m.embed.image.hash);
+	CHECK(at_host && *at_host == picture);
+
+	// the host's own preview goes straight out
+	std::vector<uint8_t> other(300, 0x42);
+	ChatEmbed host_embed;
+	host_embed.url = "https://example.com/b";
+	ChatMessage sent = h.host->SendChat("", host_embed, other);
+	CHECK(sent.seq != 0 && sent.embed.image.Valid());
+	CHECK(WaitFor([&] { return a.Chats().size() == 2; }, 2000));
+	CHECK(WaitFor([&] {
+		BlobData d = a.client->ChatImage(sent.embed.image.hash);
+		return d && *d == other;
+	}, 3000));
 }
 
 int main(int argc, char **argv)

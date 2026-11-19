@@ -251,6 +251,11 @@ Item {
                 checked: options.hud.values.notices
                 onToggled: options.hud.values.notices = checked
             }
+            Toggle {
+                text: qsTr("New chat messages, for a few seconds")
+                checked: options.hud.values.chat
+                onToggled: options.hud.values.chat = checked
+            }
 
             Caption { text: qsTr("For each player") }
             GridLayout {
@@ -478,6 +483,11 @@ Item {
                         text: qsTr("A note when somebody joins or leaves")
                         checked: options.obs.values.notices
                         onToggled: options.obs.values.notices = checked
+                    }
+                    Toggle {
+                        text: qsTr("The chat, for the viewers")
+                        checked: options.obs.values.chat
+                        onToggled: options.obs.values.chat = checked
                     }
                 }
 

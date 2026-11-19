@@ -4,7 +4,7 @@
 #define COPLAY_PROTOCOL_H
 
 /*
- * Co-play wire protocol, version 2.
+ * Co-play wire protocol, version 4.
  *
  * One host is connected to the console through Remote Play. Guests connect to
  * the host over UDP, receive the console's video, audio and controller
@@ -13,7 +13,8 @@
  *
  * Everybody can also talk to and see each other: each player's microphone
  * (Opus) and webcam (JPEG pictures) go to the host, which passes them on to
- * the other players.
+ * the other players. Text chat goes the same way, but every message is
+ * acknowledged and sent again until it is.
  *
  * Every datagram is:
  *
@@ -42,7 +43,7 @@
 
 namespace coplay {
 
-constexpr uint8_t kProtocolVersion = 3;
+constexpr uint8_t kProtocolVersion = 4;
 constexpr uint16_t kDefaultPort = 9410;
 
 constexpr size_t kHeaderSize = 14;
@@ -81,6 +82,8 @@ enum class PacketType : uint8_t
 	Pong = 0x12,            // host -> guest
 	VoiceUp = 0x13,         // guest -> host
 	CamUp = 0x14,           // guest -> host
+	ChatUp = 0x15,          // guest -> host, answered with ChatUpAck
+	ChatAck = 0x16,         // guest -> host
 
 	Video = 0x20,           // host -> guest
 	Audio = 0x21,           // host -> guest
@@ -90,6 +93,8 @@ enum class PacketType : uint8_t
 	Inputs = 0x25,          // host -> guest
 	Voice = 0x26,           // host -> guest
 	Cam = 0x27,             // host -> guest
+	Chat = 0x28,            // host -> guest, answered with ChatAck
+	ChatUpAck = 0x29,       // host -> guest
 
 	Nack = 0x30,            // guest -> host
 	KeyframeRequest = 0x31, // guest -> host
@@ -166,6 +171,61 @@ struct BlobRef
 	bool operator==(const BlobRef &o) const { return size == o.size && hash == o.hash; }
 	bool operator!=(const BlobRef &o) const { return !(*this == o); }
 };
+
+/*
+ * Text chat. Limits are bytes of UTF-8; longer text is cut at a character
+ * boundary by the sender.
+ */
+constexpr size_t kMaxChatText = 400;
+constexpr size_t kMaxChatUrl = 256;
+constexpr size_t kMaxChatSite = 48;
+constexpr size_t kMaxChatTitle = 100;
+constexpr size_t kMaxChatDescription = 160;
+/** The picture of a link preview travels like a player's picture, see BlobRef. */
+constexpr size_t kMaxChatImageSize = kMaxAvatarSize;
+/** Messages a player who joins gets from before. */
+constexpr size_t kChatHistorySize = 30;
+
+enum ChatFlags : uint8_t
+{
+	/** Written before the receiver joined. */
+	kChatHistory = 1 << 0
+};
+
+/** A preview of the first link in a message, made by the sender. */
+struct ChatEmbed
+{
+	std::string url;
+	std::string site;
+	std::string title;
+	std::string description;
+	BlobRef image;
+
+	bool Valid() const { return !url.empty(); }
+};
+
+struct ChatMessage
+{
+	/** Chat: the host's numbering. ChatUp: the sender's own. */
+	uint32_t seq = 0;
+	/** Chat: the number the writer gave it in its ChatUp (0 for the host's own), so it knows its message. */
+	uint32_t up_id = 0;
+	/** Chat: who wrote it. */
+	uint8_t slot = 0;
+	uint8_t flags = 0; // ChatFlags
+	/** Chat: when the host got it, milliseconds since 1970 by the host's clock. */
+	uint64_t time_ms = 0;
+	/** Chat: the writer's name at the time, which stays when they have left. */
+	std::string name;
+	std::string text;
+	ChatEmbed embed;
+};
+
+/** At most max bytes of s, never ending in the middle of a UTF-8 character. */
+std::string TruncateUtf8(const std::string &s, size_t max);
+
+void WriteChatMessage(ByteWriter &w, const ChatMessage &m);
+bool ReadChatMessage(ByteReader &r, ChatMessage &m);
 
 enum class ControllerKind : uint8_t
 {

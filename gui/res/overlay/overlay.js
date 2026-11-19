@@ -19,7 +19,7 @@
   const root = document.getElementById('root');
 
   let config = {
-    players: true, pads: true, combined: true, cams: true, voice: true, battery: true, notices: true,
+    players: true, pads: true, combined: true, cams: true, voice: true, battery: true, notices: true, chat: true,
     layout: 'row', scale: 30, skin: 'auto', skins: ['PS5'],
     // 'transparent': no boxes, the stream shows through; 'glass': see-through boxes; 'solid': dark boxes
     style: 'transparent',
@@ -54,6 +54,7 @@
     }
     if (params.has('voice')) c.voice = params.get('voice') !== '0';
     if (params.has('battery')) c.battery = params.get('battery') !== '0';
+    if (params.has('chat')) c.chat = params.get('chat') !== '0';
     if (params.has('free')) c.free = params.get('free') !== '0';
     if (editing) c.free = true;
     if (params.has('layout')) c.layout = params.get('layout') === 'column' ? 'column' : 'row';
@@ -469,6 +470,46 @@
     runVoice();
   }
 
+  // ------------------------------------------------------------------ chat
+
+  // The latest messages, bottom left, each for half a minute. Messages that were
+  // there before the page came in are not shown.
+  const CHAT_SHOW_MS = 30000;
+  const SLOT_COLORS = ['#b18cff', '#00f2ff', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#fb923c', '#a3e635', '#e879f9'];
+  const chatBox = el('div', 'chat-box');
+  document.body.append(chatBox);
+  let chatSeen = null;      // key -> when the page first had it; null until the first list
+  let chatList = [];
+  const chatLines = new Map(); // key -> element
+
+  function renderChat() {
+    const c = effectiveConfig();
+    chatBox.className = 'chat-box style-' + c.style;
+    chatBox.style.display = c.chat ? '' : 'none';
+    const now = Date.now();
+    const show = chatList.filter(function (m) {
+      return chatSeen && chatSeen[m.key] && now - chatSeen[m.key] < CHAT_SHOW_MS;
+    }).slice(-6);
+    const keep = new Set(show.map(function (m) { return m.key; }));
+    chatLines.forEach(function (line, key) {
+      if (!keep.has(key)) { line.remove(); chatLines.delete(key); }
+    });
+    show.forEach(function (m) {
+      let line = chatLines.get(m.key);
+      if (!line) {
+        line = el('div', 'chat-line');
+        const name = el('span', 'chat-name', m.name || ('Player ' + (m.slot + 1)));
+        name.style.color = SLOT_COLORS[m.slot % SLOT_COLORS.length];
+        line.append(name, el('span', 'chat-text', m.text || ''));
+        if (m.title) line.append(el('span', 'chat-link', m.title));
+        chatLines.set(m.key, line);
+        chatBox.append(line);
+      }
+      line.classList.toggle('gone', now - chatSeen[m.key] > CHAT_SHOW_MS - 1500);
+    });
+  }
+  setInterval(renderChat, 500);
+
   // ------------------------------------------------------------------ data
 
   function connect() {
@@ -477,6 +518,17 @@
       config = Object.assign(config, JSON.parse(event.data));
       render();
       updateVoice();
+    });
+    source.addEventListener('chat', function (event) {
+      const list = JSON.parse(event.data) || [];
+      if (chatSeen === null) {
+        chatSeen = {};
+        list.forEach(function (m) { chatSeen[m.key] = 1; }); // from before: never shown
+      } else {
+        list.forEach(function (m) { if (!(m.key in chatSeen)) chatSeen[m.key] = Date.now(); });
+      }
+      chatList = list;
+      renderChat();
     });
     source.addEventListener('state', function (event) {
       const next = JSON.parse(event.data);

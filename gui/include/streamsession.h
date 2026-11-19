@@ -37,6 +37,7 @@
 
 #include <QObject>
 #include <QVariantList>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QImage>
 #include <QMouseEvent>
@@ -56,8 +57,9 @@
 class QKeyEvent;
 class Settings;
 
-namespace coplay { class Client; struct ClientConfig; enum class DisconnectReason; }
+namespace coplay { class Client; class Host; struct ClientConfig; enum class DisconnectReason; struct ChatMessage; struct ChatEmbed; struct BlobRef; }
 struct CoPlayState;
+struct CoPlayChatState;
 struct CoPlayRejoin;
 
 class ChiakiException: public Exception
@@ -151,6 +153,8 @@ class SdeckHapticsWorker;
 		int coplay_camera_quality = 1;
 		bool coplay_camera_on_start = false;
 		bool coplay_show_cams = true;
+		/** Text chat: the writer's app looks at a link once and sends a preview along. */
+		bool coplay_chat_previews = true;
 		// Joining somebody else's session instead of connecting to a console.
 		// The client has already completed its handshake with the host.
 		std::shared_ptr<coplay::Client> coplay_client;
@@ -212,6 +216,8 @@ class StreamSession : public QObject
 	Q_PROPERTY(QVariantMap coplayTalking READ GetCoPlayTalking NOTIFY CoPlayTalkingChanged)
 	Q_PROPERTY(int coplayCamSerial READ GetCoPlayCamSerial NOTIFY CoPlayCamChanged)
 	Q_PROPERTY(bool coplayReconnecting READ IsCoPlayReconnecting NOTIFY CoPlayReconnectingChanged)
+	Q_PROPERTY(QVariantList coplayChat READ GetCoPlayChat NOTIFY CoPlayChatChanged)
+	Q_PROPERTY(int coplayChatUnread READ GetCoPlayChatUnread NOTIFY CoPlayChatChanged)
 
 	private:
 		SessionLog log;
@@ -379,6 +385,7 @@ class StreamSession : public QObject
 #endif
 		// Play Together, see streamsession_coplay.cpp
 		CoPlayState *coplay = nullptr;
+		CoPlayChatState *coplay_chat = nullptr;
 		void CoPlayInit(const StreamSessionConnectInfo &connect_info);
 		void CoPlayStopThreads();
 		void CoPlayFini();
@@ -391,6 +398,20 @@ class StreamSession : public QObject
 		void CoPlayRejoinFinished(const std::shared_ptr<CoPlayRejoin> &job, const std::shared_ptr<coplay::Client> &client, const QString &error);
 		void CoPlayCancelRejoin();
 		void CoPlayOnEvent(ChiakiEvent *event);
+		// Text chat, see streamsession_chat.cpp
+		void CoPlayChatInit(bool previews);
+		void CoPlayChatFini();
+		QVariantMap CoPlayChatEntry(const coplay::ChatMessage &m, bool mine);
+		void CoPlayChatAdd(const QVariantMap &entry, bool notify);
+		void CoPlayChatSend(const QString &local_key, const QString &text, const coplay::ChatEmbed &embed, const QByteArray &image);
+		void CoPlayOnChat(const coplay::ChatMessage &m);
+		void CoPlayOnChatImage(const coplay::BlobRef &ref);
+		/** The connection to the host, whichever it is right now (see joining again). */
+		std::shared_ptr<coplay::Client> CoPlayClient() const;
+		/** The sharing side, if we share. */
+		coplay::Host *CoPlayHost() const;
+		/** The name the others know us by. */
+		QString CoPlayOwnName() const;
 		void CoPlayOnSharingStarted();
 		QString CoPlayInviteFor(const QString &host) const;
 		void CoPlayOnHaptics(uint8_t *buf, size_t buf_size);
@@ -483,6 +504,13 @@ class StreamSession : public QObject
 		bool ReconnectWanted() const	{ return reconnect_wanted; }
 		/** Stop() or GoToBed() was called: whatever ends the session now, the user wanted it to end. */
 		bool StopRequested() const	{ return stop_requested; }
+		QVariantList GetCoPlayChat() const;
+		/** The latest messages for the OBS overlay. */
+		QJsonArray OverlayChat() const;
+		int GetCoPlayChatUnread() const;
+		/** Writes in the chat. A link in it gets a preview, made by this app. */
+		Q_INVOKABLE void coplaySendChat(const QString &text);
+		Q_INVOKABLE void coplayMarkChatRead();
 		Q_INVOKABLE void coplayKick(int slot);
 		Q_INVOKABLE void coplaySetCanControl(int slot, bool allowed);
 		Q_INVOKABLE void coplayCopyInvite();
@@ -576,6 +604,9 @@ class StreamSession : public QObject
 		void CoPlayTalkingChanged();
 		void CoPlayCamChanged();
 		void CoPlayReconnectingChanged();
+		void CoPlayChatChanged();
+		/** Somebody else wrote something new (not what was said before we came). */
+		void CoPlayChatMessage(const QVariantMap &message);
 		/** Something the user should be told, e.g. that the port for sharing is taken. */
 		void CoPlayNotice(const QString &text);
 

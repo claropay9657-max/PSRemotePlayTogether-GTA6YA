@@ -129,6 +129,7 @@ QByteArray OverlayServer::ConfigJson() const
 	o["voice"] = settings->GetOverlayVoice();
 	o["battery"] = settings->GetValue("overlay/battery", true).toBool();
 	o["notices"] = settings->GetValue("overlay/notices", true).toBool();
+	o["chat"] = settings->GetValue("overlay/chat", true).toBool();
 	QString style = settings->GetValue("overlay/style", "transparent").toString();
 	o["style"] = (style == "glass" || style == "solid") ? style : QString("transparent");
 	// Free placement: every player's card and the console's controller sit where they were
@@ -147,6 +148,12 @@ QByteArray OverlayServer::ConfigJson() const
 	}
 	o["skins"] = QJsonArray::fromStringList(Skins());
 	return QJsonDocument(o).toJson(QJsonDocument::Compact);
+}
+
+QByteArray OverlayServer::ChatJson() const
+{
+	QJsonArray chat = session ? session->OverlayChat() : QJsonArray();
+	return QJsonDocument(chat).toJson(QJsonDocument::Compact);
 }
 
 QByteArray OverlayServer::StateJson() const
@@ -393,6 +400,7 @@ void OverlayServer::StartEvents(QTcpSocket *socket)
 	event_clients.append(socket);
 	SendEvent(socket, "config", ConfigJson());
 	SendEvent(socket, "state", StateJson());
+	SendEvent(socket, "chat", ChatJson());
 	UpdateTimer();
 }
 
@@ -458,6 +466,17 @@ void OverlayServer::Tick()
 
 	if(event_clients.isEmpty())
 		return;
+	// The chat on its own: it changes seldom, the controllers all the time
+	QByteArray chat = ChatJson();
+	if(chat != last_chat)
+	{
+		last_chat = chat;
+		for(QTcpSocket *socket : std::as_const(event_clients))
+		{
+			if(socket->bytesToWrite() < 256 * 1024)
+				SendEvent(socket, "chat", chat);
+		}
+	}
 	QByteArray state = StateJson();
 	qint64 now = QDateTime::currentMSecsSinceEpoch();
 	if(state != last_state)

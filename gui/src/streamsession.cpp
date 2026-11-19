@@ -361,6 +361,7 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	this->coplay_camera_quality = settings->GetCoPlayCameraQuality();
 	this->coplay_camera_on_start = settings->GetCoPlayCameraOnStart();
 	this->coplay_show_cams = settings->GetCoPlayShowCams();
+	this->coplay_chat_previews = settings->GetCoPlayChatPreviews();
 	this->auto_reconnect = settings->GetCoPlayAutoReconnect();
 }
 
