@@ -420,6 +420,22 @@ DialogView {
             }
         }
 
+        // The page of the selected tab sits on a glass panel
+        Rectangle {
+            anchors {
+                top: bar.bottom
+                left: parent.left
+                right: parent.right
+                bottom: parent.bottom
+                margins: 14
+                topMargin: 10
+            }
+            radius: 18
+            color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.5)
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.07)
+        }
+
         StackLayout {
             anchors {
                 top: bar.bottom

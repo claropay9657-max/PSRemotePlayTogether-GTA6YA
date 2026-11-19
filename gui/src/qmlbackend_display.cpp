@@ -50,6 +50,8 @@ void QmlBackend::initDisplays()
         { "vertical", true },
         // "auto": the colour of a white DualSense
         { "skin", QString("auto") },
+        // "transparent": nothing behind names and pictures; "glass": see-through boxes; "solid": dark boxes
+        { "style", QString("transparent") },
         { "opacity", 100 },
         // Also when playing alone, without anybody else in the session
         { "solo", false },
@@ -67,8 +69,11 @@ void QmlBackend::initDisplays()
     QJsonArray hud_builtin = {
         Preset(tr("Players and webcams"), {}),
         Preset(tr("Everything"), { { "pads_show", true }, { "combined_show", true } }),
+        Preset(tr("Everything, in boxes"), { { "pads_show", true }, { "combined_show", true }, { "style", "glass" } }),
+        Preset(tr("Players in a row along the top"), { { "vertical", false }, { "cams_show", false }, { "players_x", 0.5 } }),
+        Preset(tr("Each controller by itself"), { { "pads_show", true }, { "pads_separate", true }, { "combined_show", true } }),
         Preset(tr("Console controller only"), { { "players_show", false }, { "cams_show", false }, { "combined_show", true }, { "solo", true } }),
-        Preset(tr("Nothing"), { { "players_show", false }, { "cams_show", false } }),
+        Preset(tr("Nothing"), { { "players_show", false }, { "cams_show", false }, { "notices", false } }),
     };
     hud_settings = new PresetSettings(settings, "hud", hud_keys, hud_builtin, this);
 
@@ -83,6 +88,8 @@ void QmlBackend::initDisplays()
         { "voice", true },
         { "own_voice", false },
         { "skin", QString("auto") },
+        // "transparent": no boxes, the stream shows through; "glass": see-through boxes; "solid": dark boxes
+        { "style", QString("transparent") },
         { "scale", 30 },
         { "layout", QString("row") },
         { "notices", true },
@@ -99,8 +106,12 @@ void QmlBackend::initDisplays()
     QJsonArray overlay_builtin = {
         Preset(tr("Everything"), {}),
         Preset(tr("Players only"), { { "pads", false }, { "combined", false }, { "webcams", false } }),
+        Preset(tr("Players below each other"), { { "pads", false }, { "combined", false }, { "webcams", false }, { "layout", "column" } }),
+        Preset(tr("Controllers only"), { { "players", false }, { "webcams", false }, { "voice", false } }),
         Preset(tr("Console controller only"), { { "players", false }, { "pads", false }, { "webcams", false }, { "voice", false } }),
         Preset(tr("Webcams and voices"), { { "pads", false }, { "combined", false } }),
+        Preset(tr("Everything, in glass boxes"), { { "style", "glass" } }),
+        Preset(tr("Everything, in dark boxes"), { { "style", "solid" } }),
     };
     overlay_settings = new PresetSettings(settings, "overlay", overlay_keys, overlay_builtin, this);
 

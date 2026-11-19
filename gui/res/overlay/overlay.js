@@ -21,6 +21,8 @@
   let config = {
     players: true, pads: true, combined: true, cams: true, voice: true, battery: true, notices: true,
     layout: 'row', scale: 30, skin: 'auto', skins: ['PS5'],
+    // 'transparent': no boxes, the stream shows through; 'glass': see-through boxes; 'solid': dark boxes
+    style: 'transparent',
     // Free placement: every player's card and the console's controller sit where they
     // were dragged to. The app sends the places as p0_x, p0_y, p1_x, ... combined_x,
     // combined_y: fractions of the space left over (0 = left/top edge, 1 = right/bottom).
@@ -57,6 +59,8 @@
     if (params.has('layout')) c.layout = params.get('layout') === 'column' ? 'column' : 'row';
     if (params.has('scale')) c.scale = Math.max(10, Math.min(100, parseInt(params.get('scale'), 10) || c.scale));
     if (params.has('skin')) c.skin = params.get('skin');
+    if (params.has('style')) c.style = params.get('style');
+    if (c.style !== 'glass' && c.style !== 'solid') c.style = 'transparent';
     return c;
   }
 
@@ -156,7 +160,7 @@
     const c = effectiveConfig();
     document.body.classList.toggle('preview', params.get('bg') === 'dark' || editing);
     document.body.classList.toggle('edit', editing);
-    root.className = 'layout-' + c.layout + (state.active ? '' : ' idle') + (c.free ? ' free' : '');
+    root.className = 'layout-' + c.layout + ' style-' + c.style + (state.active ? '' : ' idle') + (c.free ? ' free' : '');
 
     const wanted = [];
     if (state.active && (c.players || c.pads || c.cams)) {

@@ -15,6 +15,16 @@ Dialog {
     x: Math.round((root.width - width) / 2)
     y: Math.round((root.height - height) / 2)
     modal: true
+    // A glass card in the GamerNova look, on a dimmed backdrop
+    background: Rectangle {
+        radius: 18
+        color: Qt.rgba(13 / 255, 11 / 255, 31 / 255, 0.97)
+        border.width: 1
+        border.color: Qt.rgba(140 / 255, 82 / 255, 255 / 255, 0.6)
+    }
+    Overlay.modal: Rectangle {
+        color: Qt.rgba(5 / 255, 5 / 255, 20 / 255, 0.62)
+    }
     Material.roundedScale: Material.MediumScale
     onOpened: label.forceActiveFocus(Qt.TabFocusReason)
     onAccepted: {

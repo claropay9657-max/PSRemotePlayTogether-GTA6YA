@@ -475,8 +475,8 @@ Item {
                     let ctx = getContext("2d");
                     let gradient = ctx.createLinearGradient(0, 0, 0, height);
                     gradient.addColorStop(0.0, Qt.rgba(0.0, 0.0, 0.0, 0.0));
-                    gradient.addColorStop(0.7, Qt.rgba(0.5, 0.5, 0.5, 0.7));
-                    gradient.addColorStop(1.0, Qt.rgba(0.5, 0.5, 0.5, 0.9));
+                    gradient.addColorStop(0.3, Qt.rgba(13 / 255, 11 / 255, 31 / 255, 0.86));
+                    gradient.addColorStop(1.0, Qt.rgba(13 / 255, 11 / 255, 31 / 255, 0.97));
                     ctx.fillStyle = gradient;
                     ctx.fillRect(0, 0, width, height);
                 }

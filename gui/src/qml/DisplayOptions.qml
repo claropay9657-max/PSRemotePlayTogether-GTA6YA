@@ -138,6 +138,26 @@ Item {
                 enabled: presetRow.group.presets.length > 1
                 onClicked: presetRow.group.removePreset()
             }
+
+            Button {
+                flat: true
+                font.pixelSize: 14
+                text: restoreTimer.running ? qsTr("Sure?") : qsTr("Defaults")
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Throw all presets away and start over with the built-in ones")
+                onClicked: {
+                    if (restoreTimer.running) {
+                        restoreTimer.stop();
+                        presetRow.group.resetAll();
+                    } else {
+                        restoreTimer.restart();
+                    }
+                }
+                Timer {
+                    id: restoreTimer
+                    interval: 3000
+                }
+            }
         }
 
         RowLayout {
@@ -272,6 +292,23 @@ Item {
             }
 
             Caption { text: qsTr("Look") }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
+                    font.pixelSize: 15
+                    text: qsTr("Style")
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    font.pixelSize: 15
+                    readonly property var styles: ["transparent", "glass", "solid"]
+                    model: [qsTr("Transparent, no boxes"), qsTr("Glass boxes"), qsTr("Dark boxes")]
+                    currentIndex: Math.max(0, styles.indexOf(options.hud.values.style))
+                    onActivated: (index) => options.hud.values.style = styles[index]
+                }
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
@@ -465,6 +502,23 @@ Item {
                 }
 
                 Caption { text: qsTr("Look") }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    Label {
+                        font.pixelSize: 15
+                        text: qsTr("Style")
+                    }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        font.pixelSize: 15
+                        readonly property var styles: ["transparent", "glass", "solid"]
+                        model: [qsTr("Transparent, no boxes"), qsTr("Glass boxes"), qsTr("Dark boxes")]
+                        currentIndex: Math.max(0, styles.indexOf(options.obs.values.style))
+                        onActivated: (index) => options.obs.values.style = styles[index]
+                    }
+                }
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 10

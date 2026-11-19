@@ -52,6 +52,9 @@ Window {
     readonly property color green: "#34d399"
     readonly property color red: "#f0466e"
     readonly property color glass: Qt.rgba(12 / 255, 10 / 255, 26 / 255, 0.72)
+    // "transparent": nothing behind names and pictures; "glass": see-through boxes; "solid": dark boxes
+    readonly property bool plain: cfg.style !== "glass" && cfg.style !== "solid"
+    readonly property color boxColor: plain ? "transparent" : (cfg.style === "solid" ? "#10101a" : glass)
 
     transientParent: view.hostWindow
     color: "transparent"
@@ -307,8 +310,8 @@ Window {
                     width: chipRow.implicitWidth + 20
                     height: 46
                     radius: 23
-                    color: hud.glass
-                    border.width: modelData.inControl && hud.exclusive ? 2 : 1
+                    color: hud.boxColor
+                    border.width: hud.plain ? 0 : (modelData.inControl && hud.exclusive ? 2 : 1)
                     border.color: modelData.inControl && hud.exclusive ? hud.accent : Qt.rgba(1, 1, 1, 0.14)
                     opacity: hud.exclusive && !modelData.inControl ? 0.7 : 1.0
 
@@ -336,9 +339,12 @@ Window {
 
                             Text {
                                 visible: hud.cfg.names
-                                color: chip.isTalking ? hud.green : "white"
+                                color: chip.isTalking ? hud.green : (hud.plain && chip.modelData.inControl && hud.exclusive ? hud.cyan : "white")
                                 font.pixelSize: 14
                                 font.bold: true
+                                // Without a box behind it, an outline keeps it readable on any game picture
+                                style: hud.plain ? Text.Outline : Text.Normal
+                                styleColor: Qt.rgba(0, 0, 0, 0.85)
                                 text: chip.modelData.name || qsTr("Player %1").arg(chip.modelData.slot + 1)
                             }
 

@@ -75,6 +75,40 @@ Pane {
         }
     }
 
+    // A small labelled pill: the state of a console at a glance
+    component Chip: Rectangle {
+        id: chip
+        property string text
+        property color dot: "transparent"
+        height: 26
+        width: chipContent.implicitWidth + 20
+        radius: 13
+        color: Qt.rgba(1, 1, 1, 0.08)
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.10)
+
+        Row {
+            id: chipContent
+            anchors.centerIn: parent
+            spacing: 6
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: chip.dot.a > 0
+                width: 8
+                height: 8
+                radius: 4
+                color: chip.dot
+            }
+
+            Label {
+                font.pixelSize: 13
+                font.bold: true
+                text: chip.text
+            }
+        }
+    }
+
     ToolBar {
         id: toolBar
         anchors {
@@ -329,54 +363,60 @@ Pane {
                     sourceSize: Qt.size(width, height)
                 }
 
-                Label {
+                // Name, state at a glance, and the details underneath
+                ColumnLayout {
                     Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    text: {
-                        let t = "";
-                        if (modelData.name)
-                            t += modelData.name + "\n";
-                        if (modelData.address)
-                            t += qsTr("Address: %1").arg(Chiaki.settings.streamerMode ? "hidden" : modelData.address);
-                        if (modelData.mac)
-                            t += "\n" + qsTr("ID: %1 (%2)").arg(Chiaki.settings.streamerMode ? "hidden" : modelData.mac).arg(modelData.registered ? qsTr("registered") : qsTr("unregistered"));
-                        if (modelData.duid)
-                        {
-                            if(modelData.discovered)
-                                t += "\n" + qsTr("Automatic Registration Available");
-                            else
-                                t += "\n" + qsTr("Remote Connection via PSN");
-                        } 
-                        else
-                        {
-                            t += "\n";
-                            if(modelData.discovered)
-                            {
-                                if(modelData.manual)
-                                    t += qsTr("discovered + manual")
-                                else
-                                    t += qsTr("discovered");
-                            }
-                            else
-                                t += qsTr("manual");
-                        }
-                        return t;
-                    }
-                }
+                    spacing: 8
 
-                Label {
-                    Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                    text: {
-                        let t = "";
-                        if(modelData.duid)
-                            return t;
-                        t += qsTr("State: %1").arg(modelData.state);
-                        if(!modelData.discovered)
-                            return t;
-                        if (modelData.app)
-                            t += "\n" + qsTr("App: %1").arg(modelData.app);
-                        if (modelData.titleId)
-                            t += "\n" + qsTr("Title ID: %1").arg(modelData.titleId);
-                        return t;
+                    Label {
+                        font.pixelSize: 24
+                        font.bold: true
+                        text: modelData.name || (modelData.ps5 ? qsTr("PlayStation 5") : qsTr("PlayStation 4"))
+                    }
+
+                    Row {
+                        spacing: 8
+
+                        // On, asleep, or reached through PSN
+                        Chip {
+                            visible: !modelData.duid
+                            text: modelData.state === "ready" ? qsTr("On") : (modelData.state === "standby" ? qsTr("In rest mode") : modelData.state)
+                            dot: modelData.state === "ready" ? "#34d399" : (modelData.state === "standby" ? "#f5b942" : "#9494a8")
+                        }
+
+                        Chip {
+                            visible: !!modelData.duid
+                            text: modelData.discovered ? qsTr("Automatic registration available") : qsTr("Remote connection via PSN")
+                            dot: "#00f2ff"
+                        }
+
+                        Chip {
+                            visible: !modelData.duid
+                            text: modelData.registered ? qsTr("Registered") : qsTr("Not registered yet")
+                            dot: modelData.registered ? "#8c52ff" : "#f0466e"
+                        }
+
+                        Chip {
+                            visible: !modelData.duid && !!modelData.app
+                            text: modelData.app || ""
+                        }
+                    }
+
+                    Label {
+                        opacity: 0.6
+                        font.pixelSize: 14
+                        text: {
+                            let parts = [];
+                            if (modelData.address)
+                                parts.push(Chiaki.settings.streamerMode ? qsTr("Address hidden") : modelData.address);
+                            if (modelData.mac && !Chiaki.settings.streamerMode)
+                                parts.push(qsTr("ID %1").arg(modelData.mac));
+                            if (!modelData.duid)
+                                parts.push(modelData.discovered ? (modelData.manual ? qsTr("found on this network, also added by hand") : qsTr("found on this network")) : qsTr("added by hand"));
+                            if (modelData.titleId)
+                                parts.push(modelData.titleId);
+                            return parts.join("  ·  ");
+                        }
                     }
                 }
 

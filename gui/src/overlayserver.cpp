@@ -129,6 +129,8 @@ QByteArray OverlayServer::ConfigJson() const
 	o["voice"] = settings->GetOverlayVoice();
 	o["battery"] = settings->GetValue("overlay/battery", true).toBool();
 	o["notices"] = settings->GetValue("overlay/notices", true).toBool();
+	QString style = settings->GetValue("overlay/style", "transparent").toString();
+	o["style"] = (style == "glass" || style == "solid") ? style : QString("transparent");
 	// Free placement: every player's card and the console's controller sit where they were
 	// dragged to, as fractions of the space that is left over (0 = left/top, 1 = right/bottom)
 	o["free"] = settings->GetValue("overlay/free", false).toBool();
