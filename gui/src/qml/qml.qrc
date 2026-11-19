@@ -32,6 +32,8 @@
     <file>controls/PadView.qml</file>
     <file>controls/Avatar.qml</file>
         <file>controls/FormCard.qml</file>
+        <file>controls/SettingsSection.qml</file>
+        <file>controls/SettingRow.qml</file>
         <file>controls/InviteRow.qml</file>
     <file>controls/NovaBackground.qml</file>
     <file>controls/GradientText.qml</file>
