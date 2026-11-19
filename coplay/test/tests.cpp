@@ -392,13 +392,14 @@ TEST(replay_window)
 	CHECK(!w.Accept(6));
 
 	// jump far ahead: everything older than the window is refused
-	uint64_t far = 1000 + ReplayWindow::kWindow * 3;
-	CHECK(w.Accept(far));
+	// (not named "far": the Windows headers define that as a macro)
+	uint64_t ahead =1000 + ReplayWindow::kWindow * 3;
+	CHECK(w.Accept(ahead));
 	CHECK(!w.Accept(7));
-	CHECK(!w.Accept(far - ReplayWindow::kWindow));
-	CHECK(w.Accept(far - ReplayWindow::kWindow + 1));
-	CHECK(!w.Accept(far - ReplayWindow::kWindow + 1));
-	CHECK(w.Accept(far - 1));
+	CHECK(!w.Accept(ahead - ReplayWindow::kWindow));
+	CHECK(w.Accept(ahead - ReplayWindow::kWindow + 1));
+	CHECK(!w.Accept(ahead - ReplayWindow::kWindow + 1));
+	CHECK(w.Accept(ahead - 1));
 
 	// a slot reused by a newer counter must not look "seen"
 	ReplayWindow v;

@@ -1,0 +1,127 @@
+# Builds PSRemotePlayTogether for Linux and Windows on every push to main, and
+# publishes a release when a tag like v1.2.3 is pushed. See docs/releasing.md.
+#
+# Every job is "run one script from scripts/ci/ inside a public container
+# image", so a build can be reproduced locally with docker (the scripts say how).
+#
+# The checkout is done with plain git instead of a checkout action: actions are
+# JavaScript programs and the build images don't contain Node.js. Node is only
+# installed at the very end, for the artifact upload.
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux AppImage
+    runs-on: docker
+    container:
+      # The image upstream chiaki-ng builds its AppImage in (Ubuntu 24.04, Qt 6.9.3)
+      image: docker.io/streetpea/chiaki-ng-builder:qt6.9.3
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          echo "Runner: $(uname -sm), user $(id -un) ($(id -u)), $(nproc) CPUs"
+          # The image runs as an unprivileged user; the workspace may belong to root
+          if [ "$(id -u)" != 0 ]; then sudo chown "$(id -u):$(id -g)" .; fi
+          git config --global --add safe.directory '*'
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')"
+          git -c "http.extraHeader=Authorization: Basic $auth" fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+          git submodule update -q --init --recursive --depth 1 \
+            test/munit third-party/nanopb third-party/jerasure third-party/gf-complete \
+            third-party/curl third-party/cpp-steam-tools
+          git log -1 --format='Checked out %h %s'
+
+      - name: Build
+        run: scripts/ci/build-linux.sh
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          FORGEJO_TOKEN: ${{ github.token }}
+        run: scripts/ci/publish-release.sh dist/*.AppImage dist/*.sha256
+
+      - name: Install Node.js for the artifact upload
+        run: scripts/ci/install-node.sh
+
+      - name: Keep the AppImage as an artifact
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows (cross-compiled)
+    runs-on: docker
+    container:
+      image: docker.io/library/debian:trixie
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          echo "Runner: $(uname -sm), user $(id -un) ($(id -u)), $(nproc) CPUs"
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ca-certificates git >/dev/null
+          git config --global --add safe.directory '*'
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')"
+          git -c "http.extraHeader=Authorization: Basic $auth" fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+          git submodule update -q --init --recursive --depth 1 \
+            test/munit third-party/nanopb third-party/jerasure third-party/gf-complete \
+            third-party/curl third-party/cpp-steam-tools
+          git log -1 --format='Checked out %h %s'
+
+      - name: Install wine to run the Windows binaries
+        # Wine can only run x86_64 programs on an x86_64 machine
+        run: |
+          if [ "$(uname -m)" = x86_64 ]; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends wine wine64 >/dev/null
+            wine --version
+          else
+            echo "Not an x86_64 runner: the Windows binaries will be built but not run"
+          fi
+
+      - name: Build
+        run: scripts/ci/build-windows.sh
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          FORGEJO_TOKEN: ${{ github.token }}
+        run: scripts/ci/publish-release.sh dist/*.zip dist/*.sha256
+
+      - name: Install Node.js for the artifact upload
+        run: scripts/ci/install-node.sh
+
+      - name: Keep the zip as an artifact
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
