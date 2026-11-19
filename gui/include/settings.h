@@ -326,6 +326,10 @@ class Settings : public QObject
 		bool GetOverlayOwnVoice() const			{ return settings.value("overlay/own_voice", false).toBool(); }
 		void SetOverlayOwnVoice(bool on)		{ settings.setValue("overlay/own_voice", on); }
 
+		/** For groups of settings that are handled as a whole, see PresetSettings. */
+		QVariant GetValue(const QString &key, const QVariant &default_value = QVariant()) const	{ return settings.value(key, default_value); }
+		void SetValue(const QString &key, const QVariant &value)	{ settings.setValue(key, value); }
+
 		bool GetLogVerbose() const 				{ return settings.value("settings/log_verbose", false).toBool(); }
 		void SetLogVerbose(bool enabled)		{ settings.setValue("settings/log_verbose", enabled); }
 		bool GetLogSanitize() const            { return settings.value("settings/log_sanitize", true).toBool(); }

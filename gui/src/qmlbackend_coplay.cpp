@@ -155,6 +155,7 @@ void QmlBackend::initOverlay()
         overlay->SetSession(s);
     });
     overlay->ApplySettings();
+    initDisplays();
 }
 
 QString QmlBackend::overlayUrl() const

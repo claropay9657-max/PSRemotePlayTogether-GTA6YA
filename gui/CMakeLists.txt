@@ -58,6 +58,9 @@ set(SOURCE_FILES
 	src/qmlsettings.cpp
 	src/qmlsettings_coplay.cpp
 	src/qmlbackend_coplay.cpp
+	src/qmlbackend_display.cpp
+	include/presetsettings.h
+	src/presetsettings.cpp
 	include/voicechat.h
 	src/voicechat.cpp
 	include/coplaycamera.h

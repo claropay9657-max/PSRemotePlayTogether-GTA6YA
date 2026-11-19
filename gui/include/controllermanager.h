@@ -144,6 +144,8 @@ class Controller : public QObject
 		bool IsSteamVirtualUnmasked();
 		bool IsDualSenseEdge();
 		bool IsWireless();
+		/** Charge in percent (0..100), 254 on a cable, 255 if the controller does not say. */
+		int GetBattery();
 		void resetMotionControls();
 
 	signals:

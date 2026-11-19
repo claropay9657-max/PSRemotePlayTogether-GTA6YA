@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <QTcpServer>
 #include <QTimer>
+#include <QVariantMap>
 
 class QTcpSocket;
 class Settings;
@@ -46,11 +47,13 @@ class OverlayServer : public QObject
 
 	signals:
 		void StateChanged();
+		/** The overlay page was arranged in a browser: setting names and their new values. */
+		void LayoutEdited(const QVariantMap &values);
 
 	private:
 		void OnNewConnection();
 		void OnReadyRead(QTcpSocket *socket);
-		void Handle(QTcpSocket *socket, const QByteArray &method, const QString &path);
+		void Handle(QTcpSocket *socket, const QByteArray &method, const QString &path, const QString &query);
 		void Respond(QTcpSocket *socket, int status, const QByteArray &content_type, const QByteArray &body, bool cacheable = false);
 		void ServeResource(QTcpSocket *socket, const QString &resource, bool cacheable);
 		void ServePad(QTcpSocket *socket, const QString &skin);

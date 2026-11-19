@@ -16,6 +16,7 @@ Window {
     signal displaySettingsRequested()
     signal placeboSettingsRequested()
     signal mainViewRequested()
+    signal displayPanelRequested()
     signal closeAnimationFinished()
 
     visible: open || closing
@@ -97,6 +98,7 @@ Window {
             height: 124
             downItem: closeButton
             onCloseRequested: streamMenuWindow.closeRequested()
+            onDisplayRequested: streamMenuWindow.displayPanelRequested()
         }
 
         RowLayout {

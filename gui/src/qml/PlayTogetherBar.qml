@@ -14,8 +14,10 @@ Item {
     /** Where the down key leaves the strip to. */
     property Item downItem: null
     /** Where a key press from outside should enter the strip. */
-    readonly property Item firstItem: voiceOn ? micButton : voiceButton
+    readonly property Item firstItem: !active ? displayButton : (voiceOn ? micButton : voiceButton)
     signal closeRequested()
+    /** Open the display options (what is shown on the game picture and in OBS). */
+    signal displayRequested()
 
     readonly property var session: Chiaki.session
     readonly property bool active: !!session && session.coplayActive
@@ -25,7 +27,7 @@ Item {
     readonly property var talking: active ? session.coplayTalking : ({})
     readonly property int camSerial: active ? session.coplayCamSerial : 0
 
-    visible: active
+    visible: !!session
     implicitHeight: 120
 
     readonly property color accent: "#8c52ff"
@@ -69,7 +71,7 @@ Item {
 
                 BarButton {
                     id: voiceButton
-                    visible: !bar.voiceOn
+                    visible: bar.active && !bar.voiceOn
                     text: qsTr("Join voice chat")
                     onClicked: bar.session.coplayVoiceOn = true
                     KeyNavigation.right: camButton
@@ -96,6 +98,7 @@ Item {
 
                 BarButton {
                     id: camButton
+                    visible: bar.active
                     text: bar.active && bar.session.coplayCameraOn ? qsTr("Webcam on") : qsTr("Webcam off")
                     tint: bar.active && bar.session.coplayCameraOn ? Qt.rgba(0.2, 0.83, 0.6, 0.55) : "transparent"
                     onClicked: bar.session.coplayCameraOn = !bar.session.coplayCameraOn
@@ -109,7 +112,16 @@ Item {
                     text: qsTr("Leave voice chat")
                     onClicked: bar.session.coplayVoiceOn = false
                     KeyNavigation.left: camButton
-                    KeyNavigation.right: bar.hosting ? modeCombo : leaveVoiceButton
+                    KeyNavigation.right: displayButton
+                }
+
+                BarButton {
+                    id: displayButton
+                    text: qsTr("Overlays…")
+                    tint: Qt.rgba(140 / 255, 82 / 255, 255 / 255, 0.55)
+                    onClicked: bar.displayRequested()
+                    KeyNavigation.left: bar.voiceOn ? leaveVoiceButton : camButton
+                    KeyNavigation.right: bar.hosting ? modeCombo : displayButton
                 }
             }
 
@@ -152,8 +164,9 @@ Item {
             Label {
                 visible: !bar.hosting
                 opacity: 0.7
-                text: bar.active && !bar.session.coplayVideoEnabled ? qsTr("Controller only: no picture from the console")
-                                                                     : qsTr("Click a player for more")
+                text: !bar.active ? qsTr("Playing alone. Overlays… sets what is shown on the game picture and in OBS.")
+                      : (!bar.session.coplayVideoEnabled ? qsTr("Controller only: no picture from the console")
+                                                         : qsTr("Click a player for more"))
             }
         }
 

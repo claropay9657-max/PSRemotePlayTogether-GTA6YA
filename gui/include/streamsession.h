@@ -462,6 +462,16 @@ class StreamSession : public QObject
 		void CoPlayMicPermissionResult(bool granted);
 		/** Everything the stream overlay shows: players, who is in control, what everybody presses. */
 		QJsonObject OverlayState();
+		/**
+		 * What everybody presses right now, for drawing controllers on the game picture:
+		 * one entry per player slot ("0", "1", ...) plus "combined", each with
+		 * b (buttons), l2, r2, lx, ly, rx, ry.
+		 */
+		Q_INVOKABLE QVariantMap coplayPadStates();
+		/** Ourselves as an entry of the player list, for when nobody else is in the session. */
+		Q_INVOKABLE QVariantMap coplayOwnPlayer();
+		/** As a guest: ask the host for everybody's inputs (only needed while something shows them). */
+		Q_INVOKABLE void coplaySetWantInputs(bool wanted);
 		/** A player's picture by the id the overlay state gives; empty if unknown. */
 		QByteArray CoPlayAvatarData(const QString &id);
 		ChiakiErrorCode ConnectPsnConnection(QString duid, bool ps5);

@@ -24,6 +24,11 @@
     <file>ControllerMappingDialog.qml</file>
     <file>AutoConnectView.qml</file>
     <file>PsnView.qml</file>
+    <file>StreamHud.qml</file>
+    <file>StreamDisplayPanel.qml</file>
+    <file>DisplayOptions.qml</file>
+    <file>controls/PadView.qml</file>
+    <file>controls/Avatar.qml</file>
     <file>controls/NovaBackground.qml</file>
     <file>controls/GradientText.qml</file>
     <file>controls/GlassBar.qml</file>

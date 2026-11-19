@@ -19,9 +19,25 @@
   const root = document.getElementById('root');
 
   let config = {
-    players: true, pads: true, combined: true, cams: true, voice: true,
+    players: true, pads: true, combined: true, cams: true, voice: true, battery: true, notices: true,
     layout: 'row', scale: 30, skin: 'auto', skins: ['PS5'],
+    // Free placement: every player's card and the console's controller sit where they
+    // were dragged to. The app sends the places as p0_x, p0_y, p1_x, ... combined_x,
+    // combined_y: fractions of the space left over (0 = left/top edge, 1 = right/bottom).
+    free: false,
   };
+
+  // Arrange mode (?edit=1, opened from the app in an ordinary browser): the cards
+  // can be dragged, and where they are dropped is saved in the app
+  const editing = params.get('edit') === '1';
+
+  // In the ordinary layout the players flow in one box and the console's controller
+  // follows; with free placement the boxes dissolve and every card is placed by itself
+  const playersBox = document.createElement('div');
+  playersBox.className = 'group players-group';
+  const combinedBox = document.createElement('div');
+  combinedBox.className = 'group combined-group';
+  root.append(playersBox, combinedBox);
   let state = { active: false, players: [] };
   const cards = new Map();   // key -> { el, frame, ready, skin, pad }
 
@@ -35,6 +51,9 @@
       c.cams = show.includes('cams');
     }
     if (params.has('voice')) c.voice = params.get('voice') !== '0';
+    if (params.has('battery')) c.battery = params.get('battery') !== '0';
+    if (params.has('free')) c.free = params.get('free') !== '0';
+    if (editing) c.free = true;
     if (params.has('layout')) c.layout = params.get('layout') === 'column' ? 'column' : 'row';
     if (params.has('scale')) c.scale = Math.max(10, Math.min(100, parseInt(params.get('scale'), 10) || c.scale));
     if (params.has('skin')) c.skin = params.get('skin');
@@ -92,6 +111,7 @@
     card.padWrap = el('div', 'pad');
     card.el.append(card.who, card.camWrap, card.padWrap);
     cards.set(key, card);
+    if (editing) makeDraggable(card);
     return card;
   }
 
@@ -134,8 +154,9 @@
 
   function render() {
     const c = effectiveConfig();
-    document.body.classList.toggle('preview', params.get('bg') === 'dark');
-    root.className = 'layout-' + c.layout + (state.active ? '' : ' idle');
+    document.body.classList.toggle('preview', params.get('bg') === 'dark' || editing);
+    document.body.classList.toggle('edit', editing);
+    root.className = 'layout-' + c.layout + (state.active ? '' : ' idle') + (c.free ? ' free' : '');
 
     const wanted = [];
     if (state.active && (c.players || c.pads || c.cams)) {
@@ -158,10 +179,16 @@
     });
 
     const oneAtATime = state.mixMode === 1;
-    wanted.forEach(function (w, index) {
+    let playerIndex = 0;
+    wanted.forEach(function (w) {
       const card = cards.get(w.key) || createCard(w.key);
-      if (root.children[index] !== card.el)
-        root.insertBefore(card.el, root.children[index] || null);
+      if (w.player) {
+        if (playersBox.children[playerIndex] !== card.el)
+          playersBox.insertBefore(card.el, playersBox.children[playerIndex] || null);
+        playerIndex++;
+      } else if (card.el.parentNode !== combinedBox) {
+        combinedBox.append(card.el);
+      }
 
       if (w.player) {
         const p = w.player;
@@ -206,6 +233,18 @@
         if (p.host) card.tags.append(el('span', 'tag host', 'Host'));
         if (!p.canControl) card.tags.append(el('span', 'tag', 'Watching'));
         else if (p.inControl && (oneAtATime || state.mixMode === 2)) card.tags.append(el('span', 'tag control', 'In control'));
+        // Controller charge: 0..100 percent, 254 = on a cable, 255 or nothing = unknown
+        if (c.battery && typeof p.battery === 'number' && p.battery !== 255) {
+          const wired = p.battery > 100;
+          const level = wired ? 'wired' : (p.battery <= 20 ? 'low' : (p.battery <= 50 ? 'mid' : 'high'));
+          const tag = el('span', 'tag battery ' + level);
+          const cell = el('span', 'cell');
+          const fill = el('span', 'fill');
+          fill.style.width = (wired ? 100 : Math.max(8, p.battery)) + '%';
+          cell.append(fill);
+          tag.append(cell, document.createTextNode(wired ? 'Cable' : p.battery + ' %'));
+          card.tags.append(tag);
+        }
 
         card.padWrap.style.display = showPad ? '' : 'none';
         if (showPad) setSkin(card, skinFor(c, p.controller), c.scale);
@@ -225,8 +264,119 @@
         setSkin(card, skinFor(c, 1), c.scale);
         card.pad = state.combined;
       }
-      sendPad(card);
+        sendPad(card);
     });
+    place();
+    announce(c);
+  }
+
+  // ------------------------------------------------------------------ joined / left
+
+  const toastBox = el('div', 'toasts');
+  document.body.append(toastBox);
+  let known = null; // slot -> name; null until the first list of a session
+
+  function toast(text, joined) {
+    const t = el('div', 'toast' + (joined ? ' joined' : ' left'), text);
+    toastBox.append(t);
+    setTimeout(function () { t.classList.add('gone'); }, 4000);
+    setTimeout(function () { t.remove(); }, 4600);
+  }
+
+  function announce(c) {
+    if (!state.active || !(state.players || []).length || params.get('demo') === '1' || demoRunning && !liveSession) {
+      if (!state.active) known = null;
+      return;
+    }
+    const now = {};
+    state.players.forEach(function (p) { now[p.slot] = p.name || ('Player ' + (p.slot + 1)); });
+    // Not for everybody who was already there when the page came in
+    if (known && c.notices) {
+      Object.keys(now).forEach(function (slot) { if (!(slot in known)) toast(now[slot] + ' joined', true); });
+      Object.keys(known).forEach(function (slot) { if (!(slot in now)) toast(known[slot] + ' left', false); });
+    }
+    known = now;
+  }
+
+  // ------------------------------------------------------------------ placement
+
+  let dragged = null;
+
+  function placeCard(card, x, y) {
+    const freeX = Math.max(0, window.innerWidth - card.el.offsetWidth);
+    const freeY = Math.max(0, window.innerHeight - card.el.offsetHeight);
+    card.el.style.left = Math.round(Math.max(0, Math.min(1, x)) * freeX) + 'px';
+    card.el.style.top = Math.round(Math.max(0, Math.min(1, y)) * freeY) + 'px';
+  }
+
+  function place() {
+    const c = effectiveConfig();
+    // Cards nobody has placed yet line up along the top, next row when the page is full
+    const gap = 14;
+    let nextLeft = gap, nextTop = gap, rowHeight = 0;
+    cards.forEach(function (card) {
+      if (!c.free) {
+        card.el.style.left = card.el.style.top = '';
+        return;
+      }
+      if (dragged === card) return;
+      const x = c[card.key + '_x'], y = c[card.key + '_y'];
+      if (typeof x === 'number' && x >= 0 && typeof y === 'number' && y >= 0) {
+        placeCard(card, x, y);
+        return;
+      }
+      if (nextLeft > gap && nextLeft + card.el.offsetWidth > window.innerWidth) {
+        nextLeft = gap;
+        nextTop += rowHeight + gap;
+        rowHeight = 0;
+      }
+      card.el.style.left = nextLeft + 'px';
+      card.el.style.top = nextTop + 'px';
+      nextLeft += card.el.offsetWidth + gap;
+      rowHeight = Math.max(rowHeight, card.el.offsetHeight);
+    });
+  }
+
+  window.addEventListener('resize', place);
+
+  function makeDraggable(card) {
+    const box = card.el;
+    let dx = 0, dy = 0;
+    box.addEventListener('pointerdown', function (event) {
+      dragged = card;
+      dx = event.clientX - box.offsetLeft;
+      dy = event.clientY - box.offsetTop;
+      box.setPointerCapture(event.pointerId);
+      box.classList.add('dragging');
+      event.preventDefault();
+    });
+    box.addEventListener('pointermove', function (event) {
+      if (dragged !== card) return;
+      const freeX = Math.max(0, window.innerWidth - box.offsetWidth);
+      const freeY = Math.max(0, window.innerHeight - box.offsetHeight);
+      box.style.left = Math.max(0, Math.min(freeX, event.clientX - dx)) + 'px';
+      box.style.top = Math.max(0, Math.min(freeY, event.clientY - dy)) + 'px';
+    });
+    const drop = function () {
+      if (dragged !== card) return;
+      dragged = null;
+      box.classList.remove('dragging');
+      const freeX = Math.max(1, window.innerWidth - box.offsetWidth);
+      const freeY = Math.max(1, window.innerHeight - box.offsetHeight);
+      const x = Math.max(0, Math.min(1, box.offsetLeft / freeX));
+      const y = Math.max(0, Math.min(1, box.offsetTop / freeY));
+      config[card.key + '_x'] = x;
+      config[card.key + '_y'] = y;
+      // The app keeps it in the selected preset and tells every open overlay page
+      fetch('/layout?' + card.key + '_x=' + x.toFixed(4) + '&' + card.key + '_y=' + y.toFixed(4), { cache: 'no-store' }).catch(function () {});
+    };
+    box.addEventListener('pointerup', drop);
+    box.addEventListener('pointercancel', drop);
+  }
+
+  if (editing) {
+    const hint = el('div', 'edit-hint', 'Drag each player and the console’s controller to where you want them. It is saved at once, and OBS follows.');
+    document.body.append(hint);
   }
 
   // ------------------------------------------------------------------ voice
@@ -325,7 +475,14 @@
       updateVoice();
     });
     source.addEventListener('state', function (event) {
-      state = JSON.parse(event.data);
+      const next = JSON.parse(event.data);
+      // Arranging without a running session: keep the made-up players to have something to drag
+      if (editing && !next.active) {
+        if (!demoRunning) demo();
+        return;
+      }
+      liveSession = true;
+      state = next;
       render();
     });
     source.onerror = function () {
@@ -335,10 +492,15 @@
     };
   }
 
+  let demoRunning = false;
+  let liveSession = false;
+
   function demo() {
     const names = ['Nova', 'Pixel', 'Echo'];
     let t = 0;
+    demoRunning = true;
     setInterval(function () {
+      if (liveSession) return; // a real session took over
       t += 1;
       const holder = Math.floor(t / 90) % names.length;
       const players = names.map(function (name, i) {
@@ -366,7 +528,10 @@
     updateVoice();
   }).catch(function () {});
 
-  if (params.get('demo') === '1') demo();
-  else connect();
+  if (params.get('demo') === '1') {
+    demo();
+  } else {
+    connect();
+  }
   render();
 })();

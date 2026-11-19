@@ -709,6 +709,32 @@ int Controller::GetDeviceID()
 #endif
 }
 
+int Controller::GetBattery()
+{
+#ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
+	if(!controller)
+		return 255;
+	// SDL's levels are coarse; the numbers are the middle of what each level stands for
+	switch(SDL_JoystickCurrentPowerLevel(SDL_GameControllerGetJoystick(controller)))
+	{
+		case SDL_JOYSTICK_POWER_EMPTY:
+			return 5;
+		case SDL_JOYSTICK_POWER_LOW:
+			return 20;
+		case SDL_JOYSTICK_POWER_MEDIUM:
+			return 55;
+		case SDL_JOYSTICK_POWER_FULL:
+			return 100;
+		case SDL_JOYSTICK_POWER_WIRED:
+			return 254;
+		default:
+			return 255;
+	}
+#else
+	return 255;
+#endif
+}
+
 QString Controller::GetType()
 {
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER

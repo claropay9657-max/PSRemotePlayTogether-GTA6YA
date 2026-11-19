@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QTcpSocket>
 #include <QUrl>
 
@@ -126,6 +127,22 @@ QByteArray OverlayServer::ConfigJson() const
 	o["layout"] = settings->GetOverlayLayout() == "column" ? "column" : "row";
 	o["cams"] = settings->GetOverlayWebcams();
 	o["voice"] = settings->GetOverlayVoice();
+	o["battery"] = settings->GetValue("overlay/battery", true).toBool();
+	o["notices"] = settings->GetValue("overlay/notices", true).toBool();
+	// Free placement: every player's card and the console's controller sit where they were
+	// dragged to, as fractions of the space that is left over (0 = left/top, 1 = right/bottom)
+	o["free"] = settings->GetValue("overlay/free", false).toBool();
+	o["combined_x"] = qBound(0.0, settings->GetValue("overlay/combined_x", 0.0).toDouble(), 1.0);
+	o["combined_y"] = qBound(0.0, settings->GetValue("overlay/combined_y", 1.0).toDouble(), 1.0);
+	// Negative: not placed yet, the page lines such cards up along the top
+	for(int slot = 0; slot <= 8; slot++)
+	{
+		QString key = QString("p%1").arg(slot);
+		double x = settings->GetValue("overlay/" + key + "_x", -1.0).toDouble();
+		double y = settings->GetValue("overlay/" + key + "_y", -1.0).toDouble();
+		o[key + "_x"] = x < 0.0 ? -1.0 : qMin(x, 1.0);
+		o[key + "_y"] = y < 0.0 ? -1.0 : qMin(y, 1.0);
+	}
 	o["skins"] = QJsonArray::fromStringList(Skins());
 	return QJsonDocument(o).toJson(QJsonDocument::Compact);
 }
@@ -184,10 +201,14 @@ void OverlayServer::OnReadyRead(QTcpSocket *socket)
 		return;
 	}
 	QString target = QString::fromUtf8(parts[1]);
-	int query = target.indexOf('?');
-	if(query >= 0)
-		target.truncate(query);
-	Handle(socket, parts[0], QUrl::fromPercentEncoding(target.toUtf8()));
+	int query_at = target.indexOf('?');
+	QString query;
+	if(query_at >= 0)
+	{
+		query = target.mid(query_at + 1);
+		target.truncate(query_at);
+	}
+	Handle(socket, parts[0], QUrl::fromPercentEncoding(target.toUtf8()), query);
 }
 
 static QByteArray MimeType(const QString &path)
@@ -209,7 +230,7 @@ static QByteArray MimeType(const QString &path)
 	return "application/octet-stream";
 }
 
-void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const QString &path)
+void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const QString &path, const QString &query)
 {
 	if(method != "GET" && method != "HEAD")
 	{
@@ -229,6 +250,28 @@ void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const Q
 		ServeResource(socket, path, false);
 	else if(path == "/favicon.ico")
 		Respond(socket, 204, "image/x-icon", QByteArray(), true); // browsers ask; there is none
+	else if(path == "/layout")
+	{
+		// The page in arrange mode (?edit=1) reports where things were dragged to.
+		// Only placements are accepted, and only as numbers between 0 and 1.
+		static const QRegularExpression allowed_key("^(combined|p[0-8])_(x|y)$");
+		QVariantMap values;
+		const QStringList pairs = query.split('&', Qt::SkipEmptyParts);
+		for(const QString &pair : pairs)
+		{
+			int eq = pair.indexOf('=');
+			if(eq <= 0)
+				continue;
+			QString key = pair.left(eq);
+			bool ok = false;
+			double value = pair.mid(eq + 1).toDouble(&ok);
+			if(ok && allowed_key.match(key).hasMatch() && value >= 0.0 && value <= 1.0)
+				values.insert(key, value);
+		}
+		if(!values.isEmpty())
+			emit LayoutEdited(values);
+		Respond(socket, 200, "application/json", "{}");
+	}
 	else if(path == "/config")
 		Respond(socket, 200, "application/json", ConfigJson());
 	else if(path == "/state")

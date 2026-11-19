@@ -17,7 +17,7 @@ Item {
     property list<Item> restoreFocusItems
     readonly property bool useSeparateMenuWindow: Chiaki.window.runtimeRendererBackend === 1
     // Taller while a session is shared: the players and their webcams sit above the usual controls
-    readonly property int streamMenuHeight: Chiaki.session && Chiaki.session.coplayActive ? 350 : 200
+    readonly property int streamMenuHeight: Chiaki.session ? 350 : 200
     readonly property bool streamStatsVisible: Chiaki.settings.showStreamStats && Chiaki.session && !(menuController.open || menuController.closing) && !sessionLoading && !sessionError && !(Chiaki.settings.audioVideoDisabled & 0x02)
     property int separateMenuX: 0
     property int separateMenuY: 0
@@ -507,6 +507,10 @@ Item {
                 height: 124
                 downItem: closeButton
                 onCloseRequested: menuController.close()
+                onDisplayRequested: {
+                    menuController.close();
+                    displayPanel.open = true;
+                }
             }
 
             RowLayout {
@@ -922,85 +926,22 @@ Item {
         }
     }
 
-    // The players' webcams in the top right corner of the game picture. A window of its
-    // own, so that it shows the same way with every renderer, and one that lets every
-    // click and key through to the game.
-    Window {
-        id: camStrip
-        readonly property int tileWidth: 176
-        readonly property int tileHeight: 99
-        readonly property int gap: 8
-        transientParent: view.hostWindow
-        flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput | Qt.NoDropShadowWindowHint
-        color: "transparent"
-        width: Math.max(1, view.camPlayers.length * (tileWidth + gap))
-        height: tileHeight
-        x: view.streamGlobalX + view.width - width - 16
-        y: view.streamGlobalY + 16
-        visible: view.camPlayers.length > 0
-                 && Chiaki.settings.coplayCamsOnStream
-                 && !menuController.open && !menuController.closing
+    // What is shown on top of the game picture: players, webcams, controllers
+    StreamHud {
+        id: streamHud
+        view: view
+        allowed: !menuController.open && !menuController.closing
                  && !view.sessionLoading && !view.sessionError
                  && Chiaki.window.visibility !== Window.Hidden
                  && Chiaki.window.visibility !== Window.Minimized
                  && view.StackView.status === StackView.Active
+    }
 
-        Row {
-            anchors.right: parent.right
-            spacing: camStrip.gap
-
-            Repeater {
-                model: view.camPlayers
-
-                Rectangle {
-                    id: camTile
-                    required property var modelData
-                    readonly property bool isTalking: !!Chiaki.session && !!Chiaki.session.coplayTalking[String(modelData.slot)]
-                    width: camStrip.tileWidth
-                    height: camStrip.tileHeight
-                    radius: 10
-                    color: "#12121c"
-                    border.width: 2
-                    border.color: isTalking ? "#34d399" : Qt.rgba(1, 1, 1, 0.25)
-                    clip: true
-
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: 2
-                        cache: false
-                        fillMode: Image.PreserveAspectCrop
-                        source: Chiaki.session ? "image://coplaycam/" + camTile.modelData.slot + "/" + Chiaki.session.coplayCamSerial : ""
-                    }
-
-                    Rectangle {
-                        anchors {
-                            left: parent.left
-                            bottom: parent.bottom
-                            margins: 6
-                        }
-                        radius: 7
-                        color: Qt.rgba(0, 0, 0, 0.6)
-                        width: Math.min(camName.implicitWidth + 12, parent.width - 12)
-                        height: 18
-
-                        Label {
-                            id: camName
-                            anchors {
-                                fill: parent
-                                leftMargin: 6
-                                rightMargin: 6
-                            }
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                            font.pixelSize: 11
-                            font.bold: true
-                            color: "white"
-                            text: camTile.modelData.name
-                        }
-                    }
-                }
-            }
-        }
+    // The display options, opened from the stream menu
+    StreamDisplayPanel {
+        id: displayPanel
+        view: view
+        onArrangeRequested: streamHud.editing = true
     }
 
     StreamMenuWindow {
@@ -1022,6 +963,10 @@ Item {
             root.openPlaceboSettings();
         }
         onMainViewRequested: root.showMainView()
+        onDisplayPanelRequested: {
+            menuController.close();
+            displayPanel.open = true;
+        }
         onCloseAnimationFinished: {
             if (view.hostWindow)
                 view.hostWindow.requestActivate();

@@ -70,6 +70,8 @@ struct CoPlayState
 	std::vector<uint8_t> own_avatar;
 	coplay::BlobRef own_avatar_ref;
 	std::atomic<int> own_controller{0};
+	std::atomic<int> own_battery{255};
+	int battery_ticks = 0;
 
 	// Talking to and seeing each other. The voice engine lives as long as the session,
 	// so the network threads can always hand it what they receive.
@@ -471,6 +473,7 @@ void StreamSession::CoPlayUpdatePlayers()
 		me["inControl"] = coplay->host->HostInControl();
 		me["video"] = true;
 		me["controller"] = coplay->own_controller.load();
+		me["battery"] = coplay->own_battery.load();
 		me["avatar"] = AvatarId(coplay->own_avatar_ref);
 		me["avatarUrl"] = AvatarUrl(coplay->host->Avatar(coplay->own_avatar_ref.hash));
 		MediaToMap(me, coplay->host->LocalMedia());
@@ -489,6 +492,7 @@ void StreamSession::CoPlayUpdatePlayers()
 			p["address"] = QString::fromStdString(g.address);
 			p["rttMs"] = static_cast<int>(g.rtt_ms);
 			p["controller"] = static_cast<int>(g.controller);
+			p["battery"] = static_cast<int>(g.battery);
 			p["avatar"] = AvatarId(g.avatar);
 			p["avatarUrl"] = g.avatar.Valid() ? AvatarUrl(coplay->host->Avatar(g.avatar.hash)) : QString();
 			MediaToMap(p, g.media);
@@ -700,6 +704,7 @@ void StreamSession::CoPlayStartGuest()
 			m["canControl"] = (p.flags & coplay::kParticipantCanControl) != 0;
 			m["inControl"] = (p.flags & coplay::kParticipantInControl) != 0;
 			m["controller"] = static_cast<int>(p.controller);
+			m["battery"] = static_cast<int>(p.battery);
 			// Only once the picture itself is here
 			coplay::BlobData data = p.avatar.Valid() ? coplay->client->Avatar(p.avatar.hash) : nullptr;
 			m["avatar"] = data ? AvatarId(p.avatar) : QString();
@@ -901,15 +906,35 @@ void StreamSession::CoPlayUpdateControllerKind()
 			kind = k;
 	}
 #endif
-	if(coplay->own_controller.exchange(static_cast<int>(kind)) == static_cast<int>(kind))
+	// The charge of the controller that is running out first; on a cable if all are
+	int battery = 255;
+#if CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
+	for(auto controller : controllers)
+	{
+		int level = controller->GetBattery();
+		if(level == 255)
+			continue;
+		if(battery == 255 || (level <= 100 && (battery > 100 || level < battery)))
+			battery = level;
+	}
+#endif
+	bool kind_changed = coplay->own_controller.exchange(static_cast<int>(kind)) != static_cast<int>(kind);
+	bool battery_changed = coplay->own_battery.exchange(battery) != battery;
+	if(!kind_changed && !battery_changed)
 		return;
 	if(coplay->host)
 	{
 		coplay->host->SetController(kind);
+		coplay->host->SetBattery(static_cast<uint8_t>(battery));
 		CoPlayUpdatePlayers();
 	}
 	if(coplay->client)
+	{
 		coplay->client->SetController(kind);
+		coplay->client->SetBattery(static_cast<uint8_t>(battery));
+	}
+	if(!coplay->host && !coplay->client)
+		emit CoPlayChanged(); // playing alone: the display on the game picture shows it too
 }
 
 QByteArray StreamSession::CoPlayAvatarData(const QString &id)
@@ -972,6 +997,7 @@ QJsonObject StreamSession::OverlayState()
 		me["canControl"] = true;
 		me["inControl"] = true;
 		me["controller"] = coplay->own_controller.load();
+		me["battery"] = coplay->own_battery.load();
 		me["avatar"] = AvatarId(coplay->own_avatar_ref);
 		players.append(me);
 		mix_mode = 0;
@@ -990,6 +1016,7 @@ QJsonObject StreamSession::OverlayState()
 		o["canControl"] = p.value("canControl").toBool();
 		o["inControl"] = p.value("inControl").toBool();
 		o["controller"] = p.value("controller").toInt();
+		o["battery"] = p.value("battery", 255).toInt();
 		o["avatar"] = p.value("avatar").toString();
 		o["voice"] = p.value("voice").toBool();
 		o["muted"] = p.value("muted").toBool() || p.value("silenced").toBool();
@@ -1370,6 +1397,12 @@ void StreamSession::CoPlayMediaTick()
 {
 	if(!coplay)
 		return;
+	// Every half minute: has a controller's charge changed?
+	if(++coplay->battery_ticks >= 300)
+	{
+		coplay->battery_ticks = 0;
+		CoPlayUpdateControllerKind();
+	}
 	QVariantMap talking;
 	int own = CoPlayOwnSlot();
 	if(coplay->voice_on)
@@ -1417,4 +1450,51 @@ void StreamSession::CoPlaySetOverlayAudio(bool enabled, bool include_own)
 QByteArray StreamSession::CoPlayReadOverlayAudio()
 {
 	return coplay ? coplay->voice->ReadTap() : QByteArray();
+}
+
+QVariantMap StreamSession::coplayPadStates()
+{
+	QVariantMap out;
+	QJsonObject state = OverlayState();
+	if(!state.value("active").toBool())
+		return out;
+	const QJsonArray players = state.value("players").toArray();
+	for(const QJsonValue &v : players)
+	{
+		QJsonObject p = v.toObject();
+		out.insert(QString::number(p.value("slot").toInt()), p.value("pad").toObject().toVariantMap());
+	}
+	out.insert("combined", state.value("combined").toObject().toVariantMap());
+	return out;
+}
+
+QVariantMap StreamSession::coplayOwnPlayer()
+{
+	QVariantMap me;
+	if(!coplay)
+		return me;
+	me["slot"] = 0;
+	me["name"] = coplay->own_name;
+	me["host"] = false;
+	me["you"] = true;
+	me["canControl"] = true;
+	me["inControl"] = true;
+	me["controller"] = coplay->own_controller.load();
+	me["battery"] = coplay->own_battery.load();
+	me["avatar"] = AvatarId(coplay->own_avatar_ref);
+	coplay::BlobData data;
+	if(coplay->own_avatar_ref.Valid())
+		data = std::make_shared<const std::vector<uint8_t>>(coplay->own_avatar);
+	me["avatarUrl"] = AvatarUrl(data);
+	return me;
+}
+
+void StreamSession::coplaySetWantInputs(bool wanted)
+{
+	if(!IsCoPlayGuest())
+		return;
+	uint8_t want = coplay->client->Want();
+	uint8_t updated = static_cast<uint8_t>(wanted ? (want | coplay::kWantInputs) : (want & ~coplay::kWantInputs));
+	if(updated != want)
+		coplay->client->SetWant(updated);
 }

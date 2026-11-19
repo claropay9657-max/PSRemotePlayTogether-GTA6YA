@@ -80,6 +80,9 @@ class QmlBackend : public QObject
     Q_OBJECT
     Q_PROPERTY(QmlMainWindow* window READ qmlWindow CONSTANT)
     Q_PROPERTY(QmlSettings* settings READ qmlSettings CONSTANT)
+    // What is drawn on top of the game picture, and the OBS overlay: live values and presets
+    Q_PROPERTY(QObject* hud READ hudSettings CONSTANT)
+    Q_PROPERTY(QObject* overlayLayout READ overlayLayoutSettings CONSTANT)
     Q_PROPERTY(StreamSession* session READ qmlSession NOTIFY sessionChanged)
     Q_PROPERTY(QList<QmlController*> controllers READ qmlControllers NOTIFY controllersChanged)
     Q_PROPERTY(bool discoveryEnabled READ discoveryEnabled WRITE setDiscoveryEnabled NOTIFY discoveryEnabledChanged)
@@ -202,6 +205,9 @@ public:
     QString overlayError() const;
     Q_INVOKABLE void copyOverlayUrl();
     void initOverlay();
+    void initDisplays();
+    QObject *hudSettings() const;
+    QObject *overlayLayoutSettings() const;
     /** Joins a session somebody else shares. Answers with coplayJoinFinished. */
     Q_INVOKABLE void joinCoPlay(const QString &invite, const QString &name, bool controller_only);
     Q_INVOKABLE void sessionGoHome();
@@ -350,6 +356,8 @@ private:
     bool resume_session = false;
     bool coplay_joining = false;
     class OverlayServer *overlay = {};
+    class PresetSettings *hud_settings = {};
+    class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};
     QString auto_connect_nickname = "";

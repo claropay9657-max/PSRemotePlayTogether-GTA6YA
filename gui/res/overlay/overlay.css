@@ -256,3 +256,141 @@ body.preview {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
   cursor: pointer;
 }
+
+/* The players flow in one box, the console's controller follows */
+.group {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+#root.layout-row .group { flex-direction: row; flex-wrap: wrap; }
+#root.layout-column .group { flex-direction: column; }
+
+/* Free placement: every card sits where it was dragged to */
+#root.free {
+  display: block;
+  padding: 0;
+}
+
+#root.free .group { display: contents; }
+
+#root.free .card {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* Controller charge */
+.tag.battery {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #fff;
+}
+
+.tag.battery .cell {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 2px;
+}
+
+.tag.battery .fill {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  bottom: 1px;
+  max-width: calc(100% - 2px);
+  border-radius: 1px;
+  background: #34d399;
+}
+
+.tag.battery.mid .fill { background: #f5b942; }
+.tag.battery.low .fill { background: #f0466e; }
+.tag.battery.wired .fill { background: var(--gn-accent); }
+.tag.battery.low { background: rgba(240, 70, 110, 0.35); }
+
+/* Arrange mode (?edit=1) */
+body.edit .card {
+  cursor: grab;
+  outline: 2px dashed rgba(0, 242, 255, 0.7);
+  outline-offset: 3px;
+  touch-action: none;
+  user-select: none;
+}
+
+body.edit .card.dragging {
+  cursor: grabbing;
+  outline-style: solid;
+  box-shadow: 0 0 0 2px var(--gn-accent), 0 18px 40px rgba(0, 0, 0, 0.6);
+}
+
+body.edit .pad iframe { pointer-events: none; }
+
+.edit-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  max-width: 80vw;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(13, 11, 31, 0.92);
+  border: 1px solid var(--gn-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+/* "Pixel joined", "Pixel left" */
+.toasts {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 7px 16px 7px 30px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--gn-glass);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  position: relative;
+  animation: toast-in 200ms ease;
+  transition: opacity 500ms ease;
+}
+
+.toast::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #f0466e;
+}
+
+.toast.joined { border-color: #34d399; }
+.toast.joined::before { background: #34d399; }
+.toast.gone { opacity: 0; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
