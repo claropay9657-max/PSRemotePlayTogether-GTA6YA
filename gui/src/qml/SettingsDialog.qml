@@ -3068,7 +3068,7 @@ DialogView {
 
                     C.Button {
                         id: aboutButton
-                        text: qsTr("About %1-ng").arg(Qt.application.name)
+                        text: qsTr("About %1").arg(Qt.application.name)
                         onClicked: aboutDialog.open()
                         Material.roundedScale: Material.SmallScale
                     }
@@ -3129,7 +3129,7 @@ DialogView {
             parent: Overlay.overlay
             x: Math.round((root.width - width) / 2)
             y: Math.round((root.height - height) / 2)
-            title: qsTr("About %1-ng").arg(Qt.application.name)
+            title: qsTr("About %1").arg(Qt.application.name)
             modal: true
             standardButtons: Dialog.Ok
             Material.roundedScale: Material.MediumScale

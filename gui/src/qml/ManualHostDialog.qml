@@ -17,19 +17,18 @@ DialogView {
     }
 
     Item {
+        C.FormCard {
+            title: qsTr("A console by its address")
+            text: qsTr("For a console that is not found by itself: one in another network, behind a VPN, or reached over the internet. Enter its IP address or host name.")
+
         GridLayout {
-            anchors {
-                top: parent.top
-                horizontalCenter: parent.horizontalCenter
-                topMargin: 20
-            }
             columns: 2
             rowSpacing: 20
             columnSpacing: 20
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("Host:")
+                text: qsTr("Address:")
             }
 
             C.TextField {
@@ -41,7 +40,7 @@ DialogView {
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("Registered Consoles:")
+                text: qsTr("Which console it is:")
             }
 
             C.ComboBox {
@@ -73,6 +72,7 @@ DialogView {
                     return m;
                 }
             }
+        }
         }
     }
 }

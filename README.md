@@ -14,7 +14,8 @@ Free and open source, for Windows, Linux and macOS. Powered by [GamerNova.net](h
 - **Any controller.** DualSense (with haptics and adaptive triggers when connected by cable), DualShock 4, Xbox and other controllers. Rumble, trigger effects and the light bar reach every player.
 - **Voice chat and webcams.** Everybody can talk to and see each other. Mute yourself, mute somebody just for you, switch the webcam on and off during play. The host can mute a guest for everyone or remove them.
 - **Controller only.** Sit next to each other, or watch the host's own stream: join without picture and sound and only send your controller.
-- **Stream overlay for OBS.** A browser source that shows who is playing, who is in control, every player's controller live, their webcams and who is talking, and plays the conversation so it ends up in your stream. Every player gets the overlay, not only the host.
+- **Everybody on the game picture.** Players, who is talking, webcams, each player's controller live and the controller the console gets, on top of the game while you play. Show what you want, drag every piece where you want it, and keep several arrangements as presets.
+- **Stream overlay for OBS.** The same for your viewers, as a browser source: who is playing, who is in control, every controller live, webcams, controller battery, and the conversation so it ends up in your stream. Transparent by default, arranged by dragging, with presets. Every player gets the overlay, not only the host.
 - **Player profiles.** A name and a picture for each player, shown in the app and in the overlay.
 - **Everything Remote Play needs.** Console registration, local and internet Remote Play, HDR, hardware decoding and the rest come from [chiaki-ng](https://github.com/streetpea/chiaki-ng), which this app is built on.
 
@@ -55,17 +56,41 @@ PSRemotePlayTogether --name Alex join "psrpt://host.example.org:9410/…"
 
 Add `--controller-only` to join without picture and sound.
 
+### While you play: the stream menu
+
+Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. Next to the usual Remote Play buttons it has the players, your microphone, the others' voices and your webcam, who may control, the invite, and **Overlays…** for everything shown on the game picture and in OBS. The host can click a player to mute them for everybody, let them only watch, or remove them. All of it can be changed while the game runs.
+
+The controller shortcut can be changed in **Settings → General → Stream Menu Combo**.
+
 ### Voice chat and webcam
 
-**Play Together → Voice chat and webcam** has the settings: take part in the voice chat, start muted, which webcam and how large its picture is. Microphone and speakers are the ones from the audio settings. During play, open the stream menu to mute yourself, switch voices or the webcam on and off, and click a player for more.
+**Play Together → Voice & webcam** has the settings: take part in the voice chat, start muted, which webcam and how large its picture is. Microphone and speakers are the ones from the audio settings. During play, open the stream menu to mute yourself, switch voices or the webcam on and off, and click a player for more.
 
-Use headphones. Without them the others hear themselves through your microphone.
+You never hear your own voice in the app, only the others. Use headphones: without them the others hear themselves through your microphone.
+
+### On the game picture
+
+**Play Together → Overlays → On the game picture**, or **Overlays…** in the stream menu, decides what lies on top of the game for you while playing:
+
+- the players with picture, name, a ring that lights up when they talk, and their controller's battery
+- the webcams
+- everybody's controller, live, either as one row or each one placed by itself
+- the controller the console gets, with whoever is in control marked
+- a short note when somebody joins or leaves
+
+Choose **Arrange on the game picture** to drag the pieces into place; the mouse wheel or the + and − buttons change a piece's size. **Reset places and sizes** puts everything back.
+
+Three looks: transparent without boxes (the default), glass boxes, dark boxes. A set of choices is a **preset**: make as many as you like, for example one for playing and one for watching, and switch between them at any time. Changes go into the selected preset by themselves.
 
 ### Stream overlay for OBS
 
-1. **Play Together → Stream overlay for OBS → Turn on the overlay**.
+1. **Play Together → Overlays → OBS overlay → Overlay on**.
 2. Add the address shown there (`http://localhost:9412/` by default) to OBS as a **Browser Source**.
 3. For the players' voices to reach your stream, tick **Control audio via OBS** in the Browser Source.
+
+What the overlay shows, how it looks and where everything sits is set in the same place, also from the stream menu during play, and OBS follows at once. The background is transparent; players and controllers come without boxes unless you choose the glass or the dark ones.
+
+To place things yourself, switch on **Place every player and the console's controller freely** and press **Arrange in the browser**: the overlay opens in your browser with made-up players if nobody is there yet, and you drag every player and the console's controller where you want them. Presets work as on the game picture, so that different scenes can have different arrangements.
 
 Several sources can show different parts. Add to the address:
 
@@ -76,6 +101,8 @@ Several sources can show different parts. Add to the address:
 | `?show=cams` | the webcams |
 | `?show=combined` | the combined controller the game gets |
 | `&voice=0` | keeps this source silent |
+| `&style=glass`, `&style=solid` | boxes around the players instead of the transparent look |
+| `&battery=0` | hides the controller battery |
 | `&layout=column`, `&scale=40`, `&skin=PS5 (nova pink)` | arrangement, size, controller look |
 | `?demo=1` | made-up players, to set up a scene without a session |
 
@@ -85,7 +112,7 @@ Controller looks: DualSense in white, Midnight Black, Cosmic Red, Nova Pink, Sta
 
 - The host's upload carries the game picture to every guest, and every webcam to every other player. Plan with roughly the Remote Play bitrate per guest, plus 0.4 to 2.5 Mbit/s per webcam and receiver depending on the picture size chosen.
 - There is no automatic NAT traversal yet: internet play needs the forwarded port.
-- Webcams are shown in the stream menu and in the overlay, not yet on top of the game picture.
+- The controller battery is what the controller reports to the computer; some controllers and connections report nothing, and then nothing is shown.
 - All players need the same version of the app.
 
 ## Building

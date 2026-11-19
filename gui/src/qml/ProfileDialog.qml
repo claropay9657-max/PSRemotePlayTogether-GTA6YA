@@ -8,6 +8,7 @@ import org.streetpea.chiaking
 import "controls" as C
 
 DialogView {
+    title: qsTr("Profiles")
 
     buttonText: {
         if(deleteBox.visible && deleteBox.checked)
@@ -37,19 +38,18 @@ DialogView {
     }
 
     Item {
+        C.FormCard {
+            title: qsTr("Profiles")
+            text: qsTr("A profile is a complete set of settings with its own consoles and PSN login, for example one per person using this computer.")
+
         GridLayout {
-            anchors {
-                top: parent.top
-                horizontalCenter: parent.horizontalCenter
-                topMargin: 50
-            }
             columns: 2
             rowSpacing: 10
             columnSpacing: 20
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("User Profile:")
+                text: qsTr("Profile:")
             }
 
             C.ComboBox {
@@ -62,7 +62,8 @@ DialogView {
             }
 
             Label {
-                text: qsTr("New Profile Name")
+                Layout.alignment: Qt.AlignRight
+                text: qsTr("Name of the new profile:")
                 visible: profileComboBox.currentIndex == profileComboBox.model.indexOf("create new profile")
             }
 
@@ -74,7 +75,8 @@ DialogView {
             }
 
             Label {
-                text: qsTr("Delete selected profile")
+                Layout.alignment: Qt.AlignRight
+                text: qsTr("Delete this profile:")
                 visible: profileComboBox.model[profileComboBox.currentIndex] != "default" && profileComboBox.model[profileComboBox.currentIndex] != "create new profile" && profileComboBox.model[profileComboBox.currentIndex] != Chiaki.settings.currentProfile
             }
 
@@ -83,6 +85,7 @@ DialogView {
                 visible: profileComboBox.model[profileComboBox.currentIndex] != "default" && profileComboBox.model[profileComboBox.currentIndex] != "create new profile" && profileComboBox.model[profileComboBox.currentIndex] != Chiaki.settings.currentProfile
                 lastInFocusChain: true
             }
+        }
         }
     }
 }

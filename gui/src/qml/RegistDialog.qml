@@ -32,19 +32,21 @@ DialogView {
     }
 
     Item {
+        C.FormCard {
+            title: qsTr("Link this app to your console")
+            text: qsTr("Needed once per console. The console shows an 8-digit number that proves you are sitting in front of it; together with your PSN account it lets this app connect from then on.")
+            footnote: ps4_7.checked || ps4_75.checked || ps4_8.checked
+                ? qsTr("Where the number is: on the PS4 open Settings → Remote Play Connection Settings → Add Device. It is valid for a few minutes.")
+                : qsTr("Where the number is: on the PS5 open Settings → System → Remote Play → Link Device (switch on Enable Remote Play first). It is valid for a few minutes.")
+
         GridLayout {
-            anchors {
-                top: parent.top
-                horizontalCenter: parent.horizontalCenter
-                topMargin: 20
-            }
             columns: 2
             rowSpacing: 10
             columnSpacing: 20
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("Host:")
+                text: qsTr("Console address:")
             }
 
             C.TextField {
@@ -79,7 +81,7 @@ DialogView {
                 visible: !ps4_7.checked
                 echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
                 placeholderText: qsTr("base64")
-                Layout.preferredWidth: 400 - loginButton.width - 10
+                Layout.preferredWidth: 400 - (loginButton.visible ? loginButton.width + lookupButton.width + 20 : 0)
                 KeyNavigation.priority: {
                     if(readOnly)
                         KeyNavigation.BeforeItem
@@ -132,7 +134,7 @@ DialogView {
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("Remote Play PIN:")
+                text: qsTr("Number from the console (8 digits):")
             }
 
             C.TextField {
@@ -151,7 +153,7 @@ DialogView {
 
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: qsTr("Console Pin [Optional]")
+                text: qsTr("Login PIN (4 digits, if you use one):")
             }
 
             C.TextField {
@@ -196,6 +198,7 @@ DialogView {
                     checked: ps5
                 }
             }
+        }
         }
 
         ButtonGroup {

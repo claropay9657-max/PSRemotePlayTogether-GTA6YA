@@ -89,16 +89,31 @@ Item {
 
             Button {
                 id: okButton
-                Layout.fillHeight: true
-                flat: true
-                padding: 30
-                font.pixelSize: 25
+                Layout.alignment: Qt.AlignVCenter
+                Layout.rightMargin: 8
+                implicitHeight: 52
+                leftPadding: 16
+                rightPadding: 24
+                spacing: 8
+                font.pixelSize: 19
+                font.bold: true
                 focusPolicy: Qt.NoFocus
-                Material.roundedScale: Material.SmallScale
                 onClicked: dialog.accepted()
                 icon.source: "qrc:/icons/options.svg";
-                icon.width: 50
-                icon.height: 50
+                icon.width: 30
+                icon.height: 30
+                // The one thing this page is for: filled, so that it is found at a glance
+                background: Rectangle {
+                    radius: height / 2
+                    opacity: okButton.enabled ? (okButton.down ? 0.75 : (okButton.hovered ? 1.0 : 0.92)) : 0.28
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "#8c52ff" }
+                        GradientStop { position: 1.0; color: "#5b6cff" }
+                    }
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, okButton.hovered ? 0.35 : 0.16)
+                }
             }
         }
 
