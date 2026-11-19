@@ -27,6 +27,7 @@ add_library(coplay STATIC
 	include/coplay/mixer.h
 	include/coplay/protocol.h
 	include/coplay/socket.h
+	include/coplay/stun.h
 	include/coplay/video.h
 	src/blob.cpp
 	src/client.cpp
@@ -37,6 +38,7 @@ add_library(coplay STATIC
 	src/mixer.cpp
 	src/protocol.cpp
 	src/socket.cpp
+	src/stun.cpp
 	src/video.cpp
 )
 target_compile_features(coplay PUBLIC cxx_std_17)

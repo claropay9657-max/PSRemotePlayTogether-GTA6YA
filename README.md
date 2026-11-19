@@ -116,6 +116,8 @@ build/coplay/coplay-sim host sample.h264 --voice --cam a.jpg,b.jpg
 
 It prints an invite to join with. `coplay-sim` without arguments lists all options.
 
+`coplay-sim stun` asks the same servers the app asks for the invite for friends elsewhere, and prints the address this computer has on the internet.
+
 ## Credits and licence
 
 PSRemotePlayTogether is built on [chiaki-ng](https://github.com/streetpea/chiaki-ng) by Street Pea and contributors, which continues [Chiaki](https://git.sr.ht/~thestr4ng3r/chiaki) by Florian Märkl. The controller skins of the overlay are from [CryptoPad](https://github.com/Crypto90/CryptoPad).

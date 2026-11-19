@@ -5,10 +5,13 @@
 //
 //   coplay-sim host video.h264            play an H.264/H.265 elementary stream as "the console"
 //   coplay-sim guest psrpt://...          join a session without a window and print what arrives
+//   coplay-sim stun                       print the address this machine has on the internet
 
 #include <coplay/client.h>
 #include <coplay/host.h>
 #include <coplay/invite.h>
+#include <coplay/socket.h>
+#include <coplay/stun.h>
 
 #ifdef COPLAY_SIM_OPUS
 #include <opus/opus.h>
@@ -67,6 +70,11 @@ static void Usage()
 		"      --press             press and release Cross once per second\n"
 		"      --loss PERCENT      drop this share of outgoing packets\n"
 		"      --seconds N         leave after N seconds\n"
+		"\n"
+		"coplay-sim stun [server[:port] ...]\n"
+		"    Asks STUN servers under which address this machine is seen from the internet,\n"
+		"    the way the app does for the invite for friends elsewhere, and prints what\n"
+		"    each of them answers. Without a server, the ones the app asks by default.\n"
 		"\n"
 		"A suitable test video:\n"
 		"  ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=60 -t 20 -c:v libx264 -preset veryfast \\\n"
@@ -771,6 +779,52 @@ static int RunGuest(const Options &o)
 	return disconnected ? 1 : 0;
 }
 
+// ---------------------------------------------------------------- public address
+
+static int RunStun(const Options &o)
+{
+	std::vector<StunServer> servers;
+	for(const std::string &text : o.positional)
+	{
+		StunServer server;
+		if(!ParseStunServer(text, server))
+		{
+			std::fprintf(stderr, "Not a server address: %s\n", text.c_str());
+			return 2;
+		}
+		servers.push_back(server);
+	}
+	if(servers.empty())
+		servers = DefaultStunServers();
+
+	bool found = false;
+	for(const StunServer &server : servers)
+	{
+		std::printf("%s port %u\n", server.host.c_str(), server.port);
+		for(StunFamily family : { StunFamily::IPv4, StunFamily::IPv6 })
+		{
+			const char *kind = family == StunFamily::IPv4 ? "IPv4" : "IPv6";
+			std::string address, error;
+			uint16_t port = 0;
+			if(StunQuery(server.host, server.port, 1500, address, &port, &error, family))
+			{
+				// The port is the one this question left the router with, not the session's
+				std::printf("    %s: %s (asked through port %u)\n", kind, address.c_str(), port);
+				found = true;
+			}
+			else
+				std::printf("    %s: %s\n", kind, error.c_str());
+		}
+	}
+
+	std::string local = GuessLocalAddress();
+	std::string global6 = GuessGlobalIPv6Address();
+	std::printf("This machine itself\n");
+	std::printf("    on the local network: %s\n", local.empty() ? "no address" : local.c_str());
+	std::printf("    global IPv6 address: %s\n", global6.empty() ? "none" : global6.c_str());
+	return found ? 0 : 1;
+}
+
 int main(int argc, char **argv)
 {
 	if(argc < 2)
@@ -791,6 +845,8 @@ int main(int argc, char **argv)
 		return RunHost(o);
 	if(command == "guest")
 		return RunGuest(o);
+	if(command == "stun")
+		return RunStun(o);
 	Usage();
 	return 2;
 }

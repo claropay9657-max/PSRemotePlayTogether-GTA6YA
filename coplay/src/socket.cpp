@@ -16,6 +16,11 @@
 #include <cerrno>
 #endif
 
+#if defined(__APPLE__) && !defined(IPV6_PREFER_TEMPADDR)
+// The system header only shows this option when __APPLE_USE_RFC_3542 is defined
+#define IPV6_PREFER_TEMPADDR 63
+#endif
+
 namespace coplay {
 
 #ifdef _WIN32
@@ -178,6 +183,93 @@ std::string GuessLocalAddress()
 			if(inet_ntop(AF_INET, &local.sin_addr, buf, sizeof(buf)))
 				result = buf;
 		}
+	}
+	CloseHandle_(s);
+	return result;
+}
+
+std::string AddressBytesToString(const uint8_t *bytes, size_t size)
+{
+	if(bytes && size == 4)
+	{
+		return std::to_string(bytes[0]) + "." + std::to_string(bytes[1]) + "." + std::to_string(bytes[2]) + "."
+			+ std::to_string(bytes[3]);
+	}
+	if(bytes && size == 16)
+	{
+		EnsureSocketsInitialized();
+		in6_addr addr;
+		std::memcpy(&addr, bytes, sizeof(addr));
+		char buf[INET6_ADDRSTRLEN] = { 0 };
+		if(inet_ntop(AF_INET6, &addr, buf, sizeof(buf)))
+			return buf;
+	}
+	return std::string();
+}
+
+static bool IsGlobalIPv6(const uint8_t *a)
+{
+	// Everything handed out for the internet so far lies in 2000::/3. That leaves
+	// out loopback, link-local (fe80::/10), unique-local (fc00::/7), multicast and
+	// IPv4 written as IPv6.
+	if((a[0] & 0xe0) != 0x20)
+		return false;
+	// 2001:db8::/32 is for documentation
+	if(a[0] == 0x20 && a[1] == 0x01 && a[2] == 0x0d && a[3] == 0xb8)
+		return false;
+	// Teredo (2001::/32) and 6to4 (2002::/16) are tunnels through IPv4 that others
+	// cannot count on reaching
+	if(a[0] == 0x20 && a[1] == 0x01 && a[2] == 0x00 && a[3] == 0x00)
+		return false;
+	if(a[0] == 0x20 && a[1] == 0x02)
+		return false;
+	return true;
+}
+
+bool IsGlobalIPv6Address(const std::string &address)
+{
+	EnsureSocketsInitialized();
+	in6_addr addr;
+	if(inet_pton(AF_INET6, address.c_str(), &addr) != 1)
+		return false;
+	return IsGlobalIPv6(addr.s6_addr);
+}
+
+std::string GuessGlobalIPv6Address()
+{
+	EnsureSocketsInitialized();
+	// The same question as in GuessLocalAddress(), asked for a documentation
+	// address of IPv6 (RFC 3849). No packet is sent here either.
+	auto s = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	if(s == kInvalidHandle)
+		return std::string();
+	// A machine often has two global addresses: a lasting one and a temporary one
+	// that it prefers for outgoing connections and replaces every day. An invite
+	// should carry the lasting one, which is also the one a router's firewall rule
+	// is made for. Not every system lets us choose; then it is the temporary one.
+#if defined(IPV6_ADDR_PREFERENCES) && defined(IPV6_PREFER_SRC_PUBLIC)
+	{
+		int prefer = IPV6_PREFER_SRC_PUBLIC;
+		setsockopt(s, IPPROTO_IPV6, IPV6_ADDR_PREFERENCES, reinterpret_cast<const char *>(&prefer), sizeof(prefer));
+	}
+#elif defined(IPV6_PREFER_TEMPADDR)
+	{
+		int prefer = 0;
+		setsockopt(s, IPPROTO_IPV6, IPV6_PREFER_TEMPADDR, reinterpret_cast<const char *>(&prefer), sizeof(prefer));
+	}
+#endif
+	sockaddr_in6 remote;
+	std::memset(&remote, 0, sizeof(remote));
+	remote.sin6_family = AF_INET6;
+	remote.sin6_port = htons(9);
+	inet_pton(AF_INET6, "2001:db8::1", &remote.sin6_addr);
+	std::string result;
+	if(connect(s, reinterpret_cast<const sockaddr *>(&remote), sizeof(remote)) == 0)
+	{
+		sockaddr_in6 local;
+		socklen_t len = sizeof(local);
+		if(getsockname(s, reinterpret_cast<sockaddr *>(&local), &len) == 0 && IsGlobalIPv6(local.sin6_addr.s6_addr))
+			result = AddressBytesToString(local.sin6_addr.s6_addr, 16);
 	}
 	CloseHandle_(s);
 	return result;

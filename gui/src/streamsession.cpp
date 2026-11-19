@@ -347,6 +347,7 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	this->coplay_secret = settings->GetCoPlaySecret();
 	this->coplay_name = settings->GetCoPlayName();
 	this->coplay_address = settings->GetCoPlayAddress();
+	this->coplay_stun_server = settings->GetCoPlayStunServer();
 	this->coplay_mix_mode = settings->GetCoPlayMixMode();
 	QFile avatar_file(settings->GetCoPlayAvatar());
 	if(!settings->GetCoPlayAvatar().isEmpty() && avatar_file.open(QIODevice::ReadOnly))

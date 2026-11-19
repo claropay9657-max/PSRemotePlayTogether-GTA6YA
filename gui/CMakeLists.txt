@@ -62,6 +62,8 @@ set(SOURCE_FILES
 	src/voicechat.cpp
 	include/coplaycamera.h
 	src/coplaycamera.cpp
+	include/coplayaddress.h
+	src/coplayaddress.cpp
 	include/qmlsvgprovider.h
 	src/qmlsvgprovider.cpp
 	include/systemdinhibit.h

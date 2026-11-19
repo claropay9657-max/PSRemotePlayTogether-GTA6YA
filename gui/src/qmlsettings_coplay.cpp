@@ -8,6 +8,7 @@
 #include <coplay/socket.h>
 
 #include "overlayserver.h"
+#include "coplayaddress.h"
 #include "coplaycamera.h"
 
 #include <QApplication>
@@ -32,6 +33,9 @@ void QmlSettings::setCoplayHostEnabled(bool enabled)
 {
     settings->SetCoPlayHostEnabled(enabled);
     emit coplayChanged();
+    // Whoever switches sharing on will want the invite for friends elsewhere next
+    if (enabled)
+        coplayLookupPublicAddress();
 }
 
 int QmlSettings::coplayPort() const
@@ -107,21 +111,129 @@ QString QmlSettings::coplayLocalAddress() const
     return QString::fromStdString(coplay::GuessLocalAddress());
 }
 
-QString QmlSettings::coplayInvite() const
+/** The invite that leads to this computer under the given address; none without an address. */
+QString QmlSettings::coplayInviteFor(const QString &host) const
 {
+    if (host.isEmpty())
+        return QString();
     coplay::Invite invite;
     if (!coplay::SecretFromString(settings->GetCoPlaySecret().toStdString(), invite.secret)) {
         // First use: there is no key yet
         invite.secret = coplay::GenerateSecret();
         settings->SetCoPlaySecret(QString::fromStdString(coplay::SecretToString(invite.secret)));
     }
-    QString address = settings->GetCoPlayAddress();
-    invite.host = address.isEmpty() ? coplay::GuessLocalAddress() : address.toStdString();
-    if (invite.host.empty())
-        invite.host = "127.0.0.1";
+    invite.host = host.toStdString();
     int port = settings->GetCoPlayPort();
     invite.port = static_cast<uint16_t>(port > 0 && port < 65536 ? port : coplay::kDefaultPort);
     return QString::fromStdString(coplay::EncodeInvite(invite));
+}
+
+static QString LocalAddressOrLoopback()
+{
+    QString address = QString::fromStdString(coplay::GuessLocalAddress());
+    return address.isEmpty() ? QStringLiteral("127.0.0.1") : address;
+}
+
+QString QmlSettings::coplayInvite() const
+{
+    QString address = settings->GetCoPlayAddress();
+    return coplayInviteFor(address.isEmpty() ? LocalAddressOrLoopback() : address);
+}
+
+// ------------------------------------------------------------------ one invite per way in
+
+QString QmlSettings::coplayInviteLan() const
+{
+    return coplayInviteFor(LocalAddressOrLoopback());
+}
+
+QString QmlSettings::coplayPublicAddress() const
+{
+    // An address the user wrote down, such as a name that follows the connection
+    // around, is the one friends elsewhere reach: there is nothing to look up then
+    QString address = settings->GetCoPlayAddress().trimmed();
+    if (!address.isEmpty())
+        return address;
+    return CoPlayPublicAddress::Instance()->Address();
+}
+
+int QmlSettings::coplayPublicLookupState() const
+{
+    if (!settings->GetCoPlayAddress().trimmed().isEmpty())
+        return CoPlayPublicAddress::Found;
+    return CoPlayPublicAddress::Instance()->GetState();
+}
+
+QString QmlSettings::coplayPublicLookupError() const
+{
+    if (!settings->GetCoPlayAddress().trimmed().isEmpty())
+        return QString();
+    return CoPlayPublicAddress::Instance()->Error();
+}
+
+QString QmlSettings::coplayInvitePublic() const
+{
+    return coplayInviteFor(coplayPublicAddress());
+}
+
+QString QmlSettings::coplayIPv6Address() const
+{
+    return QString::fromStdString(coplay::GuessGlobalIPv6Address());
+}
+
+QString QmlSettings::coplayInviteIPv6() const
+{
+    return coplayInviteFor(coplayIPv6Address());
+}
+
+QString QmlSettings::coplayStunServer() const
+{
+    return settings->GetCoPlayStunServer();
+}
+
+void QmlSettings::setCoplayStunServer(const QString &server)
+{
+    if (server.trimmed() == settings->GetCoPlayStunServer())
+        return;
+    settings->SetCoPlayStunServer(server.trimmed());
+    // What another server said does not count any more, and "off" means off
+    CoPlayPublicAddress::Instance()->Reset();
+    emit coplayChanged();
+}
+
+void QmlSettings::coplayLookupPublicAddress()
+{
+    if (!settings->GetCoPlayAddress().trimmed().isEmpty())
+        return;
+    CoPlayPublicAddress::Instance()->LookupIfStale(settings->GetCoPlayStunServer());
+}
+
+void QmlSettings::coplayRefreshPublicAddress()
+{
+    if (!settings->GetCoPlayAddress().trimmed().isEmpty())
+        return;
+    CoPlayPublicAddress::Instance()->Lookup(settings->GetCoPlayStunServer());
+}
+
+static void CopyUnlessEmpty(const QString &text)
+{
+    if (!text.isEmpty())
+        QGuiApplication::clipboard()->setText(text);
+}
+
+void QmlSettings::coplayCopyInviteLan()
+{
+    CopyUnlessEmpty(coplayInviteLan());
+}
+
+void QmlSettings::coplayCopyInvitePublic()
+{
+    CopyUnlessEmpty(coplayInvitePublic());
+}
+
+void QmlSettings::coplayCopyInviteIPv6()
+{
+    CopyUnlessEmpty(coplayInviteIPv6());
 }
 
 void QmlSettings::coplayNewKey()
