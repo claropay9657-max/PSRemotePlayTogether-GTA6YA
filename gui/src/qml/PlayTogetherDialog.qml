@@ -336,6 +336,75 @@ DialogView {
                         onToggled: Chiaki.settings.coplayHostEnabled = checked
                     }
 
+                    // The invites: one per way a friend can reach this computer
+                    ColumnLayout {
+                        id: invites
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        Layout.bottomMargin: 8
+                        spacing: 8
+                        enabled: hostEnabledCheck.checked
+                        opacity: enabled ? 1.0 : 0.4
+
+                        readonly property int port: Chiaki.settings.coplayPort
+                        /** 0 nothing asked yet, 1 looking, 2 found, 3 not found */
+                        readonly property int lookup: Chiaki.settings.coplayPublicLookupState || 0
+                        readonly property string publicInvite: Chiaki.settings.coplayInvitePublic || ""
+                        readonly property string ipv6Invite: Chiaki.settings.coplayInviteIPv6 || ""
+
+                        // The public address is asked from a server on the internet, so only
+                        // for somebody who shares, and only while this page is looked at
+                        function lookUp() {
+                            if (hostEnabledCheck.checked && lookup === 0 && Chiaki.settings.coplayLookupPublicAddress)
+                                Chiaki.settings.coplayLookupPublicAddress();
+                        }
+                        Component.onCompleted: lookUp()
+                        Connections {
+                            target: hostEnabledCheck
+                            function onCheckedChanged() { invites.lookUp() }
+                        }
+
+                        C.InviteRow {
+                            title: qsTr("Same network")
+                            dot: "#00f2ff"
+                            secret: Chiaki.settings.streamerMode
+                            invite: hostEnabledCheck.checked ? (Chiaki.settings.coplayInviteLan || Chiaki.settings.coplayInvite) : ""
+                            note: qsTr("For friends in your home network or in the same VPN. Works right away.")
+                        }
+
+                        C.InviteRow {
+                            title: qsTr("Internet")
+                            secret: Chiaki.settings.streamerMode
+                            invite: hostEnabledCheck.checked ? invites.publicInvite : ""
+                            busy: hostEnabledCheck.checked && invites.lookup === 1
+                            actionText: hostEnabledCheck.checked && invites.lookup === 3 ? qsTr("Try again") : ""
+                            onAction: Chiaki.settings.coplayLookupPublicAddress()
+                            note: {
+                                if (!hostEnabledCheck.checked)
+                                    return "";
+                                if (invites.publicInvite.length > 0) {
+                                    const upnp = Chiaki.settings.coplayUpnpStatus || "";
+                                    return qsTr("For friends anywhere. UDP port %1 has to reach this computer: forward it in your router.").arg(invites.port)
+                                        + (upnp.length > 0 ? " " + upnp : "");
+                                }
+                                if (invites.lookup === 1)
+                                    return qsTr("Finding your public address…");
+                                if (invites.lookup === 3)
+                                    return qsTr("Your public address could not be found. Check the internet connection, or enter your address below.");
+                                return qsTr("For friends anywhere.");
+                            }
+                        }
+
+                        C.InviteRow {
+                            visible: invites.ipv6Invite.length > 0
+                            title: qsTr("Internet, IPv6")
+                            dot: "#f0469b"
+                            secret: Chiaki.settings.streamerMode
+                            invite: hostEnabledCheck.checked ? invites.ipv6Invite : ""
+                            note: qsTr("Try this one if the other internet invite does not work: many connections share their IPv4 address with others (DS-Lite) and can only be reached over IPv6. Your friend needs IPv6 too, and your router has to let UDP port %1 through to this computer.").arg(invites.port)
+                        }
+                    }
+
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 2
@@ -343,38 +412,6 @@ DialogView {
                         columnSpacing: 20
                         enabled: hostEnabledCheck.checked
                         opacity: enabled ? 1.0 : 0.4
-
-                        Label {
-                            Layout.alignment: Qt.AlignRight
-                            text: qsTr("Invite for friends:")
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-
-                            // Shown for copying, never edited
-                            TextField {
-                                Layout.fillWidth: true
-                                readOnly: true
-                                selectByMouse: true
-                                focusPolicy: Qt.ClickFocus
-                                text: hostEnabledCheck.checked ? Chiaki.settings.coplayInvite : ""
-                                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                            }
-
-                            C.Button {
-                                text: copiedTimer.running ? qsTr("Copied") : qsTr("Copy")
-                                onClicked: {
-                                    Chiaki.settings.coplayCopyInvite();
-                                    copiedTimer.restart();
-                                }
-                                Timer {
-                                    id: copiedTimer
-                                    interval: 1500
-                                }
-                            }
-                        }
 
                         Label {
                             Layout.alignment: Qt.AlignRight
@@ -394,14 +431,14 @@ DialogView {
 
                         Label {
                             Layout.alignment: Qt.AlignRight
-                            text: qsTr("Address in the invite:")
+                            text: qsTr("Own internet address:")
                         }
 
                         C.TextField {
                             Layout.fillWidth: true
-                            placeholderText: Chiaki.settings.coplayLocalAddress
-                                ? qsTr("%1 (this network only)").arg(Chiaki.settings.coplayLocalAddress)
-                                : qsTr("Your address")
+                            placeholderText: Chiaki.settings.coplayPublicAddress
+                                ? qsTr("%1 (found by itself)").arg(Chiaki.settings.coplayPublicAddress)
+                                : qsTr("Found by itself; or a name such as myhome.dyndns.org")
                             text: Chiaki.settings.coplayAddress
                             onEditingFinished: Chiaki.settings.coplayAddress = text
                         }
@@ -429,7 +466,7 @@ DialogView {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             opacity: 0.7
-                            text: qsTr("Friends outside your home network need your public address (or a DNS name) in the invite, and the UDP port forwarded to this computer in your router.")
+                            text: qsTr("Leave the address empty unless you have a name of your own for your connection (DynDNS), which stays valid when your provider gives you a new address. For the internet invites, the UDP port has to be forwarded to this computer in your router.")
                         }
 
                         Item { }
