@@ -48,8 +48,13 @@ If a job failed for a reason outside the code (a download that timed out, for
 example), re-run it from the run's page: files that are already attached are
 replaced, not duplicated.
 
-The version in the file names is the tag. The version the app shows in its
-corner is separate: it is `CHIAKI_VERSION_*` in the top-level `CMakeLists.txt`.
+The version in the file names is the tag, and it has to be the version the app
+shows in its corner: `PSRPT_VERSION_*` in the top-level `CMakeLists.txt`. So a
+release is two steps: set those numbers and commit, then tag that commit
+`v<the same version>`. A tag that says something else than the app stops the
+build right away with a message saying so. (`CHIAKI_VERSION_*` next to it is
+the version of the chiaki-ng the app is built on and only changes when a newer
+chiaki-ng is merged in.)
 
 ## macOS
 

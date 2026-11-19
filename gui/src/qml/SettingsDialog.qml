@@ -3136,8 +3136,8 @@ DialogView {
                     Layout.preferredWidth: 400
                     verticalAlignment: Text.AlignTop
                     wrapMode: Text.Wrap
-                    text: "<h1>PSRemotePlayTogether</h1> powered by GamerNova.net
-                        <h2>Built on chiaki-ng</h2> by Street Pea, version %1
+                    text: "<h1>PSRemotePlayTogether</h1> version %1, powered by GamerNova.net
+                        <h2>Built on chiaki-ng</h2> by Street Pea, version %2
                         <h2>Fork of Chiaki</h2> by Florian Markl at version 2.1.1
 
                         <p>This program is free software: you can redistribute it and/or modify
@@ -3147,7 +3147,7 @@ DialogView {
                         <p>This program is distributed in the hope that it will be useful,
                         but WITHOUT ANY WARRANTY; without even the implied warranty of
                         MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-                        GNU General Public License for more details.</p>".arg(Qt.application.version)
+                        GNU General Public License for more details.</p>".arg(Qt.application.version).arg(Chiaki.chiakiVersion)
                 }
             }
         }

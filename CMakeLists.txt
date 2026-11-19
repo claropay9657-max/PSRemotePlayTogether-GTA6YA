@@ -43,6 +43,13 @@ set(CHIAKI_VERSION_MINOR 10)
 set(CHIAKI_VERSION_PATCH 1)
 set(CHIAKI_VERSION ${CHIAKI_VERSION_MAJOR}.${CHIAKI_VERSION_MINOR}.${CHIAKI_VERSION_PATCH})
 
+# The version of PSRemotePlayTogether itself: what the app shows and what a release is
+# tagged with (v<this>). The numbers above stay those of the chiaki-ng it is built on.
+set(PSRPT_VERSION_MAJOR 0)
+set(PSRPT_VERSION_MINOR 1)
+set(PSRPT_VERSION_PATCH 0)
+set(PSRPT_VERSION ${PSRPT_VERSION_MAJOR}.${PSRPT_VERSION_MINOR}.${PSRPT_VERSION_PATCH})
+
 set(CPACK_PACKAGE_NAME "chiaki-ng")
 set(CPACK_PACKAGE_DESCRIPTION "Open Source PlayStation Remote Play client for Linux, Mac, and Windows")
 set(CPACK_PACKAGE_VERSION_MAJOR ${CHIAKI_VERSION_MAJOR})
@@ -137,6 +144,7 @@ endif()
 add_subdirectory(third-party)
 
 add_definitions(-DCHIAKI_VERSION_MAJOR=${CHIAKI_VERSION_MAJOR} -DCHIAKI_VERSION_MINOR=${CHIAKI_VERSION_MINOR} -DCHIAKI_VERSION_PATCH=${CHIAKI_VERSION_PATCH} -DCHIAKI_VERSION=\"${CHIAKI_VERSION}\")
+add_definitions(-DPSRPT_VERSION=\"${PSRPT_VERSION}\")
 
 if(CHIAKI_LIB_ENABLE_MBEDTLS)
 	add_definitions(-DCHIAKI_LIB_ENABLE_MBEDTLS)

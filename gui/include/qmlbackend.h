@@ -87,6 +87,7 @@ class QmlBackend : public QObject
     Q_PROPERTY(QVariantList hiddenHosts READ hiddenHosts NOTIFY hiddenHostsChanged)
     Q_PROPERTY(bool autoConnect READ autoConnect NOTIFY autoConnectChanged)
     Q_PROPERTY(bool coplayJoining READ coplayJoining NOTIFY coplayJoiningChanged)
+    Q_PROPERTY(QString chiakiVersion READ chiakiVersion CONSTANT)
     Q_PROPERTY(QString overlayUrl READ overlayUrl NOTIFY overlayStateChanged)
     Q_PROPERTY(QString overlayError READ overlayError NOTIFY overlayStateChanged)
     Q_PROPERTY(PsnConnectState connectState READ connectState WRITE setConnectState NOTIFY connectStateChanged)
@@ -192,6 +193,8 @@ public:
     Q_INVOKABLE bool registerHost(const QString &host, const QString &psn_id, const QString &pin, const QString &cpin, bool broadcast, int target, const QJSValue &callback);
     Q_INVOKABLE void connectToHost(int index, QString nickname = QString());
     Q_INVOKABLE void stopSession(bool sleep);
+    /** Version of the chiaki-ng this app is built on; the app's own is the application version. */
+    QString chiakiVersion() const { return QStringLiteral(CHIAKI_VERSION); }
     // Play Together, see qmlbackend_coplay.cpp
     bool coplayJoining() const { return coplay_joining; }
     /** Address of the stream overlay for OBS; empty while it is switched off. */
