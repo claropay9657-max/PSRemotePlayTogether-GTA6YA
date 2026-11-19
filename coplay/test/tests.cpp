@@ -1123,7 +1123,7 @@ struct TestGuest
 	~TestGuest() { client->Stop(); } // callbacks use the members below
 
 	TestGuest(const Invite &invite, const std::string &name, uint8_t want = kWantAll, uint32_t connect_timeout_ms = 3000,
-		const std::vector<uint8_t> &avatar = {}, uint64_t player_id = 0)
+		const std::vector<uint8_t> &avatar = {}, uint64_t player_id = 0, uint32_t host_timeout_ms = 1500)
 	{
 		ClientConfig config;
 		config.invite = invite;
@@ -1133,7 +1133,7 @@ struct TestGuest
 		config.want = want;
 		config.controller = ControllerKind::Xbox;
 		config.connect_timeout_ms = connect_timeout_ms;
-		config.host_timeout_ms = 1500;
+		config.host_timeout_ms = host_timeout_ms;
 		client = std::make_unique<Client>(config);
 	}
 
@@ -3272,8 +3272,11 @@ TEST(net_chat_reaches_everyone_and_newcomers_get_what_was_said)
 TEST(net_chat_gets_through_heavy_loss_exactly_once)
 {
 	TestHost h;
-	TestGuest a(h.MakeInvite(), "A", kWantAll, 3000);
-	TestGuest b(h.MakeInvite(), "B", kWantAll, 3000);
+	// The loss hits everything the host sends, the session state too: the guests are
+	// given the app's own patience, so that a slow machine (the Windows build runs
+	// these under wine on a busy runner) does not count as a lost host
+	TestGuest a(h.MakeInvite(), "A", kWantAll, 3000, {}, 0, 6000);
+	TestGuest b(h.MakeInvite(), "B", kWantAll, 3000, {}, 0, 6000);
 	CHECK(a.Connect());
 	CHECK(b.Connect());
 	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
@@ -3281,7 +3284,8 @@ TEST(net_chat_gets_through_heavy_loss_exactly_once)
 	a.client->SetSimulatedLoss(0.4, 12);
 	for(int i = 0; i < 10; i++)
 		a.client->SendChat("message " + std::to_string(i), ChatEmbed(), {});
-	CHECK(WaitFor([&] { return b.Chats().size() >= 10; }, 8000));
+	CHECK(WaitFor([&] { return b.Chats().size() >= 10; }, 18000));
+	CHECK(a.disconnects == 0 && b.disconnects == 0);
 	SleepMs(1500);
 	std::vector<ChatMessage> got = b.Chats();
 	CHECK(got.size() == 10);
