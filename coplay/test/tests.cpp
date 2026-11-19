@@ -1394,6 +1394,14 @@ TEST(net_held_button_is_released_when_guest_vanishes)
 	CHECK(g.Connect());
 	g.client->SetInput(Pad(kButtonR1, 32767, 0, 0, 255));
 	CHECK(WaitFor([&] { return h.host->MixedInput().buttons == kButtonR1; }, 1000));
+	// The host's own notice about the press can come after the line above has already seen
+	// it (on a slow machine by quite a bit). Wait until none is on its way any more, or it
+	// would be taken for the release below.
+	for(int seen = -1; seen != h.input_changes;)
+	{
+		seen = h.input_changes;
+		SleepMs(120);
+	}
 
 	// the guest's process dies without saying goodbye: nothing it sends arrives any more
 	g.client->SetSimulatedLoss(1.0);
