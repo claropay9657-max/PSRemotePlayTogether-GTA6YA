@@ -31,9 +31,9 @@ Item {
     implicitHeight: 120
 
     // The invites of the running session: one per way a friend can reach this computer
-    readonly property string inviteLan: hosting ? (Chiaki.settings.coplayInviteLan || "") : ""
-    readonly property string invitePublic: hosting ? (Chiaki.settings.coplayInvitePublic || "") : ""
-    readonly property string inviteIPv6: hosting ? (Chiaki.settings.coplayInviteIPv6 || "") : ""
+    readonly property string inviteLan: hosting ? (session.coplayInviteLan || session.coplayInvite || "") : ""
+    readonly property string invitePublic: hosting ? (session.coplayInvitePublic || "") : ""
+    readonly property string inviteIPv6: hosting ? (session.coplayInviteIPv6 || "") : ""
 
     // Sharing has started: now the public address is worth asking for
     onHostingChanged: {

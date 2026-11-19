@@ -15,6 +15,7 @@
 #include <coplaycamera.h>
 #include <voicechat.h>
 
+#include <chiaki/time.h>
 #include <chiaki/video.h>
 
 #include <coplay/client.h>
@@ -33,7 +34,37 @@
 #include <QVariantMap>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
+#include <thread>
+
+/** One try to find the host again; it is asked every quarter of a second during this time. */
+static const uint32_t kRejoinAttemptMs = 2000;
+/** A guest that could not join again after this long gives up. */
+static const uint64_t kRejoinTimeoutMs = 90 * 1000;
+/** Ending a session waits this long at most for the thread that is joining again. */
+static const int kRejoinCancelWaitMs = 300;
+/**
+ * A host that is getting its console back needs a moment to take its old session apart;
+ * asked at once, it may still answer and then go silent.
+ */
+static const int kRejoinHostBackDelayMs = 1500;
+
+/**
+ * A guest joining again after it lost the host. Shared between the session and the
+ * thread that looks for the host: that thread is never waited for longer than a moment
+ * (looking up a host name can take long), so it may outlive the session.
+ */
+struct CoPlayRejoin
+{
+	std::mutex mutex; // everything below
+	std::condition_variable changed;
+	bool cancelled = false;
+	bool finished = false;
+	std::shared_ptr<coplay::Client> attempt; // the one that is connecting right now
+};
 
 struct CoPlayState
 {
@@ -43,7 +74,15 @@ struct CoPlayState
 	QString host_name;
 
 	// guest
+	// The connection to the host. Joining again replaces it, on the session's own thread and
+	// while no receiving thread runs; any other thread takes its reference with client_mutex.
 	std::shared_ptr<coplay::Client> client;
+	QMutex client_mutex;
+	std::shared_ptr<const coplay::ClientConfig> client_config;
+	coplay::ClientCallbacks client_callbacks;
+	bool auto_rejoin = false;
+	std::shared_ptr<CoPlayRejoin> rejoin; // session's thread; set while joining again
+	QString rejoin_status;
 	std::atomic<bool> guest_quit_sent{false};
 	std::atomic<bool> audio_ready{false};
 	coplay::Feedback applied_feedback;
@@ -261,6 +300,8 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	coplay->client = connect_info.coplay_client;
 	if(coplay->client)
 	{
+		coplay->client_config = connect_info.coplay_client_config;
+		coplay->auto_rejoin = connect_info.auto_reconnect && coplay->client_config;
 		coplay->video_enabled = (coplay->client->Want() & coplay::kWantVideo) != 0;
 		return;
 	}
@@ -349,13 +390,26 @@ void StreamSession::CoPlayStopThreads()
 		coplay->camera->Stop();
 	// Both calls return only after the respective thread has ended, so that none of
 	// its callbacks runs while the rest of the session is taken apart
-	coplay->hosting = false;
-	if(coplay->host)
-		coplay->host->Stop();
+	CoPlayStopHost();
+	CoPlayCancelRejoin();
 	if(coplay->client)
 		coplay->client->Stop();
 	if(coplay->voice)
 		coplay->voice->CloseSpeakers();
+}
+
+void StreamSession::CoPlayStopHost()
+{
+	if(!coplay)
+		return;
+	coplay->hosting = false;
+	if(!coplay->host)
+		return;
+	// Guests wait for a host that is getting its console back, and leave one that is done
+	if(reconnect_wanted)
+		coplay->host->StopForReconnect();
+	else
+		coplay->host->Stop();
 }
 
 void StreamSession::CoPlayFini()
@@ -612,8 +666,7 @@ void StreamSession::CoPlayOnEvent(ChiakiEvent *event)
 			break;
 		}
 		case CHIAKI_EVENT_QUIT:
-			coplay->hosting = false;
-			host->Stop();
+			CoPlayStopHost();
 			QMetaObject::invokeMethod(this, [this] { CoPlayUpdatePlayers(); }, Qt::QueuedConnection);
 			break;
 		case CHIAKI_EVENT_RUMBLE:
@@ -646,6 +699,8 @@ void StreamSession::CoPlayOnEvent(ChiakiEvent *event)
 bool StreamSession::CoPlayVideoSampleCb(uint8_t *buf, size_t buf_size, int32_t frames_lost, bool frame_recovered, void *user)
 {
 	auto self = static_cast<StreamSession *>(user);
+	// For noticing a console that stays connected but stopped sending, see CheckVideoStalled()
+	self->last_video_ms = chiaki_time_now_monotonic_ms();
 	// Before decoding: the guests get the stream exactly as the console sent it
 	if(self->coplay && self->coplay->host)
 		self->coplay->host->PushVideo(buf, buf_size, frames_lost, frame_recovered);
@@ -901,29 +956,19 @@ void StreamSession::CoPlayStartGuest()
 		CoPlayOnCamFrame(slot, QByteArray(reinterpret_cast<const char *>(jpeg.data()), static_cast<int>(jpeg.size())));
 	};
 	callbacks.on_disconnected = [this](coplay::DisconnectReason reason) {
-		switch(reason)
+		// On the receiving thread, which ends as soon as this returns
+		bool lost = reason == coplay::DisconnectReason::Timeout || reason == coplay::DisconnectReason::HostReconnecting;
+		if(lost && coplay->auto_rejoin)
 		{
-			case coplay::DisconnectReason::HostEnded:
-				emit CoPlayNotice(tr("The host ended the session."));
-				break;
-			case coplay::DisconnectReason::Kicked:
-				emit CoPlayNotice(tr("The host removed you from the session."));
-				break;
-			case coplay::DisconnectReason::Timeout:
-				emit CoPlayNotice(tr("The connection to the host was lost."));
-				break;
-			case coplay::DisconnectReason::HostReconnecting:
-				emit CoPlayNotice(tr("The host lost the connection to its console."));
-				break;
-		}
-		if(coplay->guest_quit_sent.exchange(true))
+			// The session stays and joins again. Not from here: that replaces the client
+			// this thread belongs to.
+			QMetaObject::invokeMethod(this, [this, reason] { CoPlayBeginRejoin(reason); }, Qt::QueuedConnection);
 			return;
-		ChiakiEvent event;
-		memset(&event, 0, sizeof(event));
-		event.type = CHIAKI_EVENT_QUIT;
-		event.quit.reason = CHIAKI_QUIT_REASON_STOPPED;
-		Event(&event);
+		}
+		CoPlayGuestLost(reason);
 	};
+	// Kept: a connection that replaces this one is started with the same
+	coplay->client_callbacks = callbacks;
 	coplay->client->Start(callbacks);
 
 	ChiakiEvent event;
@@ -937,8 +982,34 @@ void StreamSession::CoPlayStopGuest()
 {
 	if(!IsCoPlayGuest())
 		return;
+	CoPlayCancelRejoin();
 	// Waits for the receiving thread; nothing from the host is processed after this
 	coplay->client->Stop();
+	CoPlayGuestQuit();
+}
+
+void StreamSession::CoPlayGuestLost(coplay::DisconnectReason reason)
+{
+	switch(reason)
+	{
+		case coplay::DisconnectReason::HostEnded:
+			emit CoPlayNotice(tr("The host ended the session."));
+			break;
+		case coplay::DisconnectReason::Kicked:
+			emit CoPlayNotice(tr("The host removed you from the session."));
+			break;
+		case coplay::DisconnectReason::Timeout:
+			emit CoPlayNotice(tr("The connection to the host was lost."));
+			break;
+		case coplay::DisconnectReason::HostReconnecting:
+			emit CoPlayNotice(tr("The host lost the connection to its console."));
+			break;
+	}
+	CoPlayGuestQuit();
+}
+
+void StreamSession::CoPlayGuestQuit()
+{
 	if(coplay->guest_quit_sent.exchange(true))
 		return;
 	ChiakiEvent event;
@@ -946,6 +1017,170 @@ void StreamSession::CoPlayStopGuest()
 	event.type = CHIAKI_EVENT_QUIT;
 	event.quit.reason = CHIAKI_QUIT_REASON_STOPPED;
 	Event(&event);
+}
+
+// ------------------------------------------------------------------ guest: joining again
+
+bool StreamSession::IsCoPlayReconnecting() const
+{
+	return coplay && coplay->rejoin;
+}
+
+QString StreamSession::CoPlayReconnectStatus() const
+{
+	return coplay && coplay->rejoin ? coplay->rejoin_status : QString();
+}
+
+void StreamSession::CoPlayBeginRejoin(coplay::DisconnectReason reason)
+{
+	// On the session's thread, asked for by the receiving thread of the connection that broke
+	if(!IsCoPlayGuest() || coplay->guest_quit_sent || coplay->rejoin)
+		return;
+	bool host_reconnecting = reason == coplay::DisconnectReason::HostReconnecting;
+	CHIAKI_LOGW(GetChiakiLog(), "Play Together: %s, joining again",
+		host_reconnecting ? "the host is getting its console back" : "the connection to the host was lost");
+
+	// Its receiving thread ends by itself after a loss. Once this has waited for it, nothing
+	// from the host is processed until the new connection is started.
+	coplay->client->Stop();
+
+	// Nobody tells the controllers to stop any more, and whatever the host says about them
+	// once we are back is news
+	for(auto controller : controllers)
+	{
+		const uint8_t clear_effect[10] = { 0 };
+		controller->SetTriggerEffects(0x05, clear_effect, 0x05, clear_effect);
+		controller->SetRumble(0, 0);
+	}
+	coplay->applied_feedback = coplay::Feedback();
+	coplay->applied_any = false;
+
+	coplay::ClientConfig config = *coplay->client_config;
+	config.want = coplay->client->Want();
+	config.media = coplay->client->Media();
+	config.controller = static_cast<coplay::ControllerKind>(coplay->own_controller.load());
+	config.connect_timeout_ms = kRejoinAttemptMs;
+
+	auto job = std::make_shared<CoPlayRejoin>();
+	coplay->rejoin = job;
+	coplay->rejoin_status = host_reconnecting
+		? tr("The host lost its console — waiting for it to come back…")
+		: tr("Connection to the host lost — reconnecting…");
+	emit CoPlayReconnectingChanged();
+
+	// Looking the host up and waiting for its answer block, so that is not for this thread.
+	// The one doing it touches the session in a single place, see below.
+	std::thread([this, job, config, host_reconnecting] {
+		std::shared_ptr<coplay::Client> joined;
+		std::string error;
+		uint64_t started_ms = coplay::NowMs();
+		std::unique_lock<std::mutex> lock(job->mutex);
+		if(host_reconnecting)
+			job->changed.wait_for(lock, std::chrono::milliseconds(kRejoinHostBackDelayMs), [&job] { return job->cancelled; });
+		while(!job->cancelled)
+		{
+			auto attempt_started = std::chrono::steady_clock::now();
+			auto client = std::make_shared<coplay::Client>(config);
+			job->attempt = client; // for CancelConnect()
+			lock.unlock();
+			bool ok = client->Connect(&error);
+			lock.lock();
+			job->attempt.reset();
+			if(job->cancelled)
+				break; // should it have got through all the same, it says goodbye as it goes
+			if(ok)
+			{
+				joined = client;
+				break;
+			}
+			if(coplay::NowMs() - started_ms >= kRejoinTimeoutMs)
+				break;
+			// An error that came at once (no network, for one) must not make this a busy loop
+			job->changed.wait_until(lock, attempt_started + std::chrono::milliseconds(kRejoinAttemptMs),
+				[&job] { return job->cancelled; });
+		}
+		// Whoever ends the session cancels first, and needs this lock for it: if it is not
+		// cancelled, the session is still there to be told
+		if(!job->cancelled)
+		{
+			QString message = QString::fromStdString(error);
+			QMetaObject::invokeMethod(this, [this, job, joined, message] {
+				CoPlayRejoinFinished(job, joined, message);
+			}, Qt::QueuedConnection);
+		}
+		job->finished = true;
+		job->changed.notify_all();
+	}).detach();
+}
+
+void StreamSession::CoPlayRejoinFinished(const std::shared_ptr<CoPlayRejoin> &job,
+		const std::shared_ptr<coplay::Client> &client, const QString &error)
+{
+	if(!coplay || coplay->rejoin != job)
+	{
+		// Cancelled while this was on its way
+		if(client)
+			client->Stop();
+		return;
+	}
+	coplay->rejoin.reset();
+	coplay->rejoin_status.clear();
+	emit CoPlayReconnectingChanged();
+
+	if(!client)
+	{
+		CHIAKI_LOGE(GetChiakiLog(), "Play Together: could not join again: %s", qPrintable(error));
+		emit CoPlayNotice(tr("The connection to the host was lost."));
+		CoPlayGuestQuit();
+		return;
+	}
+	if(client->Welcome().stream.codec != coplay->client->Welcome().stream.codec)
+	{
+		// The decoder was set up for the other one
+		CHIAKI_LOGE(GetChiakiLog(), "Play Together: the host came back with a different video codec");
+		client->Stop();
+		emit CoPlayNotice(tr("The host changed its video settings. Please join again."));
+		CoPlayGuestQuit();
+		return;
+	}
+
+	// What was switched while we were away went to the old connection
+	client->SetWant(coplay->client->Want());
+	client->SetMedia(coplay->client->Media());
+	client->SetController(static_cast<coplay::ControllerKind>(coplay->own_controller.load()));
+	{
+		QMutexLocker locker(&coplay->client_mutex);
+		coplay->client = client;
+	}
+	{
+		QMutexLocker locker(&coplay->mutex);
+		coplay->have_guest_inputs = false;
+	}
+	CHIAKI_LOGI(GetChiakiLog(), "Play Together: joined again at %s as player %u",
+		client->HostAddress().c_str(), static_cast<unsigned>(client->Welcome().slot));
+	// The picture comes back by itself: a new connection starts with a key frame
+	client->Start(coplay->client_callbacks);
+	emit CoPlayChanged();
+}
+
+void StreamSession::CoPlayCancelRejoin()
+{
+	if(!coplay || !coplay->rejoin)
+		return;
+	std::shared_ptr<CoPlayRejoin> job = coplay->rejoin;
+	coplay->rejoin.reset();
+	coplay->rejoin_status.clear();
+	{
+		std::unique_lock<std::mutex> lock(job->mutex);
+		job->cancelled = true;
+		if(job->attempt)
+			job->attempt->CancelConnect();
+		job->changed.notify_all();
+		// It notices within a few milliseconds, unless it is stuck looking up the host's
+		// name: then it is left behind and ends by itself, without touching the session
+		job->changed.wait_for(lock, std::chrono::milliseconds(kRejoinCancelWaitMs), [&job] { return job->finished; });
+	}
+	emit CoPlayReconnectingChanged();
 }
 
 // ------------------------------------------------------------------ overlay
@@ -1160,8 +1395,13 @@ void StreamSession::CoPlayStartMedia()
 
 	coplay->voice->SetSendCallback([this](const uint8_t *data, size_t size) {
 		// On the microphone's thread; both ends outlive the microphone (see CoPlayStopThreads)
-		if(coplay->client)
-			coplay->client->SendVoice(data, size);
+		std::shared_ptr<coplay::Client> client;
+		{
+			QMutexLocker locker(&coplay->client_mutex);
+			client = coplay->client;
+		}
+		if(client)
+			client->SendVoice(data, size);
 		else if(coplay->host && coplay->hosting)
 			coplay->host->PushVoice(data, size);
 	});

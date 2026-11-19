@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QRandomGenerator>
 #include <QtConcurrentRun>
 
 void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, bool controller_only)
@@ -62,7 +63,15 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
             config.avatar.assign(avatar.constBegin(), avatar.constEnd());
     }
 
+    // Who we are to the host, the same for as long as the app runs: joining again after a
+    // connection loss gets us our place back instead of a second one
+    while (!coplay_player_id)
+        coplay_player_id = QRandomGenerator::system()->generate64();
+    config.player_id = coplay_player_id;
+
     auto client = std::make_shared<coplay::Client>(config);
+    // Kept with the session, which joins again by itself when it loses the host
+    auto client_config = std::make_shared<const coplay::ClientConfig>(config);
     QString host_address = QString::fromStdString(config.invite.host);
 
     coplay_joining = true;
@@ -70,7 +79,7 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
 
     // Looking up the host and waiting for its answer can take seconds: not on this thread
     auto watcher = new QFutureWatcher<QString>(this);
-    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, client, host_address]() {
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, client, client_config, host_address]() {
         QString failure = watcher->result();
         watcher->deleteLater();
         coplay_joining = false;
@@ -132,6 +141,7 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
         // A guest is never a host at the same time
         info.coplay_host_enabled = false;
         info.coplay_client = client;
+        info.coplay_client_config = client_config;
 
         emit coplayJoinFinished(true, QString());
         createSession(info);

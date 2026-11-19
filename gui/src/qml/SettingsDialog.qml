@@ -517,6 +517,22 @@ DialogView {
 
                         Label {
                             Layout.alignment: Qt.AlignRight
+                            text: qsTr("Reconnect:")
+                        }
+
+                        C.CheckBox {
+                            text: qsTr("Get a lost connection back by itself (console and Play Together)")
+                            checked: Chiaki.settings.coplayAutoReconnect
+                            onToggled: Chiaki.settings.coplayAutoReconnect = checked
+                        }
+
+                        Label {
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("(Checked)")
+                        }
+
+                        Label {
+                            Layout.alignment: Qt.AlignRight
                             text: qsTr("Steam Deck Haptics:")
                             visible: (typeof Chiaki.settings.steamDeckHaptics !== "undefined")
                         }

@@ -2563,7 +2563,8 @@ QmlMainWindow::QmlMainWindow(const StreamSessionConnectInfo &connect_info)
     else if (connect_info.stretch)
         setVideoMode(VideoMode::Stretch);
 
-    connect(session, &StreamSession::SessionQuit, qGuiApp, &QGuiApplication::quit);
+    // See init(): the session's own quit may only mean that it is being reconnected
+    connect(backend, &QmlBackend::sessionEnded, qGuiApp, &QGuiApplication::quit, Qt::QueuedConnection);
 }
 
 QmlMainWindow::~QmlMainWindow()
@@ -5172,7 +5173,7 @@ renderer_backend_ready:
 
     backend = new QmlBackend(settings, this);
     stats_overlay_widget = new StatsOverlayWidget(this, backend);
-    connect(backend, &QmlBackend::sessionChanged, this, [this, exit_app_on_stream_exit](StreamSession *s) {
+    connect(backend, &QmlBackend::sessionChanged, this, [this](StreamSession *s) {
         const bool preserve_startup_warmup = s && startup_warmup_preserve_next_session_change;
         startup_warmup_preserve_next_session_change = false;
         session = s;
@@ -5261,10 +5262,6 @@ renderer_backend_ready:
             }
             startup_video_visible_pending.storeRelease(0);
         }
-        if(session && exit_app_on_stream_exit)
-        {
-            connect(session, &StreamSession::SessionQuit, qGuiApp, &QGuiApplication::quit);
-        }
         if(!session)
         {
             {
@@ -5290,6 +5287,17 @@ renderer_backend_ready:
             }
             scheduleUpdate(true, UpdateRequestReason::SceneChanged);
         }
+    });
+    // Not on the session's own quit: a session that lost its console and is being
+    // reconnected has quit as well, and the app is to stay for its successor
+    if (exit_app_on_stream_exit)
+        connect(backend, &QmlBackend::sessionEnded, qGuiApp, &QGuiApplication::quit, Qt::QueuedConnection);
+    connect(backend, &QmlBackend::reconnectingChanged, this, [this]() {
+        // The banner that says so can be clicked
+        if (backend->reconnecting())
+            setCursor(Qt::ArrowCursor);
+        else if (session && has_video && !grab_input && this->settings->GetHideCursor())
+            setCursor(Qt::BlankCursor);
     });
     connect(backend, &QmlBackend::windowTypeUpdated, this, &QmlMainWindow::updateWindowType);
 

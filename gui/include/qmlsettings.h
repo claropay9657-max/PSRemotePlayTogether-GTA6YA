@@ -90,6 +90,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(int coplayMixMode READ coplayMixMode WRITE setCoplayMixMode NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayLastInvite READ coplayLastInvite WRITE setCoplayLastInvite NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayControllerOnly READ coplayControllerOnly WRITE setCoplayControllerOnly NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayAutoReconnect READ coplayAutoReconnect WRITE setCoplayAutoReconnect NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayInvite READ coplayInvite NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayLocalAddress READ coplayLocalAddress CONSTANT)
     Q_PROPERTY(QString coplayInviteLan READ coplayInviteLan NOTIFY coplayChanged)
@@ -605,6 +606,9 @@ public:
     void setCoplayLastInvite(const QString &invite);
     bool coplayControllerOnly() const;
     void setCoplayControllerOnly(bool enabled);
+    /** Get a lost connection (to the console, or to the host of a shared session) back without asking. */
+    bool coplayAutoReconnect() const;
+    void setCoplayAutoReconnect(bool enabled);
     /** The text to give to friends. Creates the session key on first use. */
     QString coplayInvite() const;
     QString coplayLocalAddress() const;
