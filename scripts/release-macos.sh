@@ -36,6 +36,37 @@ APP_NAME=PSRemotePlayTogether
 MOLTENVK_VERSION=v1.4.2
 MOLTENVK_SHA256=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
 
+# Everything --upload needs is checked now, not after a ten-minute build
+if [ "$UPLOAD" = 1 ]; then
+	if [ -z "${FORGEJO_TOKEN:-}" ]; then
+		echo "error: --upload needs FORGEJO_TOKEN" >&2
+		exit 1
+	fi
+	if [ -z "${GITHUB_SERVER_URL:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then
+		ORIGIN="$(git remote get-url origin)"
+		case "$ORIGIN" in
+			http://*|https://*) ;;
+			*)
+				echo "error: the origin remote is not an http(s) address; set GITHUB_SERVER_URL (https://your-forgejo) and GITHUB_REPOSITORY (owner/name)" >&2
+				exit 1
+				;;
+		esac
+		ORIGIN="${ORIGIN%.git}"
+		GITHUB_SERVER_URL="$(printf '%s' "$ORIGIN" | sed -E 's#^(https?://)([^/@]*@)?([^/]+)/.*#\1\3#')"
+		GITHUB_REPOSITORY="$(printf '%s' "$ORIGIN" | sed -E 's#^https?://[^/]+/##')"
+		export GITHUB_SERVER_URL GITHUB_REPOSITORY
+	fi
+	if [ -z "${RELEASE_TAG:-}${GITHUB_REF_NAME:-}" ]; then
+		case "$VERSION" in
+			dev*)
+				echo "error: this commit has no v* tag, so there is no release to attach the build to" >&2
+				exit 1
+				;;
+		esac
+		export RELEASE_TAG="v$VERSION"
+	fi
+fi
+
 echo "== Building $APP_NAME $VERSION for macos-$ARCH"
 mkdir -p "$BUILD_DIR" dist
 
@@ -180,21 +211,5 @@ codesign --force --sign - "$DMG"
 ls -lh "$DMG"
 
 if [ "$UPLOAD" = 1 ]; then
-	if [ -z "${FORGEJO_TOKEN:-}" ]; then
-		echo "error: --upload needs FORGEJO_TOKEN" >&2
-		exit 1
-	fi
-	if [ -z "${GITHUB_SERVER_URL:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then
-		ORIGIN="$(git remote get-url origin)"
-		ORIGIN="${ORIGIN%.git}"
-		export GITHUB_SERVER_URL="$(printf '%s' "$ORIGIN" | sed -E 's#^(https?://[^/]+)/.*#\1#')"
-		export GITHUB_REPOSITORY="$(printf '%s' "$ORIGIN" | sed -E 's#^https?://[^/]+/##')"
-	fi
-	if [ -z "${RELEASE_TAG:-}${GITHUB_REF_NAME:-}" ]; then
-		export RELEASE_TAG="v$VERSION"
-	fi
-	case "${RELEASE_TAG:-$GITHUB_REF_NAME}" in
-		vdev-*) echo "error: this commit has no v* tag, nothing to attach the build to" >&2; exit 1 ;;
-	esac
 	scripts/ci/publish-release.sh "$DMG" "$DMG.sha256"
 fi
