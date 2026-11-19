@@ -25,7 +25,12 @@ fi
 
 FILE="node-${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"
 TMP="$(mktemp -d)"
-curl --fail --location --silent --show-error --retry 5 --retry-delay 3 --retry-all-errors \
+# The x86_64 builder image has a curl from before --retry-all-errors existed (7.71)
+RETRY_ALL=""
+if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+	RETRY_ALL=--retry-all-errors
+fi
+curl --fail --location --silent --show-error --retry 5 --retry-delay 3 $RETRY_ALL \
 	-o "$TMP/$FILE" "https://nodejs.org/dist/${NODE_VERSION}/${FILE}"
 echo "${NODE_SHA256}  $TMP/$FILE" | sha256sum -c -
 $SUDO tar -xJf "$TMP/$FILE" -C /usr/local --strip-components=1 --no-same-owner \
