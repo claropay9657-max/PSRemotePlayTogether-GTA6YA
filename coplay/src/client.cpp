@@ -327,12 +327,13 @@ void Client::ResendChats(uint64_t now_ms)
 		std::lock_guard<std::mutex> lock(chat_mutex);
 		for(auto it = chat_out.begin(); it != chat_out.end();)
 		{
-			if(now_ms - it->second.first_ms > kChatGiveUpMs)
+			// first_ms is from the thread that wrote the message and can be newer than now_ms
+			if(ElapsedMs(now_ms, it->second.first_ms) > kChatGiveUpMs)
 			{
 				it = chat_out.erase(it);
 				continue;
 			}
-			if(now_ms - it->second.last_ms >= kChatResendMs)
+			if(ElapsedMs(now_ms, it->second.last_ms) >= kChatResendMs)
 			{
 				it->second.last_ms = now_ms;
 				due.push_back(it->second.payload);

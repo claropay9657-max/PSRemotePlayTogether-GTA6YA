@@ -1642,6 +1642,16 @@ TEST(net_video_recovers_from_packet_loss)
 	CHECK(stats.video.nack_fragments > 0);
 }
 
+TEST(elapsed_time_never_wraps)
+{
+	CHECK(ElapsedMs(1500, 1000) == 500);
+	CHECK(ElapsedMs(1000, 1000) == 0);
+	// "then" is newer than "now": the two were read by different threads. A plain
+	// subtraction would give 2^64 - 1 here, and every timeout would count as over.
+	CHECK(ElapsedMs(1000, 1001) == 0);
+	CHECK(ElapsedMs(0, UINT64_MAX) == 0);
+}
+
 TEST(net_video_recovers_from_a_blackout)
 {
 	TestHost h;

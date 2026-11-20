@@ -10,6 +10,7 @@ becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh
 - **Now on GitHub.** The source code, the releases and the builds for Windows, Linux (x86_64 and arm64) and macOS all live on GitHub. Every release is built by GitHub Actions.
 - **STUN server of your choice.** Play Together has a field for the server that is asked for your address on the internet. Empty means the default, Google's.
 - **Linux arm64.** A real arm64 AppImage, built on an arm64 machine.
+- **Fixed: a chat message that never arrived.** A message written at just the wrong moment was not sent again when its first packet got lost on the way. Now every message is repeated until it has arrived.
 
 ## 0.1.1
 

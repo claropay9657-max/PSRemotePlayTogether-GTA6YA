@@ -207,7 +207,9 @@ PadState InputMixer::Mix(uint64_t now_ms)
 					holder = candidate;
 				}
 			}
+			// (a holder whose last press carries a newer time than now_ms was active just now)
 			else if(!holder_active && have_candidate
+				&& now_ms >= sources[holder].last_active_ms
 				&& now_ms - sources[holder].last_active_ms >= config.handoff_ms)
 			{
 				holder = candidate;

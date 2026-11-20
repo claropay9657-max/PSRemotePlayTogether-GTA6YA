@@ -100,6 +100,19 @@ std::string AddressBytesToString(const uint8_t *bytes, size_t size);
 
 /** Milliseconds on a monotonic clock. */
 uint64_t NowMs();
+
+/**
+ * Milliseconds from `then_ms` to `now_ms`, and 0 if `then_ms` is the later of the two.
+ *
+ * Time stamps are taken by different threads: one that the application just wrote can be
+ * a moment newer than the "now" a network thread read at the top of its loop. Subtracting
+ * the unsigned values directly turns that moment into half a billion years, and whatever
+ * was waiting for a timeout is given up on the spot.
+ */
+inline uint64_t ElapsedMs(uint64_t now_ms, uint64_t then_ms)
+{
+	return now_ms > then_ms ? now_ms - then_ms : 0;
+}
 /** Microseconds on a monotonic clock. */
 uint64_t NowUs();
 

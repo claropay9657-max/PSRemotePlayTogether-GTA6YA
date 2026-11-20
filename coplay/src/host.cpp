@@ -1353,11 +1353,13 @@ void Host::ResendChats(uint64_t now_ms)
 		std::vector<std::pair<uint32_t, bool>> due;
 		for(auto it = g.chat_pending.begin(); it != g.chat_pending.end();)
 		{
-			if(now_ms - it->second.first_ms > kChatGiveUpMs)
+			// A message the host itself wrote carries the time of the thread that wrote it,
+			// which can be newer than now_ms
+			if(ElapsedMs(now_ms, it->second.first_ms) > kChatGiveUpMs)
 				it = g.chat_pending.erase(it);
 			else
 			{
-				if(now_ms - it->second.last_ms >= kChatResendMs)
+				if(ElapsedMs(now_ms, it->second.last_ms) >= kChatResendMs)
 					due.emplace_back(it->first, it->second.history);
 				++it;
 			}
