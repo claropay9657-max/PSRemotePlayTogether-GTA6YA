@@ -1657,20 +1657,25 @@ TEST(net_video_recovers_from_a_blackout)
 	}
 	CHECK(WaitFor([&] { return g.FrameCount() == 30; }, 2000));
 
+	// Frames two milliseconds apart for a stretch of time. By the clock, not by a number of
+	// frames: where a 2 ms sleep takes several times as long (a busy or virtual machine), a
+	// count would stretch the blackout below past the 1.5 s after which this guest gives the
+	// host up, and the test would be about a lost host instead of a recovery.
+	auto push_frames_for = [&](int ms) {
+		auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+		while(std::chrono::steady_clock::now() < end)
+		{
+			console.PushFrame();
+			SleepMs(2);
+		}
+	};
+
 	// half a second during which nothing arrives: far more than can be retransmitted
 	int requests_before = h.keyframe_requests;
 	h.host->SetSimulatedLoss(1.0);
-	for(int i = 0; i < 250; i++)
-	{
-		console.PushFrame();
-		SleepMs(2);
-	}
+	push_frames_for(500);
 	h.host->SetSimulatedLoss(0.0);
-	for(int i = 0; i < 200; i++)
-	{
-		console.PushFrame();
-		SleepMs(2);
-	}
+	push_frames_for(400);
 	// the guest asked for a key frame, got one and is showing the latest frames again
 	CHECK(h.keyframe_requests > requests_before);
 	CHECK(WaitFor([&] {
