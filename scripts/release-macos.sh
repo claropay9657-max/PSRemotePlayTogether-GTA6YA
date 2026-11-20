@@ -83,7 +83,20 @@ export CPATH="$BP/opt/ffmpeg/include"
 cmake --build "$BUILD_DIR" --target chiaki coplay-tests
 
 echo "== Co-play tests"
-"$BUILD_DIR/coplay/coplay-tests" | tail -2
+# The network tests run against real timers, and on a loaded build machine one of them can
+# miss its deadline. Say which, and try once more: failing twice in a row is a real failure.
+TEST_LOG="$BUILD_DIR/coplay-tests.log"
+if ! "$BUILD_DIR/coplay/coplay-tests" > "$TEST_LOG" 2>&1; then
+	awk '/^[a-z_0-9]+$/ { name = $0 } /FAILED/ { print name ": " $0 }' "$TEST_LOG" >&2
+	tail -1 "$TEST_LOG" >&2
+	echo "note: running the co-play tests once more" >&2
+	if ! "$BUILD_DIR/coplay/coplay-tests" > "$TEST_LOG" 2>&1; then
+		awk '/^[a-z_0-9]+$/ { name = $0 } /FAILED/ { print name ": " $0 }' "$TEST_LOG" >&2
+		tail -1 "$TEST_LOG" >&2
+		exit 1
+	fi
+fi
+tail -1 "$TEST_LOG"
 
 echo "== Making the app self-contained"
 STAGE="$BUILD_DIR/stage"
