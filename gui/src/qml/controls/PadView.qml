@@ -14,6 +14,10 @@ Item {
     property real factor: 0.22
 
     readonly property string dir: "qrc:/overlay/cryptopad/static/images/" + skin + "/"
+    // Only the white, the black and the red one bring every picture themselves. The other
+    // colours have a body and face buttons of their own and borrow the rest from the white one.
+    readonly property string whiteDir: "qrc:/overlay/cryptopad/static/images/PS5/"
+    readonly property bool complete: skin === "PS5" || skin === "PS5 (black)" || skin === "PS5 (cosmic red)"
     readonly property int buttons: pad ? (pad.b || 0) : 0
 
     // Bits of the controller state, same as everywhere else in the app
@@ -47,7 +51,7 @@ Item {
 
     component Sprite: Image {
         property string file
-        source: padView.dir + file
+        source: (padView.complete || file === "base.png" || file === "button.png" ? padView.dir : padView.whiteDir) + file
         smooth: true
         mipmap: true
     }
