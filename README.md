@@ -18,6 +18,7 @@ Free and open source, for Windows, Linux and macOS. Powered by [GamerNova.net](h
 - **Any controller.** DualSense (with haptics and adaptive triggers when connected by cable), DualShock 4, Xbox and other controllers. Rumble, trigger effects and the light bar reach every player.
 - **Voice chat and webcams.** Everybody can talk to and see each other. Mute yourself, mute somebody just for you, switch the webcam on and off during play. The host can mute a guest for everyone or remove them.
 - **Text chat.** Write to everybody in the session while you play: clickable links with a preview, emoji, and new messages shown on the game picture and, if you like, in your OBS overlay.
+- **Streaming without a capture card, also on your own.** The game picture arrives on your computer through Remote Play, so OBS can capture the app's window directly, and the OBS overlay shows your controller live: buttons, sticks and triggers. No friends in the session needed.
 - **Controller only.** Play on the TV and let the computer only send your controller and feed the overlays, for example for your stream in OBS; friends who join still get picture and sound. Guests can join that way too, when you sit next to each other.
 - **Everybody on the game picture.** Players, who is talking, webcams, each player's controller live and the controller the console gets, on top of the game while you play. Show what you want, drag every piece where you want it, and keep several arrangements as presets.
 - **Stream overlay for OBS.** The same for your viewers, as a browser source: who is playing, who is in control, every controller live, webcams, controller battery, and the conversation so it ends up in your stream. Transparent by default, arranged by dragging, with presets. Every player gets the overlay, not only the host.
@@ -139,6 +140,7 @@ Controller looks: DualSense in white, Midnight Black, Cosmic Red, Nova Pink, Sta
 - There is no automatic NAT traversal yet: internet play needs the forwarded port.
 - The controller battery is what the controller reports to the computer; some controllers and connections report nothing, and then nothing is shown.
 - All players need the same version of the app.
+- Every controller is connected to its player's computer, by Bluetooth or cable, not to the console: the app reads it there and passes it on. A controller paired with the console directly is invisible to the app and to the overlays.
 - On Windows and Linux the display on the game picture needs the Vulkan renderer, which is the default (**Settings → Video → Renderer**).
 
 ## Building
