@@ -127,6 +127,16 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
       Console registration, local and internet Remote Play, HDR and hardware decoding come from <a href="https://github.com/streetpea/chiaki-ng">chiaki-ng</a>, which this app is built on.
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <h3>🌐 Join from a web browser</h3>
+      A friend without the app opens a link in Chrome, Edge, Firefox or Safari, plugs in a controller and plays along: picture, sound, voice and text chat. Nothing to install.
+    </td>
+    <td width="50%">
+      <h3>🚪 Usually no port to open</h3>
+      Host and friends find each other through a small meeting point and then connect directly. Picture, sound and controllers never pass through a server.
+    </td>
+  </tr>
 </table>
 
 ---
@@ -175,6 +185,21 @@ PSRemotePlayTogether --name Alex join "psrpt://host.example.org:9410/…"
 ```
 
 `PSRemotePlayTogether` is the program in the download: `PSRemotePlayTogether.exe` in the Windows zip, the `.AppImage` file itself on Linux, and `PSRemotePlayTogether.app/Contents/MacOS/PSRemotePlayTogether` on macOS. Add `--controller-only` to join without picture and sound.
+
+### Join from a web browser, without the app
+
+A friend who does not want to install anything can play from a browser.
+
+1. Host: copy the **Web browser** invite (start page or **Play Together**, and during a game the stream menu → **Copy invite**). It is a link.
+2. Friend: open the link in a current **Chrome, Edge, Firefox or Safari**, enter a name, press a button on the controller so that the browser sees it, and press **Join**.
+
+The browser gets the same picture and sound and its controller plays along like everybody else's. Voice chat, text chat, the other players' webcams and rumble work too. Without a controller the keyboard can stand in.
+
+The connection goes straight from the browser to the host's computer (WebRTC), set up through the same meeting point the app uses; nothing of the session passes through a server. The key of the session stands behind the `#` of the link, which a browser never sends anywhere, and the page takes it out of the address bar as soon as it is opened.
+
+What a browser cannot do: haptics and adaptive triggers, the touchpad and motion sensors, sending its own webcam, and it adds a little delay compared to the app. A PS5 streams H.265 by default, which Chrome, Edge and Safari play on most computers; if a friend's browser cannot, the host can switch to H.264 under **Settings → Video**. Like the app without a forwarded port, it does not get through every pair of routers (see above). A browser cannot use the sharing port; if a friend's browser cannot connect, the host forwards a second one for browsers, **UDP port 9411** (one above the sharing port, to be changed under Play Together).
+
+It can be switched off under **Play Together** (**Friends can join from a web browser**), and the page is a folder of static files (`web/`) that you can host yourself. More in [docs/web-guests.md](docs/web-guests.md).
 
 ### Your controller
 
@@ -270,7 +295,10 @@ Three looks: transparent without boxes (the default), glass boxes, dark boxes. A
 No. The console sees one controller, and all of you are that one player. It is made for playing single-player games together.
 
 **Do my friends need a PlayStation or a PSN account?**
-No. Only the host needs the console and the account. Guests need the app, the invite and a controller.
+No. Only the host needs the console and the account. Guests need the invite and a controller, and either the app or just a web browser.
+
+**Can a friend join without installing anything?**
+Yes: send them the **Web browser** invite, a link that opens in Chrome, Edge, Firefox or Safari. See [Join from a web browser](#join-from-a-web-browser-without-the-app).
 
 **Which games work?**
 Every game that works with Remote Play. A few games block single scenes for Remote Play; the app says so when that happens.
@@ -328,7 +356,7 @@ The downloads are built by GitHub Actions ([`.github/workflows/build.yml`](.gith
 build/coplay/coplay-sim host sample.h264 --voice --cam a.jpg,b.jpg
 ```
 
-It prints an invite to join with. `coplay-sim` without arguments lists all options. `coplay-sim stun` asks the same servers the app asks for the invite for friends elsewhere, and prints the address this computer has on the internet.
+It prints an invite to join with. With `--meet` and `--web` it also takes guests from a web browser and prints the link for them; [docs/web-guests.md](docs/web-guests.md) has the two commands for trying that on one machine. `coplay-sim` without arguments lists all options. `coplay-sim stun` asks the same servers the app asks for the invite for friends elsewhere, and prints the address this computer has on the internet.
 
 </details>
 
@@ -348,7 +376,7 @@ If PSRemotePlayTogether gives you and your friends a good evening, or makes your
 
 ## 📄 Credits and licence
 
-PSRemotePlayTogether is built on [chiaki-ng](https://github.com/streetpea/chiaki-ng) by Street Pea and contributors, which continues [Chiaki](https://git.sr.ht/~thestr4ng3r/chiaki) by Florian Märkl. The controller skins of the overlay are from [CryptoPad](https://github.com/Crypto90/CryptoPad).
+PSRemotePlayTogether is built on [chiaki-ng](https://github.com/streetpea/chiaki-ng) by Street Pea and contributors, which continues [Chiaki](https://git.sr.ht/~thestr4ng3r/chiaki) by Florian Märkl. The controller skins of the overlay are from [CryptoPad](https://github.com/Crypto90/CryptoPad). Guests in a web browser reach the host through [libdatachannel](https://github.com/paullouisageneau/libdatachannel) by Paul-Louis Ageneau (MPL 2.0), with libjuice and usrsctp.
 
 Licensed under the [GNU Affero General Public License v3](COPYING) with the OpenSSL exception chiaki uses (see `LICENSES/`). The app is free, and so is its source code: it is all in this repository.
 

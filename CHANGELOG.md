@@ -3,6 +3,15 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.2.0
+
+- **Join from a web browser.** A friend without the app opens a link in Chrome, Edge, Firefox or Safari, plugs in a controller and plays along: same picture and sound, voice chat, text chat, the other players' webcams, rumble. Nothing to install, no account. The new **Web browser** invite is on the start page, under Play Together and in the stream menu.
+- **Still no server in between.** The browser connects to the host's computer directly (WebRTC). The page only finds the host through the meeting point, the same way the app does without a forwarded port. The session's key stands behind the `#` of the link, which a browser sends to nobody, and the page takes it out of the address bar.
+- **Browser guests are guests like the others.** They show in the player list with a small "WEB" mark and can be muted, set to watching and removed. The page comes back by itself after a lost connection.
+- **Yours to switch off or host.** **Play Together → Friends can join from a web browser** switches it off. The page is a folder of static files (`web/`); **Page for browsers** takes the address of your own copy.
+- **Good to know:** a browser has no haptics, adaptive triggers, touchpad or motion sensors, cannot send its own webcam yet, and adds a little delay. A PS5 streams H.265, which Chrome, Edge and Safari play on most computers; otherwise the host can switch to H.264. With most routers a browser gets in by itself, like the app. If one cannot, the host forwards **UDP port 9411** as well: browsers come in on a port of their own, one above the sharing port.
+- **For meeting points of your own:** a web page can only use one that answers with `Access-Control-Allow-Origin`. The script can send it now (`PSRPT_MEET_CORS`), and its self-test says whether a browser could use it.
+
 ## 0.1.3
 
 - **Join without a forwarded port.** With most routers the host no longer has to open a port. Host and guest find each other through a small meeting point on the internet and then connect directly ("hole punching"). Picture, sound and controllers never pass through a server. A forwarded port keeps working as before, and it is used by itself when it is there.

@@ -100,6 +100,29 @@ The results land in `dist/`. Both also work on an arm64 machine (an Apple
 silicon Mac, for example); the Windows build is for x64 either way, the
 AppImage is for the machine's own architecture.
 
+## The page for web browsers
+
+Friends can join from a web browser ([web-guests.md](web-guests.md)). The page
+they open is the folder `web/`: static files, nothing to build.
+`.github/workflows/pages.yml` publishes it to GitHub Pages at
+`https://crypto90.github.io/PSRemotePlayTogether/`, the address the app's
+**Web browser** invites lead to unless a host enters another one.
+
+It is published whenever `web/` changes on `main` (and by hand: Actions → Web
+page → Run workflow). Hosts run released versions, the page is always the
+newest: as long as the protocol's version stays the same that is fine. A
+change of the protocol version reaches browser guests as soon as it is on
+`main`, and hosts on the release before it are then told to update when a
+browser tries to join. So publish the release that brings such a change soon
+after it is merged, or keep the change on a branch until then.
+
+This needs Pages switched on once: repository **Settings → Pages → Build and
+deployment → Source: GitHub Actions**.
+
+The WebRTC library the app needs for browser guests (libdatachannel) is
+downloaded by CMake while configuring, at a pinned commit, and built into the
+app. `-DCOPLAY_ENABLE_WEB=OFF` leaves it out, for a build without network.
+
 ## How the Windows build works
 
 Windows is cross-compiled on Linux. `scripts/ci/setup-windows-cross.sh` puts

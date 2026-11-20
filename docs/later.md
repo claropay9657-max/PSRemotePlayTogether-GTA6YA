@@ -21,19 +21,9 @@ Hole punching through a meeting point is done (version 0.1.3,
 
 ## Joining from a web browser
 
-A "web invite": friends join with only a browser, without installing the app.
-Looked at again on 2026-11-20 and kept for later: it is a project of its own.
+Done: friends join with only a browser, see `docs/web-guests.md`. What is left:
 
-- A browser cannot speak the app's UDP protocol. The host app would need a
-  WebRTC stack (for example libdatachannel, on all three platforms) and would
-  have to repackage the console's video and sound as RTP.
-- The meeting point from hole punching is the piece that sets the connection
-  up; WebRTC's offers and answers are larger than today's notes (2 to 4 KB).
-- The join page has to be served over HTTPS (browsers allow microphone, camera
-  and gamepads only there): gamernova.net or GitHub Pages.
-- Works in a browser: picture, sound, controllers through the Gamepad API,
-  voice chat, webcam, text chat, the existing HTML overlay.
-- Does not: haptics, adaptive triggers, touchpad and motion; rumble only in
-  some browsers. H.265 streams (the PS5's default) do not play in every
-  browser, so the host may have to use H.264. A little more delay than in the
-  app.
+- **Controls on the screen** for phones and tablets without a controller.
+- **The own webcam and an own player picture** from a browser.
+- **Haptics and adaptive triggers** will stay with the app: browsers have
+  nothing for them.
