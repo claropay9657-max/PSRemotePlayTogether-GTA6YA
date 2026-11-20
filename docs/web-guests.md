@@ -28,14 +28,16 @@ server only helps the two find each other.
 | --- | --- |
 | Game picture and sound | yes (WebCodecs; H.264, and H.265 where the browser has it) |
 | Controller | yes, through the Gamepad API; the keyboard can stand in |
+| Without a controller, on a phone or tablet | controls on the screen; the picture is the touchpad |
 | Rumble | where the browser has it (Chrome, Edge, Safari) |
+| The game's haptics | as rumble; the strength is set in the stream menu |
 | Voice chat | yes, both ways |
-| Text chat | yes; link previews are shown as plain links |
-| The other players' webcams | yes |
-| The own webcam | not yet |
-| Player pictures | shown; a browser guest has none of its own yet |
-| Haptics, adaptive triggers, light bar | no: browsers have nothing for them |
-| Touchpad, motion sensors | no |
+| Text chat | yes, with link previews and emoji |
+| Webcams | the others' and the own |
+| Player pictures | shown, and a browser guest can choose one of its own |
+| The display on the game picture, the stream menu, chat, options | the app's, see below |
+| Controller only (no picture and sound) | yes, like in the app |
+| Touchpad, motion sensors, adaptive triggers, light bar | with a DualSense the browser opens directly (WebHID: Chrome and Edge); new and little tested |
 | A host's forwarded port | a second one, for browsers (see "Routers" below) |
 
 Browsers: a current Chrome, Edge, Firefox or Safari. The page says what is
@@ -52,6 +54,42 @@ can switch to H.264 (Settings → Video).
 millisecond in each direction. What a browser adds on top is its decoder and
 its drawing, which wait for the screen's next refresh: a frame or so more than
 the app.
+
+## On the game picture: the app's own
+
+What lies on the game picture in a browser is made to look and behave like the
+app, piece by piece, from the app's own sources:
+
+- **The display** (`gui/src/qml/StreamHud.qml`): players, webcams, everybody's
+  controller and the controller the console gets, each with a switch, a place
+  and a size. The same seven presets, the same styles (no boxes, glass boxes,
+  dark boxes), the same controller colours drawn with the same pictures
+  (`web/pad/`, copied from `gui/res/overlay/cryptopad`). Arranging works the
+  same way: drag an element, change its size with the buttons above it or the
+  mouse wheel, Escape or **Done** to finish. Notes when somebody joins or
+  leaves, and new chat messages for a few seconds.
+- **The stream menu** (`StreamMenuContent.qml`, `PlayTogetherBar.qml`): the
+  connection, voice chat and webcam, everybody as tiles (a click mutes a
+  player for oneself), sound, picture (fit, zoom, stretch) and the presets of
+  the display. It opens with **Ctrl+O** (**⌘O** on a Mac), with
+  **L1+R1+L3+R3** on the controller, and with the **Menu** button that shows
+  while the mouse moves, because a page cannot count on a keyboard. While it
+  is open nothing goes to the game, as in the app.
+- **The chat** (`StreamChatPanel.qml`) and **the options**
+  (`StreamDisplayPanel.qml`, the "On the game picture" card of
+  `DisplayOptions.qml`), opened from the stream menu.
+
+What differs, on purpose: the menu has no card for the renderer's quality and
+no microphone of the console, which a guest does not have in the app either.
+It has one card more, **Controller**, for what the app keeps in its settings:
+controls on the screen, how strong the game's haptics rumble, the DualSense,
+the keyboard's keys. Settings and presets are kept in the browser
+(`localStorage`), so they are per browser and not shared with the app.
+
+When the app's display changes, the page has to follow by hand: sizes, colours
+and wording are written out in `web/js/hud.js`, `web/js/menu.js`,
+`web/js/options.js` and `web/css/game.css` next to the names of the QML files
+they come from.
 
 ## How the two find each other
 
@@ -159,7 +197,15 @@ nothing to install.
 | `js/video.js` | putting frames back together, decoding, drawing |
 | `js/audio.js`, `js/audio-worklet.js` | game sound, voices, the microphone |
 | `js/pad.js` | controller and keyboard |
-| `js/app.js` | the page itself |
+| `js/touch.js` | controls on the screen |
+| `js/dualsense.js` | a DualSense opened directly (WebHID) |
+| `js/camera.js` | the own webcam and player picture |
+| `js/hud.js`, `js/presets.js` | the display on the game picture and its presets |
+| `js/menu.js` | the stream menu |
+| `js/options.js` | the options of the display |
+| `js/app.js` | the page itself, and the chat |
+| `css/game.css` | how everything on the game picture looks |
+| `pad/` | the controller pictures of the display |
 
 It is published to GitHub Pages by `.github/workflows/pages.yml` whenever
 `web/` changes on `main`.
@@ -187,6 +233,10 @@ If that port is in use by something else on the host's computer, the app says
 so in the session's log and gives every browser a port of its own instead,
 which works with ordinary routers but cannot be forwarded.
 
+The link carries the host's choice of STUN server (`&stun=host:port`, or
+`&stun=off`) when the host has set one under Play Together; otherwise the page
+asks Google's and Cloudflare's.
+
 ## Trying it on one machine
 
 Without a console and without a second computer. PHP serves the page and the
@@ -211,6 +261,8 @@ and of the host's side, with a stand-in for WebRTC.
 
 ## Not done
 
-- Sending the own webcam and an own player picture from a browser.
-- Controls on the screen for phones and tablets without a controller.
-- Picking the browser's STUN servers: the page asks Google's and Cloudflare's.
+- Moving around inside the stream menu with the controller: it opens and
+  closes with L1+R1+L3+R3, the rest is keyboard, mouse or finger.
+- The DualSense opened directly has only been tried without a real controller.
+- A browser guest does not see which of the others came in through a browser
+  (the host's app marks them "WEB").

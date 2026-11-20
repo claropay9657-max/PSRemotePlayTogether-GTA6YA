@@ -23,7 +23,11 @@ Hole punching through a meeting point is done (version 0.1.3,
 
 Done: friends join with only a browser, see `docs/web-guests.md`. What is left:
 
-- **Controls on the screen** for phones and tablets without a controller.
-- **The own webcam and an own player picture** from a browser.
-- **Haptics and adaptive triggers** will stay with the app: browsers have
-  nothing for them.
+- **The stream menu with the controller.** It opens and closes with
+  L1+R1+L3+R3 as in the app, but inside it only the keyboard, the mouse and a
+  finger move around.
+- **A DualSense opened directly** (touchpad, motion sensors, adaptive
+  triggers, light bar; Chrome and Edge) is written but has only been tried
+  without a real controller.
+- **The game's haptics** stay with the app: a browser turns them into rumble,
+  because browsers have nothing finer.

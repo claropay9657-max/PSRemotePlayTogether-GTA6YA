@@ -130,7 +130,7 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
   <tr>
     <td width="50%">
       <h3>🌐 Join from a web browser</h3>
-      A friend without the app opens a link in Chrome, Edge, Firefox or Safari, plugs in a controller and plays along: picture, sound, voice and text chat. Nothing to install.
+      A friend without the app opens a link in Chrome, Edge, Firefox or Safari, plugs in a controller and plays along: picture, sound, voice and text chat, webcam, and the same display and stream menu as in the app. Nothing to install.
     </td>
     <td width="50%">
       <h3>🚪 Usually no port to open</h3>
@@ -193,11 +193,13 @@ A friend who does not want to install anything can play from a browser.
 1. Host: copy the **Web browser** invite (start page or **Play Together**, and during a game the stream menu → **Copy invite**). It is a link.
 2. Friend: open the link in a current **Chrome, Edge, Firefox or Safari**, enter a name, press a button on the controller so that the browser sees it, and press **Join**.
 
-The browser gets the same picture and sound and its controller plays along like everybody else's. Voice chat, text chat, the other players' webcams and rumble work too. Without a controller the keyboard can stand in.
+The browser gets the same picture and sound and its controller plays along like everybody else's. Voice chat, text chat, webcams (the friend's own too), a player picture and rumble work as well. Without a controller the keyboard can stand in, and a phone or tablet gets controls on the screen.
+
+On the game picture it looks and works like the app: the same display of players, webcams and controllers with the same presets and the same way of arranging them, the same stream menu, chat and options. The stream menu opens with **Ctrl+O** (**⌘O** on a Mac), with **L1+R1+L3+R3** on the controller, or with the **Menu** button that shows when the mouse moves.
 
 The connection goes straight from the browser to the host's computer (WebRTC), set up through the same meeting point the app uses; nothing of the session passes through a server. The key of the session stands behind the `#` of the link, which a browser never sends anywhere, and the page takes it out of the address bar as soon as it is opened.
 
-What a browser cannot do: haptics and adaptive triggers, the touchpad and motion sensors, sending its own webcam, and it adds a little delay compared to the app. A PS5 streams H.265 by default, which Chrome, Edge and Safari play on most computers; if a friend's browser cannot, the host can switch to H.264 under **Settings → Video**. Like the app without a forwarded port, it does not get through every pair of routers (see above). A browser cannot use the sharing port; if a friend's browser cannot connect, the host forwards a second one for browsers, **UDP port 9411** (one above the sharing port, to be changed under Play Together).
+Where a browser falls short: the game's haptics arrive as plain rumble, and it adds a little delay compared to the app. The touchpad, the motion sensors, adaptive triggers and the light bar need a DualSense that the browser opens directly (Chrome and Edge only, **DualSense…** in the stream menu; this part is new and little tested). A PS5 streams H.265 by default, which Chrome, Edge and Safari play on most computers; if a friend's browser cannot, the host can switch to H.264 under **Settings → Video**. Like the app without a forwarded port, it does not get through every pair of routers (see above). A browser cannot use the sharing port; if a friend's browser cannot connect, the host forwards a second one for browsers, **UDP port 9411** (one above the sharing port, to be changed under Play Together).
 
 It can be switched off under **Play Together** (**Friends can join from a web browser**), and the page is a folder of static files (`web/`) that you can host yourself. More in [docs/web-guests.md](docs/web-guests.md).
 
