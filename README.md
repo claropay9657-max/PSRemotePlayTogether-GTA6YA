@@ -4,7 +4,9 @@
 
 # PSRemotePlayTogether
 
-**Play one PlayStation together, from anywhere.** One of you connects to their PS5 or PS4 with Remote Play and shares the session. Friends join with an invite, get the same picture and sound, and plug in their own controller. The console sees all of you as a single controller, so any game works, single-player games included.
+**Play one PlayStation together, from anywhere.** One of you connects to their PS5 or PS4 with Remote Play and shares the session. Friends join with an invite, get the same picture and sound, and plug in their own controller.
+
+**Everybody plays as player 1.** The console sees exactly one controller, and everybody in the session controls it with their own: all at the same time if you like, one at a time, or only the host. That makes it a way to play single-player games together, for example GTA 6 or souls-likes such as Elden Ring. It does not add players to a game: your friends do not become player 2, 3 and 4, so it does not turn a game into a 4-player game.
 
 Free and open source, for Windows, Linux and macOS. Powered by [GamerNova.net](https://gamernova.net/).
 
