@@ -34,7 +34,7 @@ One PS5 or PS4 · everybody plays as player 1 · voice chat, webcams and a strea
 
 Remember handing the controller to a friend on the couch? **PSRemotePlayTogether does that over the internet**, and without anybody waiting for their turn.
 
-One of you connects to their PS5 or PS4 with Remote Play and shares the session. Friends join with an invite link, see the same picture, hear the same sound and plug in their own controller. The console sees all of you as one controller, so **any single-player game becomes something you play together**: GTA 6, souls-likes such as Elden Ring, story games, open worlds.
+One of you connects to their PS5 or PS4 with Remote Play and shares the session. Friends join with an invite link, in the app or straight in a web browser, see the same picture, hear the same sound and plug in their own controller. The console sees all of you as one controller, so **any single-player game becomes something you play together**: GTA 6, souls-likes such as Elden Ring, story games, open worlds.
 
 It also makes a great stream: the game picture is on your computer, so OBS shows it without a capture card, and the built-in overlay shows every player, webcam and controller live.
 
@@ -46,7 +46,7 @@ It also makes a great stream: the game picture is on your computer, so OBS shows
 
 ## 🚀 Download
 
-Free, for Windows, macOS and Linux. Everybody in a session needs the same version.
+Free, for Windows, macOS and Linux. Everybody who uses the app in a session needs the same version. A friend who only wants to join needs no download at all: the host can send a link that opens in a [web browser](#join-from-a-web-browser-without-the-app).
 
 | System | Download | How to start |
 | :--- | :---: | :--- |
@@ -165,6 +165,7 @@ Usually not.
 | in the same network or the same VPN | Nothing. Send the **Same network** invite. |
 | somewhere on the internet | With most routers: nothing. Send the **Internet** invite. The two apps find each other through a small **meeting point** on the internet and then connect directly. |
 | somewhere on the internet, and it does not connect | Forward **UDP port 9410** to your computer in your router. That always works, and it is used by itself as soon as it is there. The port can be changed under Play Together. |
+| in a web browser, and it does not connect | Forward **UDP port 9411** as well: browsers come in on a port of their own, one above the sharing port. |
 
 Guests never open a port.
 

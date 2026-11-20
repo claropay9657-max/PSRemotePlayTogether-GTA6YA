@@ -57,11 +57,11 @@ row "Linux x86_64" "PSRemotePlayTogether-$VERSION-linux-x86_64.AppImage" "\`chmo
 row "Linux arm64" "PSRemotePlayTogether-$VERSION-linux-aarch64.AppImage" "\`chmod +x\`, then run it" "$@"
 cat <<'NOTES'
 
-Every file has a `.sha256` next to it. All players need the same version.
+Every file has a `.sha256` next to it. Everybody who uses the app needs the same version. A friend who only wants to join needs no download: the host can send a link that opens in a web browser.
 
 The builds are not signed with a paid developer certificate. On macOS the first start is blocked: open **System Settings → Privacy & Security** and choose **Open Anyway**. On Windows, choose **More info → Run anyway** if SmartScreen asks.
 
-**Hosting for friends over the internet:** forward UDP port **9410** to your computer in your router. Friends in the same network or VPN need nothing, and guests open no ports.
+**Hosting for friends over the internet:** with most routers there is nothing to set up, host and friends find each other by themselves. If a friend cannot connect, forward UDP port **9410** to your computer in your router (and **9411** for friends who join from a web browser). Friends in the same network or VPN need nothing, and guests open no ports.
 
 ---
 
