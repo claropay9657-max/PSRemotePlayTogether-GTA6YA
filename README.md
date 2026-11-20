@@ -1,124 +1,210 @@
+<div align="center">
+
+![PSRemotePlayTogether: play one PlayStation together, from anywhere](docs/images/banner.png)
+
+# 🎮 PSRemotePlayTogether
+
+**Play single-player PlayStation games together, from anywhere.**
+
+One PS5 or PS4 · everybody plays as player 1 · voice chat, webcams and a stream overlay for OBS
+
+[![GitHub Release](https://img.shields.io/github/v/release/Crypto90/PSRemotePlayTogether?style=for-the-badge&color=00d2ff&logo=github)](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Crypto90/PSRemotePlayTogether/total?style=for-the-badge&color=8c52ff&logo=github)](https://github.com/Crypto90/PSRemotePlayTogether/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-0078d4?style=for-the-badge)](#-download)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-10b981?style=for-the-badge)](./COPYING)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Crypto90/PSRemotePlayTogether/build.yml?branch=main&style=for-the-badge&logo=githubactions)](https://github.com/Crypto90/PSRemotePlayTogether/actions)
+[![Ko-Fi](https://img.shields.io/badge/Support-Buy%20Me%20A%20Coffee-ff5e5b?logo=kofi&style=for-the-badge)](https://ko-fi.com/crypto90)
+[![Powered by GamerNova.net](https://img.shields.io/badge/Powered%20by-GamerNova.net-8c52ff?style=for-the-badge)](https://gamernova.net/)
+
 <p align="center">
-  <img src="docs/images/banner.png" alt="PSRemotePlayTogether: play one PlayStation together, from anywhere">
+  <a href="#-download"><b>Download</b></a> •
+  <a href="#-what-you-can-do-with-it"><b>What it's for</b></a> •
+  <a href="#-everybody-plays-as-player-1"><b>Player 1 for all</b></a> •
+  <a href="#-key-features"><b>Features</b></a> •
+  <a href="#-quick-start"><b>Quick start</b></a> •
+  <a href="#-streaming-with-obs"><b>OBS</b></a> •
+  <a href="#-faq"><b>FAQ</b></a>
 </p>
 
-# PSRemotePlayTogether
+</div>
 
-**Play one PlayStation together, from anywhere.** One of you connects to their PS5 or PS4 with Remote Play and shares the session. Friends join with an invite, get the same picture and sound, and plug in their own controller.
+---
 
-**Everybody plays as player 1.** The console sees exactly one controller, and everybody in the session controls it with their own: all at the same time if you like, one at a time, or only the host. That makes it a way to play single-player games together, for example GTA 6 or souls-likes such as Elden Ring. It does not add players to a game: your friends do not become player 2, 3 and 4, so it does not turn a game into a 4-player game.
+## 💡 What is this?
 
-Free and open source, for Windows, Linux and macOS. Powered by [GamerNova.net](https://gamernova.net/).
+Remember handing the controller to a friend on the couch? **PSRemotePlayTogether does that over the internet**, and without anybody waiting for their turn.
 
-![Four players on one game picture: their names, a webcam and everybody's controller](docs/images/screenshots/playing.jpg)
+One of you connects to their PS5 or PS4 with Remote Play and shares the session. Friends join with an invite link, see the same picture, hear the same sound and plug in their own controller. The console sees all of you as one controller, so **any single-player game becomes something you play together**: GTA 6, souls-likes such as Elden Ring, story games, open worlds.
 
-## What it does
+It also makes a great stream: the game picture is on your computer, so OBS shows it without a capture card, and the built-in overlay shows every player, webcam and controller live.
 
-- **Shared play.** Everybody's controller is merged into the one Remote Play controller. Three ways to share it: everyone at once, one at a time (control passes to whoever is playing while the others rest), or only the host while guests watch.
-- **Any controller.** DualSense (with haptics and adaptive triggers when connected by cable), DualShock 4, Xbox and other controllers. Rumble, trigger effects and the light bar reach every player.
-- **Voice chat and webcams.** Everybody can talk to and see each other. Mute yourself, mute somebody just for you, switch the webcam on and off during play. The host can mute a guest for everyone or remove them.
-- **Text chat.** Write to everybody in the session while you play: clickable links with a preview, emoji, and new messages shown on the game picture and, if you like, in your OBS overlay.
-- **Streaming without a capture card, also on your own.** The game picture arrives on your computer through Remote Play, so OBS can capture the app's window directly, and the OBS overlay shows your controller live: buttons, sticks and triggers. No friends in the session needed.
-- **Controller only.** Play on the TV and let the computer only send your controller and feed the overlays, for example for your stream in OBS; friends who join still get picture and sound. Guests can join that way too, when you sit next to each other.
-- **Everybody on the game picture.** Players, who is talking, webcams, each player's controller live and the controller the console gets, on top of the game while you play. Show what you want, drag every piece where you want it, and keep several arrangements as presets.
-- **Stream overlay for OBS.** The same for your viewers, as a browser source: who is playing, who is in control, every controller live, webcams, controller battery, and the conversation so it ends up in your stream. Transparent by default, arranged by dragging, with presets. Every player gets the overlay, not only the host.
-- **Player profiles.** A name and a picture for each player, shown in the app and in the overlay.
-- **Everything Remote Play needs.** Console registration, local and internet Remote Play, HDR, hardware decoding and the rest come from [chiaki-ng](https://github.com/streetpea/chiaki-ng), which this app is built on.
+<div align="center">
+  <img src="docs/images/screenshots/playing.jpg" alt="Four players on one game picture: their names, a webcam and everybody's controller" width="860">
+</div>
 
-## How it works
+---
 
-```
-                 Remote Play                    invite (UDP, encrypted)
-  PS5 / PS4  <----------------->   Host   <------------------------------>  Guests
-                                  (you)      picture, sound, haptics  -->
-                                             <--  controllers
-                                             <->  voices and webcams
-```
+## 🚀 Download
+
+Free, for Windows, macOS and Linux. Everybody in a session needs the same version.
+
+| System | Download | How to start |
+| :--- | :---: | :--- |
+| **Windows 10 / 11** (64-bit) | [**⬇️ Windows zip**](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest) | Unzip, run `PSRemotePlayTogether.exe` |
+| **macOS 15 or newer** (Apple silicon) | [**⬇️ macOS dmg**](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest) | Open, drag the app to Applications |
+| **Linux** (x86_64, arm64) | [**⬇️ AppImage**](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest) | `chmod +x`, then run it |
+
+> 📁 All versions and what changed in each: [GitHub Releases](https://github.com/Crypto90/PSRemotePlayTogether/releases) · [CHANGELOG.md](CHANGELOG.md)
+
+The builds are not signed with a paid developer certificate. On macOS the first start is blocked: open **System Settings → Privacy & Security** and choose **Open Anyway**. On Windows, choose **More info → Run anyway** if SmartScreen asks. The app tells you when a newer version is out.
+
+---
+
+## 🎯 What you can do with it
+
+![Three ways to use it: couch co-op for single-player games, streaming on Twitch, playing on the TV](docs/images/use-cases.png)
+
+---
+
+## 🕹️ Everybody plays as player 1
+
+![Three ways to share the controller: all at once, one at a time, only the host](docs/images/play-modes.png)
+
+PSRemotePlayTogether does not add players to a game. The console sees exactly **one** controller, and everybody in the session controls it with their own: all at the same time if you like, one at a time, or only the host. Your friends do not become player 2, 3 and 4, so it does not turn a game into a 4-player game. It turns a single-player game into something a group plays.
+
+---
+
+## 🔌 How it works
+
+![The console talks to the host with Remote Play; the host passes picture and sound on to the friends and merges their controllers](docs/images/how-it-works.png)
 
 The host runs a normal Remote Play session. What the console sends is passed on to the guests untouched; what the guests press is merged with the host's controller before it goes to the console. Voices and webcams go through the host to everybody else.
 
-Guests need no PlayStation account and no access to the console. The invite contains the host's address and a session key; everything between host and guests is encrypted with it (ChaCha20-Poly1305).
+Guests need **no PlayStation and no PSN account**. The invite contains the host's address and a session key, and everything between host and guests is encrypted with it (ChaCha20-Poly1305).
 
-## Getting started
+---
+
+## ✨ Key features
+
+<table>
+  <tr>
+    <td width="50%">
+      <h3>🤝 Shared play, three ways</h3>
+      Everybody's controller is merged into the one Remote Play controller: <b>all at once</b>, <b>one at a time</b>, or <b>only the host</b> while guests watch. The host can switch during the game.
+    </td>
+    <td width="50%">
+      <h3>🎮 Any controller</h3>
+      <b>DualSense</b> (with haptics and adaptive triggers by cable), <b>DualShock 4</b>, <b>Xbox</b> and others. Rumble, trigger effects and the light bar reach every player.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>🎙️ Voice chat and webcams</h3>
+      Talk to and see each other without another app. Mute yourself, mute somebody just for you, switch the webcam on and off while playing.
+    </td>
+    <td width="50%">
+      <h3>💬 Text chat</h3>
+      Clickable links with previews, emoji and shortcodes. New messages show on the game picture and, if you like, in your stream.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>🖼️ Everybody on the game picture</h3>
+      Players, who is talking, webcams and every controller live, on top of the game. Drag each piece where you want it and keep arrangements as presets.
+    </td>
+    <td width="50%">
+      <h3>📡 Stream overlay for OBS</h3>
+      The same for your viewers as a browser source: players, controllers, webcams, battery and the conversation. Transparent, arranged by dragging. Every player gets one, not only the host.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>📺 Controller only</h3>
+      Play on the TV and let the computer only send your controller and feed the overlays. Friends who join still get picture and sound.
+    </td>
+    <td width="50%">
+      <h3>🧩 Everything Remote Play needs</h3>
+      Console registration, local and internet Remote Play, HDR and hardware decoding come from <a href="https://github.com/streetpea/chiaki-ng">chiaki-ng</a>, which this app is built on.
+    </td>
+  </tr>
+</table>
+
+---
+
+## 🏁 Quick start
+
+![The host registers the console, shares it and sends the invite; guests paste the invite and join](docs/images/quick-start.png)
 
 ### Share your console
 
 1. Register your console as in any Remote Play app: your PSN account and the PIN from the console's Remote Play settings.
-2. Open **Play Together**, switch on **Let friends join my sessions** and choose how the controller is shared.
+2. Switch on **Share your console** and choose how the controller is shared (under **Profile, voice, webcam & overlays…**).
 3. Copy the invite and send it to your friends.
-4. Connect to your console. Friends can join as long as you are connected.
+4. Press **Play**. Friends can join as long as you are connected.
 
-![The start page: your console, joining a friend, sharing your console and Controller only](docs/images/screenshots/start-page.jpg)
+<div align="center">
+  <img src="docs/images/screenshots/start-page.jpg" alt="The start page: your console, joining a friend, sharing your console and Controller only" width="820">
+</div>
 
-**Playing on the TV.** Switch on **Controller only** (on the start page, or under **Play Together**) before you connect: the computer then shows no picture and plays no sound, and its window stays as it is instead of going full screen. Your controller goes to the console through the computer, the overlays keep working, and friends who join get picture and sound as usual. With **Let friends join my sessions** off, the console is also asked for the smallest picture, since nobody looks at it. The console may show the game on the TV in the resolution of the Remote Play stream while you are connected.
+### Which port the host has to open
 
-Friends in your own network can join right away. For friends elsewhere, forward UDP port **9410** to your computer in your router and put your public address (or a DNS name) into the invite's address field.
+| Your friends are… | What the host does |
+| :--- | :--- |
+| in the same network or the same VPN | Nothing. Send the **Same network** invite. |
+| somewhere on the internet | Forward **UDP port 9410** to your computer in your router and send the **Internet** invite. The port can be changed under Play Together. |
+
+Guests never open a port.
+
+> 💡 **Can't forward a port?** Put everybody into one virtual network with a mesh VPN such as Tailscale or ZeroTier, enter your VPN address under **Play Together → Own internet address** and send that invite.
 
 ### Join a friend
 
-Open **Play Together**, paste the invite and press **Join**. Or from the command line:
+Paste the invite on the start page and press **Join**. Or from the command line:
 
 ```bash
 PSRemotePlayTogether --name Alex join "psrpt://host.example.org:9410/…"
 ```
 
-`PSRemotePlayTogether` is the program in the download: `PSRemotePlayTogether.exe` in the Windows zip, the `.AppImage` file itself on Linux, and `PSRemotePlayTogether.app/Contents/MacOS/PSRemotePlayTogether` on macOS.
+`PSRemotePlayTogether` is the program in the download: `PSRemotePlayTogether.exe` in the Windows zip, the `.AppImage` file itself on Linux, and `PSRemotePlayTogether.app/Contents/MacOS/PSRemotePlayTogether` on macOS. Add `--controller-only` to join without picture and sound.
 
-Add `--controller-only` to join without picture and sound.
+### Your controller
+
+Connect your controller **to your computer**, by Bluetooth or cable, not to the console. The app reads it there and passes it on. A controller that is paired with the console directly is invisible to the app and to the overlays.
 
 ### While you play: the stream menu
 
-Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. Next to the usual Remote Play buttons it has the players, your microphone, the others' voices and your webcam, who may control, the invite, and under **Overlays** the preset, **Arrange** and **Options…** for everything shown on the game picture and in OBS. The host can click a player to mute them for everybody, let them only watch, or remove them. All of it can be changed while the game runs.
+Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. It has the players, your microphone, the others' voices and your webcam, who may control, the invite, and the overlays. The host can click a player to mute them for everybody, let them only watch, or remove them.
 
-![The stream menu on top of the game](docs/images/screenshots/stream-menu.jpg)
+<div align="center">
+  <img src="docs/images/screenshots/stream-menu.jpg" alt="The stream menu on top of the game" width="820">
+</div>
 
-The controller shortcut can be changed in **Settings → General → Stream Menu Combo**.
+---
 
-### Voice chat and webcam
+## 🎥 Streaming with OBS
 
-**Play Together → Voice & webcam** has the settings: take part in the voice chat, start muted, which webcam and how large its picture is. Microphone and speakers are the ones from the audio settings. During play, open the stream menu to mute yourself, switch voices or the webcam on and off, and click a player for more.
+You do not need friends in the session to use this for your stream.
 
-You never hear your own voice in the app, only the others. Use headphones: without them the others hear themselves through your microphone.
+- **No capture card needed.** The game picture arrives on your computer through Remote Play, so OBS can capture the app's window directly, in Remote Play quality (up to 1080p).
+- **Controller visualization.** The overlay shows your controller live: buttons, sticks and triggers. With friends in the session it shows everybody's.
+- **Or play on the TV.** With **Controller only** the computer shows no picture and only sends your controller to the console and feeds the overlay. The picture for your stream then comes from your own capture, for example a capture card.
 
-### Text chat
-
-Press **⌘T** (Ctrl+T on Windows and Linux), or choose **Chat** in the stream menu, which also shows how many messages you have not read yet. The chat opens beside the game and takes the keyboard while it is open; Escape gives it back to the game. Anybody who joins later sees the last 30 messages.
-
-- Links can be clicked. For the first link in your own message, your app looks at the page once and sends a small preview (title, site, picture) along, so your friends' apps never contact a site they did not choose. Switch this off under **Play Together → Voice & webcam**.
-- Emoji come from the picker, from shortcodes such as `:fire:`, `:gg:`, `:thumbsup:`, and from `:)`, `:D`, `<3`, `xD`.
-- New messages show on the game picture for a few seconds and, with **The chat, for the viewers**, in the OBS overlay (add `?chat=0` to the overlay address to hide it there).
-
-### On the game picture
-
-**Play Together → Overlays → On the game picture**, or **Options…** under Overlays in the stream menu, decides what lies on top of the game for you while playing:
-
-- the players with picture, name, a ring that lights up when they talk, and their controller's battery
-- the webcams
-- everybody's controller, live, either as one row or each one placed by itself
-- the controller the console gets, with whoever is in control marked
-- a short note when somebody joins or leaves
-
-Choose **Arrange** in the stream menu to drag the pieces into place; the mouse wheel or the + and − buttons change a piece's size. **Reset places and sizes** puts everything back.
-
-![Arranging the display: every piece can be dragged, resized and hidden](docs/images/screenshots/arrange.jpg)
-
-Three looks: transparent without boxes (the default), glass boxes, dark boxes. A set of choices is a **preset**: make as many as you like, for example one for playing and one for watching, and switch between them at any time. Changes go into the selected preset by themselves.
-
-![The options for the display on the game picture and for the OBS overlay](docs/images/screenshots/overlay-options.jpg)
-
-### Stream overlay for OBS
+**Setting up the overlay**
 
 1. **Play Together → Overlays → OBS overlay → Overlay on**.
 2. Add the address shown there (`http://localhost:9412/` by default) to OBS as a **Browser Source**.
 3. For the players' voices to reach your stream, tick **Control audio via OBS** in the Browser Source.
 
-![The OBS overlay over a stream scene: players, webcam and controllers](docs/images/screenshots/obs-overlay.jpg)
+<div align="center">
+  <img src="docs/images/screenshots/obs-overlay.jpg" alt="The OBS overlay over a stream scene: players, webcam and controllers" width="820">
+</div>
 
-What the overlay shows, how it looks and where everything sits is set in the same place, also from the stream menu during play, and OBS follows at once. The background is transparent; players and controllers come without boxes unless you choose the glass or the dark ones.
+What the overlay shows, how it looks and where everything sits is set in the app, also from the stream menu during play, and OBS follows at once. To place things yourself, switch on **Place every player and the console's controller freely** and press **Arrange in the browser**.
 
-To place things yourself, switch on **Place every player and the console's controller freely** and press **Arrange in the browser**: the overlay opens in your browser with made-up players if nobody is there yet, and you drag every player and the console's controller where you want them. Presets work as on the game picture, so that different scenes can have different arrangements.
+<details>
+<summary><b>Several sources showing different parts</b></summary>
 
-Several sources can show different parts. Add to the address:
+Add to the overlay address:
 
 | Addition | Shows |
 | --- | --- |
@@ -129,21 +215,78 @@ Several sources can show different parts. Add to the address:
 | `&voice=0` | keeps this source silent |
 | `&style=glass`, `&style=solid` | boxes around the players instead of the transparent look |
 | `&battery=0` | hides the controller battery |
+| `&chat=0` | hides the chat |
 | `&layout=column`, `&scale=40`, `&skin=PS5 (nova pink)` | arrangement, size, controller look |
 | `?demo=1` | made-up players, to set up a scene without a session |
 
 Controller looks: DualSense in white, Midnight Black, Cosmic Red, Nova Pink, Starlight Blue, Galactic Purple, Gray Camouflage, Volcanic Red, Cobalt Blue, Sterling Silver, the three Chroma finishes and the anniversary gray, plus DualShock 4 and Xbox sets. The skins come from [CryptoPad](https://github.com/Crypto90/CryptoPad); the additional DualSense colours are derived from its white one.
 
-## Good to know
+</details>
 
-- The host's upload carries the game picture to every guest, and every webcam to every other player. Plan with roughly the Remote Play bitrate per guest, plus 0.4 to 2.5 Mbit/s per webcam and receiver depending on the picture size chosen.
-- There is no automatic NAT traversal yet: internet play needs the forwarded port.
-- The controller battery is what the controller reports to the computer; some controllers and connections report nothing, and then nothing is shown.
-- All players need the same version of the app.
-- Every controller is connected to its player's computer, by Bluetooth or cable, not to the console: the app reads it there and passes it on. A controller paired with the console directly is invisible to the app and to the overlays.
-- On Windows and Linux the display on the game picture needs the Vulkan renderer, which is the default (**Settings → Video → Renderer**).
+---
 
-## Building
+## 🖼️ On the game picture
+
+**Play Together → Overlays → On the game picture**, or **Options…** under Overlays in the stream menu, decides what lies on top of the game for you while playing: the players with picture, name and a ring that lights up when they talk, the webcams, everybody's controller, the controller the console gets, and short notes when somebody joins or writes.
+
+Choose **Arrange** in the stream menu to drag the pieces into place; the mouse wheel or the + and − buttons change a piece's size.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/screenshots/arrange.jpg" alt="Arranging the display: every piece can be dragged, resized and hidden"></td>
+    <td width="50%"><img src="docs/images/screenshots/overlay-options.jpg" alt="The options for the display on the game picture and for the OBS overlay"></td>
+  </tr>
+</table>
+
+Three looks: transparent without boxes (the default), glass boxes, dark boxes. A set of choices is a **preset**: make as many as you like, for example one for playing and one for watching, and switch between them at any time.
+
+<details>
+<summary><b>Voice chat, webcam and text chat in detail</b></summary>
+
+**Voice chat and webcam.** **Play Together → Voice & webcam** has the settings: take part in the voice chat, start muted, which webcam and how large its picture is. Microphone and speakers are the ones from the audio settings. You never hear your own voice in the app, only the others. Use headphones: without them the others hear themselves through your microphone.
+
+**Text chat.** Press **Ctrl+T** (**⌘T** on macOS), or choose **Chat** in the stream menu. The chat opens beside the game and takes the keyboard while it is open; Escape gives it back to the game. Anybody who joins later sees the last 30 messages.
+
+- Links can be clicked. For the first link in your own message, your app looks at the page once and sends a small preview along, so your friends' apps never contact a site they did not choose. This can be switched off under **Play Together → Voice & webcam**.
+- Emoji come from the picker, from shortcodes such as `:fire:`, `:gg:`, `:thumbsup:`, and from `:)`, `:D`, `<3`, `xD`.
+- New messages show on the game picture for a few seconds and, if you want, in the OBS overlay.
+
+</details>
+
+---
+
+## ❓ FAQ
+
+**Can we play 4-player games with this?**
+No. The console sees one controller, and all of you are that one player. It is made for playing single-player games together.
+
+**Do my friends need a PlayStation or a PSN account?**
+No. Only the host needs the console and the account. Guests need the app, the invite and a controller.
+
+**Which games work?**
+Every game that works with Remote Play. A few games block single scenes for Remote Play; the app says so when that happens.
+
+**Is my controller connected to the console or to the computer?**
+To the computer, by Bluetooth or cable. That holds for the host and for every guest.
+
+**Do I need a capture card to stream?**
+No. The game picture is in the app's window, which OBS can capture. Only if you play on the TV with **Controller only** does the picture come from somewhere else.
+
+**How much upload does the host need?**
+Roughly the Remote Play bitrate per guest, plus 0.4 to 2.5 Mbit/s per webcam and receiver, depending on the picture size chosen.
+
+**Is the invite safe to share?**
+It is the key to your session, so give it only to the people who should join. Everything between host and guests is encrypted with it, and **Make a new invite** under Play Together makes old ones stop working.
+
+**Nothing shows on the game picture on Windows or Linux?**
+The display on the game picture needs the Vulkan renderer there, which is the default: **Settings → Video → Renderer**.
+
+**How do I get updates?**
+The app asks GitHub at start whether a newer version exists and tells you. It never downloads anything by itself, and the check can be switched off under **Settings → General**.
+
+---
+
+## 🛠️ Building from source
 
 macOS (Homebrew):
 
@@ -159,9 +302,10 @@ cmake -S coplay -B build-coplay && cmake --build build-coplay && build-coplay/co
 
 For Linux and Windows see the chiaki-ng build instructions; the dependencies are the same, plus Qt Multimedia for webcam capture (optional).
 
-The downloads (Linux AppImage, Windows zip, macOS dmg) are built by the pipelines in `.forgejo/workflows/`. [docs/releasing.md](docs/releasing.md) describes them, how to publish a release, and how to run the same builds on your own machine with Docker.
+The downloads are built by GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)). [docs/releasing.md](docs/releasing.md) describes the pipeline, how to publish a release, and how to run the same builds on your own machine.
 
-### Trying it without a console
+<details>
+<summary><b>Trying it without a console</b></summary>
 
 `coplay-sim` plays a video file as if it were a console and shares it, so that the guest side, the overlay, voices and webcams can be tried on one computer:
 
@@ -169,14 +313,34 @@ The downloads (Linux AppImage, Windows zip, macOS dmg) are built by the pipeline
 build/coplay/coplay-sim host sample.h264 --voice --cam a.jpg,b.jpg
 ```
 
-It prints an invite to join with. `coplay-sim` without arguments lists all options.
+It prints an invite to join with. `coplay-sim` without arguments lists all options. `coplay-sim stun` asks the same servers the app asks for the invite for friends elsewhere, and prints the address this computer has on the internet.
 
-`coplay-sim stun` asks the same servers the app asks for the invite for friends elsewhere, and prints the address this computer has on the internet.
+</details>
 
-## Credits and licence
+---
+
+## ☕ Support the Developer
+
+If PSRemotePlayTogether gives you and your friends a good evening, or makes your stream more fun, please consider buying me a coffee:
+
+<div align="center">
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Donate-orange?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/crypto90)
+
+</div>
+
+---
+
+## 📄 Credits and licence
 
 PSRemotePlayTogether is built on [chiaki-ng](https://github.com/streetpea/chiaki-ng) by Street Pea and contributors, which continues [Chiaki](https://git.sr.ht/~thestr4ng3r/chiaki) by Florian Märkl. The controller skins of the overlay are from [CryptoPad](https://github.com/Crypto90/CryptoPad).
 
-Licensed under the [GNU Affero General Public License v3](COPYING) with the OpenSSL exception chiaki uses (see `LICENSES/`). The app is free; whoever passes it on has to offer the source code with it.
+Licensed under the [GNU Affero General Public License v3](COPYING) with the OpenSSL exception chiaki uses (see `LICENSES/`). The app is free, and so is its source code: it is all in this repository.
 
-This project is not endorsed or certified by Sony Interactive Entertainment. PlayStation, PS5, PS4, DualSense and DualShock are trademarks of Sony Interactive Entertainment.
+This project is not endorsed or certified by Sony Interactive Entertainment. PlayStation, PS5, PS4, DualSense and DualShock are trademarks of Sony Interactive Entertainment. Game titles are named as examples only and belong to their owners.
+
+<div align="center">
+
+**Powered by [GamerNova.net](https://gamernova.net/)**
+
+</div>

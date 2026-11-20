@@ -359,6 +359,13 @@ class Settings : public QObject
 		bool GetShowStreamStats() const            { return settings.value("settings/show_stream_stats", false).toBool(); }
 		void SetShowStreamStats(bool enabled)      { settings.setValue("settings/show_stream_stats", enabled); }
 
+		// Asking GitHub at start whether a newer release exists (qmlbackend_update.cpp)
+		bool GetUpdateCheckEnabled() const		{ return settings.value("settings/update_check", true).toBool(); }
+		void SetUpdateCheckEnabled(bool enabled)	{ settings.setValue("settings/update_check", enabled); }
+		// The release the user answered "later" to: the start does not ask about that one again
+		QString GetUpdateSkippedVersion() const	{ return settings.value("settings/update_skipped_version").toString(); }
+		void SetUpdateSkippedVersion(const QString &version)	{ settings.setValue("settings/update_skipped_version", version); }
+
 		bool GetStreamerMode() const		{ return settings.value("settings/streamer_mode", false).toBool(); }
 		void SetStreamerMode(bool enabled)	{ settings.setValue("settings/streamer_mode", enabled); }
 

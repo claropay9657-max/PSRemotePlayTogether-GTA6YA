@@ -1,33 +1,25 @@
 #!/bin/bash
-# Builds the macOS release: a self-contained PSRemotePlayTogether.app in a .dmg.
+# Builds the macOS release: a self-contained PSRemotePlayTogether.app in a .dmg,
+# dist/PSRemotePlayTogether-<version>-macos-<arch>.dmg
 #
-#   scripts/release-macos.sh             build dist/PSRemotePlayTogether-<version>-macos-<arch>.dmg
-#   scripts/release-macos.sh --upload    ... and attach it to the Forgejo release of the tag
+# The "macOS dmg" job of .github/workflows/build.yml runs this on GitHub's
+# macos-15 runners for every push and every release. To build on your own Mac:
 #
-# Needs a Mac with Homebrew and:
 #   brew install cmake ninja pkgconf nasm qtbase qtdeclarative qtsvg qtmultimedia ffmpeg libplacebo \
 #       sdl2-compat opus openssl@3 protobuf@29 speexdsp json-c miniupnpc libevent
+#   scripts/release-macos.sh
+#
 # (qtmultimedia is optional: without it the app has no webcam switch)
-#
-# macOS can't be built on the Linux CI runner, so this is run by hand on a Mac
-# (or by the optional macOS job, see docs/releasing.md).
-#
-# --upload needs FORGEJO_TOKEN (an access token that may write to the
-# repository) and a v* tag on the commit being built; the server and repository
-# are taken from the "origin" remote.
 #
 # The app bundles Homebrew's libraries, which only run on the macOS version
 # they were installed on or newer. Build on the oldest macOS you want to support.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-UPLOAD=0
-for arg in "$@"; do
-	case "$arg" in
-		--upload) UPLOAD=1 ;;
-		*) echo "usage: $0 [--upload]" >&2; exit 1 ;;
-	esac
-done
+if [ "$#" -ne 0 ]; then
+	echo "usage: $0" >&2
+	exit 1
+fi
 
 VERSION="$(scripts/ci/version.sh)"
 ARCH="$(uname -m)"
@@ -36,37 +28,6 @@ BUILD_DIR="${BUILD_DIR:-build_release_macos}"
 APP_NAME=PSRemotePlayTogether
 MOLTENVK_VERSION=v1.4.2
 MOLTENVK_SHA256=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
-
-# Everything --upload needs is checked now, not after a ten-minute build
-if [ "$UPLOAD" = 1 ]; then
-	if [ -z "${FORGEJO_TOKEN:-}" ]; then
-		echo "error: --upload needs FORGEJO_TOKEN" >&2
-		exit 1
-	fi
-	if [ -z "${GITHUB_SERVER_URL:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then
-		ORIGIN="$(git remote get-url origin)"
-		case "$ORIGIN" in
-			http://*|https://*) ;;
-			*)
-				echo "error: the origin remote is not an http(s) address; set GITHUB_SERVER_URL (https://your-forgejo) and GITHUB_REPOSITORY (owner/name)" >&2
-				exit 1
-				;;
-		esac
-		ORIGIN="${ORIGIN%.git}"
-		GITHUB_SERVER_URL="$(printf '%s' "$ORIGIN" | sed -E 's#^(https?://)([^/@]*@)?([^/]+)/.*#\1\3#')"
-		GITHUB_REPOSITORY="$(printf '%s' "$ORIGIN" | sed -E 's#^https?://[^/]+/##')"
-		export GITHUB_SERVER_URL GITHUB_REPOSITORY
-	fi
-	if [ -z "${RELEASE_TAG:-}${GITHUB_REF_NAME:-}" ]; then
-		case "$VERSION" in
-			dev*)
-				echo "error: this commit has no v* tag, so there is no release to attach the build to" >&2
-				exit 1
-				;;
-		esac
-		export RELEASE_TAG="v$VERSION"
-	fi
-fi
 
 echo "== Building $APP_NAME $VERSION for macos-$ARCH"
 mkdir -p "$BUILD_DIR" dist
@@ -210,7 +171,3 @@ hdiutil create -quiet -volname "$APP_NAME" -srcfolder "$STAGE" -format UDZO "$DM
 codesign --force --sign - "$DMG"
 ( cd dist && shasum -a 256 "$(basename "$DMG")" > "$(basename "$DMG").sha256" )
 ls -lh "$DMG"
-
-if [ "$UPLOAD" = 1 ]; then
-	scripts/ci/publish-release.sh "$DMG" "$DMG.sha256"
-fi

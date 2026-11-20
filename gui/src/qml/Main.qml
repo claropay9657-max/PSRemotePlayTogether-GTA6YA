@@ -540,6 +540,22 @@ Item {
         id: remindDialog
     }
 
+    // A newer release than this build (Chiaki.checkForUpdate() runs a moment after the start).
+    // Asked on the start page only: a game in progress is not interrupted for it.
+    Connections {
+        target: Chiaki
+
+        function onUpdateFound(version) {
+            if (Chiaki.session)
+                return;
+            root.showConfirmDialog(qsTr("Update available"),
+                qsTr("Version %1 of PSRemotePlayTogether is available; you have %2.\n\nEverybody in a session needs the same version, so tell your friends too.\n\nOpen the download page?")
+                    .arg(version).arg(Qt.application.version),
+                () => Chiaki.openUpdatePage(),
+                () => Chiaki.skipUpdate());
+        }
+    }
+
     Connections {
         target: Chiaki
 

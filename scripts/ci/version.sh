@@ -2,7 +2,7 @@
 # Prints the version used in release file names.
 #   tag v1.2.3            -> 1.2.3
 #   anything else         -> dev-<short commit>
-# Works inside Forgejo Actions (GITHUB_* variables) and in a plain checkout.
+# Works inside GitHub Actions (GITHUB_* variables) and in a plain checkout.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 

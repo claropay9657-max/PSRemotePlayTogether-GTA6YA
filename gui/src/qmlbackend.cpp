@@ -452,6 +452,9 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     connect(windows_wake_sleep, &WindowsWakeSleep::sleeping, this, &QmlBackend::goToSleep);
 #endif
     refreshPsnToken();
+
+    // A moment after the start, so that it never slows it down: is there a newer release?
+    QTimer::singleShot(4000, this, &QmlBackend::checkForUpdate);
 }
 
 bool QmlBackend::prepareFrameForPresentation(ChiakiFfmpegFrame &frame, bool use_opengl_renderer)

@@ -678,6 +678,18 @@ DialogView {
                             }
 
                             C.SettingRow {
+                                title: qsTr("Check for updates")
+                                description: qsTr("Asks GitHub at start whether a newer version exists and tells you. Nothing is downloaded by itself.")
+                                hint: qsTr("(On)")
+
+                                Item { Layout.fillWidth: true }
+                                C.CheckBox {
+                                    checked: Chiaki.settings.updateCheckEnabled
+                                    onToggled: Chiaki.settings.updateCheckEnabled = !Chiaki.settings.updateCheckEnabled
+                                }
+                            }
+
+                            C.SettingRow {
                                 title: qsTr("Stream menu on the controller")
                                 description: qsTr("Open the stream menu with a button combination. On the keyboard it is always Ctrl+O (⌘O).")
                                 hint: qsTr("(On)")

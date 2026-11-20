@@ -32,6 +32,7 @@ class QmlSettings : public QObject
 #endif
     Q_PROPERTY(bool showStreamStats READ showStreamStats WRITE setShowStreamStats NOTIFY showStreamStatsChanged)
     Q_PROPERTY(bool streamerMode READ streamerMode WRITE setStreamerMode NOTIFY streamerModeChanged)
+    Q_PROPERTY(bool updateCheckEnabled READ updateCheckEnabled WRITE setUpdateCheckEnabled NOTIFY updateCheckEnabledChanged)
     Q_PROPERTY(float hapticOverride READ hapticOverride WRITE setHapticOverride NOTIFY hapticOverrideChanged)
     Q_PROPERTY(int displayTargetContrast READ displayTargetContrast WRITE setDisplayTargetContrast NOTIFY displayTargetContrastChanged)
     Q_PROPERTY(int displayTargetPeak READ displayTargetPeak WRITE setDisplayTargetPeak NOTIFY displayTargetPeakChanged)
@@ -224,6 +225,8 @@ public:
     void setShowStreamStats(bool enabled);
 
     bool streamerMode() const;
+    bool updateCheckEnabled() const;
+    void setUpdateCheckEnabled(bool enabled);
     void setStreamerMode(bool enabled);
 
     int displayTargetContrast() const;
@@ -794,6 +797,7 @@ signals:
     void audioVideoDisabledChanged();
     void showStreamStatsChanged();
     void streamerModeChanged();
+    void updateCheckEnabledChanged();
     void fpsLocalPS4Changed();
     void fpsRemotePS4Changed();
     void fpsLocalPS5Changed();

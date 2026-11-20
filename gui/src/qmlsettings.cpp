@@ -125,6 +125,17 @@ void QmlSettings::setStreamerMode(bool enabled)
     emit streamerModeChanged();
 }
 
+bool QmlSettings::updateCheckEnabled() const
+{
+    return settings->GetUpdateCheckEnabled();
+}
+
+void QmlSettings::setUpdateCheckEnabled(bool enabled)
+{
+    settings->SetUpdateCheckEnabled(enabled);
+    emit updateCheckEnabledChanged();
+}
+
 float QmlSettings::hapticOverride() const
 {
     return settings->GetHapticOverride();

@@ -984,7 +984,42 @@ Pane {
             }
         }
 
+        // A coffee for the developer: the same Ko-fi page as in the README and the release notes
+        Rectangle {
+            anchors.centerIn: parent
+            width: supportLabel.implicitWidth + 30
+            height: 30
+            radius: height / 2
+            color: supportArea.containsMouse ? "#ff5e5b" : Qt.rgba(1, 0.37, 0.36, 0.13)
+            border.width: 1
+            border.color: "#ff5e5b"
+
+            Behavior on color { ColorAnimation { duration: 120 } }
+
+            Label {
+                id: supportLabel
+                anchors.centerIn: parent
+                font.pixelSize: 13
+                font.bold: true
+                color: supportArea.containsMouse ? "white" : "#ff8a87"
+                text: qsTr("\u2665 Support the project")
+            }
+
+            MouseArea {
+                id: supportArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Qt.openUrlExternally("https://ko-fi.com/crypto90")
+            }
+
+            ToolTip.visible: supportArea.containsMouse
+            ToolTip.delay: 400
+            ToolTip.text: qsTr("Buy me a coffee on Ko-fi (opens in your browser)")
+        }
+
         Label {
+            id: versionLabel
             anchors {
                 right: parent.right
                 rightMargin: 28
@@ -992,6 +1027,45 @@ Pane {
             }
             opacity: 0.45
             text: qsTr("Version %1").arg(Qt.application.version)
+        }
+
+        // A newer release exists: stays here for as long as that is so, and opens the download page
+        Rectangle {
+            visible: Chiaki.updateVersion.length > 0
+            anchors {
+                right: versionLabel.left
+                rightMargin: 14
+                verticalCenter: parent.verticalCenter
+            }
+            width: updateLabel.implicitWidth + 28
+            height: 30
+            radius: height / 2
+            color: updateArea.containsMouse ? consolePane.cyan : Qt.rgba(0, 0.95, 1, 0.12)
+            border.width: 1
+            border.color: consolePane.cyan
+
+            Behavior on color { ColorAnimation { duration: 120 } }
+
+            Label {
+                id: updateLabel
+                anchors.centerIn: parent
+                font.pixelSize: 13
+                font.bold: true
+                color: updateArea.containsMouse ? "#0b0718" : consolePane.cyan
+                text: qsTr("Update available: %1").arg(Chiaki.updateVersion)
+            }
+
+            MouseArea {
+                id: updateArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Chiaki.openUpdatePage()
+            }
+
+            ToolTip.visible: updateArea.containsMouse
+            ToolTip.delay: 400
+            ToolTip.text: qsTr("Open the download page in your browser")
         }
     }
 }

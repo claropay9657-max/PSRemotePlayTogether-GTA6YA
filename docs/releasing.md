@@ -1,126 +1,92 @@
 # Building and releasing PSRemotePlayTogether
 
-The Forgejo repository builds the app itself. This page says what gets built,
-how to publish a release, and how to reproduce a build on your own machine.
+GitHub Actions builds the app for every platform. This page says what gets
+built, how to publish a release, and how to reproduce a build on your own
+machine.
 
 ## What is built
 
-| Platform | Built by | Result |
+| Platform | Job in `.github/workflows/build.yml` | Result |
 | --- | --- | --- |
-| Linux x86_64 | CI job "Linux AppImage (x86_64)" | `PSRemotePlayTogether-<version>-linux-x86_64.AppImage` |
-| Linux arm64 | CI job "Linux AppImage (aarch64)" | `PSRemotePlayTogether-<version>-linux-aarch64.AppImage` |
-| Windows x64 | CI job "Windows (cross-compiled)" | `PSRemotePlayTogether-<version>-windows-x64.zip` (portable, unzip and run `PSRemotePlayTogether.exe`) |
-| macOS (Apple silicon) | `scripts/release-macos.sh` on a Mac | `PSRemotePlayTogether-<version>-macos-arm64.dmg` |
+| Linux x86_64 | "Linux AppImage (x86_64)" | `PSRemotePlayTogether-<version>-linux-x86_64.AppImage` |
+| Linux arm64 | "Linux AppImage (aarch64)", on an arm64 runner | `PSRemotePlayTogether-<version>-linux-aarch64.AppImage` |
+| Windows x64 | "Windows (cross-compiled)" | `PSRemotePlayTogether-<version>-windows-x64.zip` (portable, unzip and run `PSRemotePlayTogether.exe`) |
+| macOS (Apple silicon) | "macOS dmg (arm64)", on a macOS 15 runner | `PSRemotePlayTogether-<version>-macos-arm64.dmg` |
 
 Every file comes with a `.sha256` next to it.
 
-The workflows are in `.forgejo/workflows/` and run on the runners with the
-labels `docker` (x86_64: both Linux x86_64 and Windows) and `docker-arm`
-(arm64: the arm64 AppImage). (The files under `.github/workflows/` belong to upstream chiaki-ng
-and are not used here: Forgejo only reads `.forgejo/workflows/` when that
-folder exists.)
-
-- **Every push to `main`** builds Linux and Windows. The results can be
-  downloaded for 14 days from the run's page (Actions → the run → Artifacts).
-  They are named `...-dev-<commit>-...`.
-- **Pushing a tag `v<version>`** builds the same and attaches the files to the
-  release of that tag, creating the release if it doesn't exist yet.
+- **Every push to `main`** builds all four. The results can be downloaded for
+  14 days from the run's page (Actions → the run → Artifacts). They are named
+  `...-dev-<commit>-...`. A push that only changes documentation builds nothing.
+- **Pushing a tag `v<version>`** builds the same and then publishes the release
+  of that tag with all files attached, once every platform has built.
 
 ## Publishing a release
 
-1. Make sure `main` is what you want to release and its last CI run is green.
-2. Tag it and push the tag:
+1. Set the version: `PSRPT_VERSION_*` in the top-level `CMakeLists.txt`.
+2. Describe it: add a `## <version>` section at the top of `CHANGELOG.md`. That
+   section becomes the "What's new" part of the release notes.
+3. Commit, and make sure the "Build" run of `main` is green.
+4. Tag that commit and push the tag:
 
    ```bash
    git tag v1.0.0
    git push origin v1.0.0
    ```
 
-3. Wait for the "Build" run of the tag. The release then appears under
-   Releases with the AppImages and the Windows zip attached.
-4. Add the macOS build from a Mac (see below).
-5. Edit the release text on the Forgejo page if you want more than the default
-   "Built from commit …".
+5. Wait for the "Build" run of the tag. Its last job, "Publish the release",
+   creates the release with the notes and every file.
 
-A tag with a hyphen, such as `v1.0.0-rc1`, is published as a pre-release.
-
-If a job failed for a reason outside the code (a download that timed out, for
-example), re-run it from the run's page: files that are already attached are
-replaced, not duplicated.
+A tag with a hyphen, such as `v1.0.0-rc1`, is published as a pre-release. The
+app's update check only offers plain versions, so a pre-release is not
+announced to users.
 
 The version in the file names is the tag, and it has to be the version the app
-shows in its corner: `PSRPT_VERSION_*` in the top-level `CMakeLists.txt`. So a
-release is two steps: set those numbers and commit, then tag that commit
-`v<the same version>`. A tag that says something else than the app stops the
-build right away with a message saying so. (`CHIAKI_VERSION_*` next to it is
-the version of the chiaki-ng the app is built on and only changes when a newer
-chiaki-ng is merged in.)
+shows in its corner. A tag that says something else than `CMakeLists.txt`
+stops the build right away with a message saying so. (`CHIAKI_VERSION_*` next
+to it is the version of the chiaki-ng the app is built on and only changes
+when a newer chiaki-ng is merged in.)
+
+If a job failed for a reason outside the code (a download that timed out, for
+example), re-run it from the run's page. "Publish the release" can be re-run
+too: files that are already attached are replaced, not duplicated.
+
+### The release notes
+
+`scripts/ci/release-notes.sh <version>` prints them: the version's section of
+`CHANGELOG.md`, a table saying which file is for which system, the first-start
+hints, the port a host has to forward, the Ko-fi link and "Powered by
+GamerNova.net". Run it locally to see what a release will say.
+
+### What users of older versions see
+
+A moment after it starts, the app asks GitHub for the latest release
+(`gui/src/qmlbackend_update.cpp`). If that is newer than the running version,
+the start page shows "Update available" and offers to open the release page.
+Nothing is downloaded by itself, and **Settings → General → Check for updates**
+switches the check off. So a new release reaches existing users as soon as its
+"Publish the release" job is done.
 
 ## macOS
 
-macOS programs can only be built on a Mac, and the CI runner is Linux. There
-are two ways to get the `.dmg`.
+`scripts/release-macos.sh` builds the dmg, in CI and on your own Mac (its
+header lists the Homebrew packages it needs). What it does:
 
-### By hand
+- builds the app against Homebrew's Qt, FFmpeg, libplacebo and SDL
+- copies every library the app needs into the bundle with `macdeployqt`, adds
+  MoltenVK (Vulkan on macOS) and checks that nothing still points into Homebrew
+- signs the bundle ad hoc, starts it once (`list`) to see that every library
+  loads, and packs the dmg
 
-On a Mac with [Homebrew](https://brew.sh):
-
-```bash
-brew install cmake ninja pkgconf nasm qtbase qtdeclarative qtsvg qtmultimedia ffmpeg libplacebo sdl2-compat opus openssl@3 protobuf@29 speexdsp json-c miniupnpc libevent
-git fetch --tags && git checkout v1.0.0
-git submodule update --init --recursive test/munit third-party
-scripts/release-macos.sh
-```
-
-The dmg is written to `dist/`. To attach it to the tag's release in one go,
-create an access token in Forgejo (Settings → Applications, with read and write
-access to repositories) and run:
-
-```bash
-FORGEJO_TOKEN=<token> scripts/release-macos.sh --upload
-```
-
-Good to know:
-
-- The app bundles Homebrew's libraries, and those only run on the macOS
-  version they were installed on or newer. A dmg built on macOS 15 needs
-  macOS 15. Build on the oldest macOS you want to support.
-- The app is only ad-hoc signed, not notarised by Apple. On another Mac the
-  first start has to be allowed by hand (right-click the app → Open, or
-  System Settings → Privacy & Security → Open Anyway). Removing that step
-  needs a paid Apple Developer ID.
-- An Intel Mac produces `...-macos-x86_64.dmg` the same way.
-
-### With a Mac as a runner
-
-A Mac can also build the dmg as part of the Forgejo pipelines:
-
-1. Install the tools from "By hand" above, plus `brew install node`.
-2. Get the runner program for macOS from
-   <https://code.forgejo.org/forgejo/runner/releases> (or build it with Go).
-3. In Forgejo open the repository's Settings → Actions → Runners → "Create new
-   runner" and copy the registration token.
-4. Register and start it:
-
-   ```bash
-   forgejo-runner register --no-interactive --instance https://<your-forgejo> --token <registration token> --name mac --labels macos:host
-   forgejo-runner daemon
-   ```
-
-   `macos:host` means jobs run directly on the Mac, not in a container.
-5. Start the workflow "Build macOS" from the repository's Actions page
-   ("Run workflow"), choosing the tag to build. It builds the dmg on the Mac
-   and attaches it to that tag's release.
-
-To have every tag built without that click, uncomment the `push:` lines at the
-top of `.forgejo/workflows/macos.yml`. They are off by default because Forgejo
-keeps a job waiting until a runner with its label takes it: on a server
-without a Mac runner every tag would leave a run waiting forever.
+The app bundles Homebrew's libraries, which only run on the macOS version they
+were built for or newer. The CI runner is macOS 15, so the dmg needs macOS 15.
+The app is not notarised: on the first start macOS blocks it, and the user
+allows it under System Settings → Privacy & Security → Open Anyway.
 
 ## Reproducing a CI build locally
 
-Each job only runs one script inside a public container image, so the same
-build works on any machine with Docker:
+The Linux and Windows jobs only run one script inside a public container
+image, so the same build works on any machine with Docker:
 
 ```bash
 # Linux AppImage (about 5 minutes on 8 cores)
@@ -183,7 +149,7 @@ switch.
 PSRemotePlayTogether is a fork of chiaki-ng and is licensed under the GNU
 Affero General Public License v3 (`COPYING`). Giving the program to others,
 including for free, is fine, but everyone who gets a build must also be able to
-get the exact source code it was built from. In practice: publish the source
-of each released tag (a public repository, or a source archive next to the
-downloads) and say where it is on the download page. The Windows zip contains
-the licence text as `LICENSE.txt`.
+get the exact source code it was built from. This repository is that source:
+every release is built from its tag, and GitHub attaches the source of the tag
+to the release. Whoever offers the downloads somewhere else should link here.
+The Windows zip contains the licence text as `LICENSE.txt`.

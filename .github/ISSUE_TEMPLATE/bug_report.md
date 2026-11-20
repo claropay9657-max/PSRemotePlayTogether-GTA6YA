@@ -1,36 +1,25 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: "[BUG]"
-labels: ''
-assignees: ''
-
+about: Something does not work as it should
+labels: bug
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**What happened, and what did you expect instead?**
 
-**Debug Log**
-Please attach a log with verbose logging enabled.
+**How to make it happen again**
+1.
+2.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+**Your setup**
+- PSRemotePlayTogether version (bottom right of the start page):
+- System: Windows / macOS / Linux, and its version
+- Host or guest:
+- Console: PS5 / PS4
+- Renderer (Settings → Video → Renderer): Vulkan / OpenGL
+- Controller and how it is connected (cable / Bluetooth):
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
-
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
-
-**Desktop (please complete the following information):**
- - OS: [e.g. SteamOS]
- - Version [e.g. 22]
- - Device [e.g. Steam Deck]
- - chiaki-ng Version [e.g. 1.6.2]
-
-**Additional context**
-Add any other context about the problem here.
+**Log**
+The newest file from the log folder helps a lot. Remove anything you do not want to share.
+- Windows: `%APPDATA%\GamerNova\PSRemotePlayTogether\log`
+- macOS: `~/Library/Application Support/GamerNova/PSRemotePlayTogether/log`
+- Linux: `~/.local/share/GamerNova/PSRemotePlayTogether/log`

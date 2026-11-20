@@ -59,6 +59,7 @@ set(SOURCE_FILES
 	src/qmlsettings_coplay.cpp
 	src/qmlbackend_coplay.cpp
 	src/qmlbackend_display.cpp
+	src/qmlbackend_update.cpp
 	include/presetsettings.h
 	src/presetsettings.cpp
 	include/voicechat.h

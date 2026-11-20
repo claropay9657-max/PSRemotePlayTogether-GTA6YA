@@ -1,0 +1,177 @@
+# Builds PSRemotePlayTogether for Linux, Windows and macOS on every push to main,
+# and publishes a release when a tag like v1.2.3 is pushed. See docs/releasing.md.
+#
+# Every build job is "run one script from scripts/ inside a public image or on
+# a stock runner", so a build can be reproduced on your own machine (the scripts
+# say how).
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch replaces the build that is still running; a
+# release build is never cancelled
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  SUBMODULES: >-
+    test/munit third-party/nanopb third-party/jerasure third-party/gf-complete
+    third-party/curl third-party/cpp-steam-tools
+
+jobs:
+  linux:
+    # One AppImage per processor type, each built on a runner of that type
+    name: Linux AppImage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Fetch the submodules the build uses
+        run: git submodule update --init --recursive --depth 1 $SUBMODULES
+
+      - name: Build
+        # In the image upstream chiaki-ng builds its AppImage in (Ubuntu 24.04,
+        # Qt 6.9.3), started the way the script's own header says, so that the
+        # image keeps its user and home directory
+        run: |
+          version="$(scripts/ci/version.sh)"
+          echo "Runner: $(uname -sm), $(nproc) CPUs, building $version"
+          docker run --rm -v "$PWD:/work" -w /work \
+            -e PSRPT_VERSION="$version" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e 'GIT_CONFIG_VALUE_0=*' \
+            docker.io/streetpea/chiaki-ng-builder:qt6.9.3 scripts/ci/build-linux.sh
+
+      - name: Keep the AppImage as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows (cross-compiled)
+    runs-on: ubuntu-24.04
+    container:
+      image: docker.io/library/debian:trixie
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Plain git instead of the checkout action: the image starts without git,
+      # and without it the action would fetch an archive that has no submodules
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          echo "Runner: $(uname -sm), user $(id -un) ($(id -u)), $(nproc) CPUs"
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ca-certificates git >/dev/null
+          git config --global --add safe.directory '*'
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')"
+          git -c "http.extraHeader=Authorization: Basic $auth" fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q -f FETCH_HEAD
+          git submodule update -q --init --recursive --depth 1 $SUBMODULES
+          git log -1 --format='Checked out %h %s'
+
+      - name: Install wine to run the Windows binaries
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends wine wine64 >/dev/null
+          wine --version
+
+      - name: Build
+        run: scripts/ci/build-windows.sh
+
+      - name: Keep the zip as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    # GitHub's macos-15 runners are Apple silicon. The app bundles Homebrew's
+    # libraries, so it runs on the runner's macOS version or newer.
+    name: macOS dmg (arm64)
+    runs-on: macos-15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Fetch the submodules the build uses
+        run: git submodule update --init --recursive --depth 1 $SUBMODULES
+
+      - name: Install the build dependencies
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_ENV_HINTS: 1
+        run: |
+          echo "Runner: $(uname -sm), macOS $(sw_vers -productVersion)"
+          brew install --overwrite cmake ninja pkgconf nasm qtbase qtdeclarative qtsvg qtmultimedia \
+            ffmpeg libplacebo sdl2-compat opus openssl@3 protobuf@29 speexdsp json-c miniupnpc libevent
+
+      - name: Build
+        run: scripts/release-macos.sh
+
+      - name: Keep the dmg as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    # Only for a tag, and only when every platform has built: the release gets
+    # all its files at once, with the notes from CHANGELOG.md
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Collect the builds
+        uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci/github-release.sh release-files/*

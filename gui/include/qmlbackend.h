@@ -85,6 +85,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(QObject* overlayLayout READ overlayLayoutSettings CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
     Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
+    // A release newer than this build, found by the check at start; empty if there is none
+    Q_PROPERTY(QString updateVersion READ updateVersion NOTIFY updateChanged)
     Q_PROPERTY(StreamSession* session READ qmlSession NOTIFY sessionChanged)
     Q_PROPERTY(QList<QmlController*> controllers READ qmlControllers NOTIFY controllersChanged)
     Q_PROPERTY(bool discoveryEnabled READ discoveryEnabled WRITE setDiscoveryEnabled NOTIFY discoveryEnabledChanged)
@@ -213,6 +215,12 @@ public:
     QObject *hudSettings() const;
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
+    QString updateVersion() const { return update_version; }
+    /** Asks GitHub for the latest release; see qmlbackend_update.cpp. */
+    Q_INVOKABLE void checkForUpdate();
+    Q_INVOKABLE void openUpdatePage();
+    /** "Later": the start does not ask about this version again. */
+    Q_INVOKABLE void skipUpdate();
     /** Joins a session somebody else shares. Answers with coplayJoinFinished. */
     Q_INVOKABLE void joinCoPlay(const QString &invite, const QString &name, bool controller_only);
     /**
@@ -284,6 +292,9 @@ signals:
     void sessionError(const QString &title, const QString &text);
     void coplayJoiningChanged();
     void overlayStateChanged();
+    void updateChanged();
+    /** A newer release exists, and the user has not said "later" to it yet. */
+    void updateFound(const QString &version);
     void coplayJoinFinished(bool ok, const QString &message);
     void sessionPinDialogRequested();
     void sessionStopDialogRequested();
@@ -389,6 +400,8 @@ private:
     /** Names this player to a host for as long as the app runs, see coplay::ClientConfig. */
     quint64 coplay_player_id = 0;
     class OverlayServer *overlay = {};
+    QString update_version;
+    QString update_url;
     class PresetSettings *hud_settings = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
