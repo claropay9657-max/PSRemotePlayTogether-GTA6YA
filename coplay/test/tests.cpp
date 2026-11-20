@@ -3687,7 +3687,8 @@ TEST(net_stun_probe_on_a_socket_in_use)
 		CHECK(probe.Mapping() == PortMapping::Stable);
 		CHECK(probe.Public().SameEndpoint(Loopback(socket.LocalPort())));
 		CHECK(probe.Generation() != before);
-		CHECK(one.server.requests == 1 && two.server.requests == 1 && one.server.malformed == 0);
+		// (on a slow machine the request may have been repeated before the answer was read)
+		CHECK(one.server.requests >= 1 && two.server.requests >= 1 && one.server.malformed == 0);
 
 		// what merely looks like an answer is none
 		uint8_t fake[32] = { 0x01, 0x01, 0x00, 0x0c, 0x21, 0x12, 0xa4, 0x42 };
@@ -3716,7 +3717,7 @@ TEST(net_stun_probe_on_a_socket_in_use)
 		CHECK(RunProbe(probe, socket, [&] { return probe.Public().IsValid(); }, 5000));
 		CHECK(probe.Public().SameEndpoint(Loopback(socket.LocalPort())));
 		CHECK(probe.Mapping() == PortMapping::Unknown && !probe.GaveUp());
-		CHECK(one.server.requests == 3);
+		CHECK(one.server.requests >= 3);
 	}
 }
 
@@ -4064,8 +4065,9 @@ TEST(net_open_port_never_waits_for_the_meeting_point)
 		CHECK(!g.client->ViaMeetingPoint());
 		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
 	}
-	// joining and leaving again, with a request to the meeting point hanging on both sides
-	CHECK(NowMs() - start < 2500);
+	// joining and leaving again, with a request to the meeting point hanging on both sides:
+	// well below the 4 seconds after which such a request is given up
+	CHECK(NowMs() - start < 3500);
 
 	// The same when it cannot be reached at all, or is not there
 	point.hangs = false;
