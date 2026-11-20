@@ -426,6 +426,9 @@ int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_ex
 int RunJoin(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &invite, const QString &name, bool controller_only)
 {
 	QmlMainWindow main_window(settings, exit_app_on_stream_exit);
+	// This start is for a friend's session. Without this, a console that is set to be connected
+	// to at start and happens to be awake gets a session first, and the join is refused.
+	main_window.cancelAutoConnect();
 	main_window.show();
 	// Only once the window is on screen: a session that starts before that never gets shown
 	auto timer = new QTimer(&main_window);

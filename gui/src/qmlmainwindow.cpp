@@ -2535,6 +2535,11 @@ QmlMainWindow::QmlMainWindow(Settings *settings, bool exit_app_on_stream_exit)
     init(settings, exit_app_on_stream_exit);
 }
 
+void QmlMainWindow::cancelAutoConnect()
+{
+    backend->cancelAutoConnect();
+}
+
 void QmlMainWindow::joinCoPlay(const QString &invite, const QString &name, bool controller_only)
 {
     // Nobody has the Play Together dialog open to show a failure in, so use the message banner

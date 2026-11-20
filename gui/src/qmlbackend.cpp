@@ -1929,6 +1929,12 @@ void QmlBackend::stopAutoConnect()
     emit autoConnectChanged();
 }
 
+void QmlBackend::cancelAutoConnect()
+{
+    stopAutoConnect();
+    psn_auto_connect_timer->stop();
+}
+
 QmlBackend::DisplayServer QmlBackend::displayServerAt(int index) const
 {
     if (index < 0)

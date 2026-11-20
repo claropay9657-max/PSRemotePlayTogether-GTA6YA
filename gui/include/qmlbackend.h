@@ -238,6 +238,8 @@ public:
     Q_INVOKABLE bool checkPsnRedirectURL(const QUrl &url) const;
     Q_INVOKABLE bool handlePsnLoginRedirect(const QUrl &url);
     Q_INVOKABLE void stopAutoConnect();
+    /** As stopAutoConnect(), and the console is not looked for over PSN either. */
+    void cancelAutoConnect();
     Q_INVOKABLE void setConsolePin(int index, QString console_pin);
     Q_INVOKABLE QString openPsnLink();
     Q_INVOKABLE QString openPlaceboOptionsLink();

@@ -165,6 +165,8 @@ public slots:
     void updateVSync();
     void updateVulkanDeferredSwap();
     void show();
+    /** This start is not about one's own console: none is connected to by itself. */
+    void cancelAutoConnect();
     /** Joins a shared session right away (the "join" command line command). */
     void joinCoPlay(const QString &invite, const QString &name, bool controller_only);
     void presentFrame(ChiakiFfmpegFrame frame, int32_t frames_lost, qint64 decoder_delivery_us = 0);
