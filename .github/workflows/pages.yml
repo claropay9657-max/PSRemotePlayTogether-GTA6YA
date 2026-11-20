@@ -1,0 +1,62 @@
+# Publishes the page for guests in a web browser (the folder web/) to GitHub
+# Pages whenever it changes on main. See docs/web-guests.md.
+#
+# From main and not from a release's tag, because GitHub only lets the default
+# branch publish to Pages unless the repository's settings say otherwise. What
+# that means for changes to the protocol is in docs/releasing.md.
+#
+# Needs Pages switched on once for the repository: Settings → Pages → Build and
+# deployment → Source: "GitHub Actions". The page is static files only, there
+# is nothing to build.
+name: Web page
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer one replaces one that is still waiting
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Publish web/
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Check the page's scripts
+        # Every module has to parse: a typo would otherwise only show in a guest's browser
+        run: |
+          for f in web/js/*.js; do
+            cp "$f" "$RUNNER_TEMP/check.mjs"
+            node --check "$RUNNER_TEMP/check.mjs" || { echo "::error file=$f::does not parse"; exit 1; }
+          done
+
+      - name: Set up Pages
+        uses: actions/configure-pages@v5
+
+      - name: Pack the page
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Publish
+        id: deployment
+        uses: actions/deploy-pages@v4

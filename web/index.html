@@ -1,0 +1,174 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL -->
+<!--
+  PSRemotePlayTogether in a web browser: join a friend's shared PlayStation
+  session without installing the app. Everything here is static: the page
+  talks to the meeting point to find the host, and then to the host directly.
+  https://github.com/Crypto90/PSRemotePlayTogether
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>PSRemotePlayTogether</title>
+<meta name="description" content="Join a friend's shared PlayStation session from your browser: same picture, same sound, your own controller.">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============================================================ before playing -->
+<main id="front" class="front">
+  <header class="brand">
+    <img src="img/logo.svg" alt="" width="72" height="72">
+    <div>
+      <h1><span class="grad">PSRemotePlayTogether</span></h1>
+      <p class="tagline">Play one PlayStation together, right in your browser.</p>
+    </div>
+  </header>
+
+  <!-- No invite in the address -->
+  <section id="card-landing" class="card" hidden>
+    <h2>Got a link from a friend?</h2>
+    <p class="dim">Paste it here. A link looks like <code>https://…/#AbCd…</code>; an invite from the app (<code>psrpt://…</code>) works too.</p>
+    <form id="landing-form" class="row">
+      <input id="landing-invite" type="text" autocomplete="off" spellcheck="false" placeholder="Paste your link or invite" aria-label="Link or invite">
+      <button class="primary" type="submit">Continue</button>
+    </form>
+    <p id="landing-error" class="problem" hidden></p>
+    <div class="steps">
+      <div><b>1</b><span>Your friend shares their PlayStation with the PSRemotePlayTogether app and sends you a link.</span></div>
+      <div><b>2</b><span>You open it here, plug in a controller and join. Nothing to install, no account.</span></div>
+      <div><b>3</b><span>You get the same picture and sound, and your controller plays along as player 1.</span></div>
+    </div>
+  </section>
+
+  <!-- An invite: ready to join -->
+  <section id="card-join" class="card" hidden>
+    <h2>You are invited to play</h2>
+    <p class="dim">You get your friend's game picture and sound, and your controller plays along on their console.</p>
+    <form id="join-form">
+      <label class="field">
+        <span>Your name</span>
+        <input id="join-name" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" placeholder="Shown to the other players">
+      </label>
+      <label class="check">
+        <input id="join-voice" type="checkbox">
+        <span>Join the voice chat <small>(the browser asks for your microphone; use headphones)</small></span>
+      </label>
+      <div id="pad-status" class="status-line">
+        <span class="dot"></span>
+        <span id="pad-status-text">Press any button on your controller so that the browser sees it.</span>
+      </div>
+      <p id="join-warning" class="problem" hidden></p>
+      <div class="row end">
+        <button id="join-keys" class="ghost" type="button">Keyboard controls</button>
+        <button id="join-button" class="primary big" type="submit">Join</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- On the way in -->
+  <section id="card-connecting" class="card center" hidden>
+    <div class="spinner" aria-hidden="true"></div>
+    <h2 id="connecting-text">Looking for the host…</h2>
+    <p class="dim">The connection goes straight from your browser to your friend's computer.</p>
+    <button id="connecting-cancel" class="ghost" type="button">Cancel</button>
+  </section>
+
+  <!-- It did not work, or it is over -->
+  <section id="card-message" class="card" hidden>
+    <h2 id="message-title">That did not work</h2>
+    <p id="message-text"></p>
+    <div class="row end">
+      <button id="message-retry" class="primary" type="button">Try again</button>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>powered by <a href="https://gamernova.net/" target="_blank" rel="noopener">GamerNova.net</a></span>
+    <span class="sep">·</span>
+    <a href="https://github.com/Crypto90/PSRemotePlayTogether" target="_blank" rel="noopener">Get the app</a>
+    <span class="sep">·</span>
+    <span class="dim">Free and open source. Not affiliated with Sony Interactive Entertainment.</span>
+  </footer>
+</main>
+
+<!-- ============================================================ playing -->
+<div id="stage" class="stage" hidden>
+  <canvas id="screen" width="1280" height="720"></canvas>
+
+  <div id="stage-note" class="stage-note" hidden></div>
+
+  <div id="bar" class="bar">
+    <div class="bar-left">
+      <img src="img/logo.svg" alt="" width="34" height="34">
+      <div id="players" class="players"></div>
+    </div>
+    <div class="bar-right">
+      <button id="btn-mic" class="tool" type="button" title="Microphone" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-2.1A7 7 0 0 0 19 12h-2Z"/></svg>
+        <span id="btn-mic-text">Mic on</span>
+      </button>
+      <button id="btn-voices" class="tool" type="button" title="The others' voices">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4ZM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6Z"/></svg>
+        <span id="btn-voices-text">Voices on</span>
+      </button>
+      <label class="tool volume" title="Game volume">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9v6h4l5 4V5L9 9H5Zm11.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z"/></svg>
+        <input id="volume" type="range" min="0" max="100" value="100" aria-label="Game volume">
+      </label>
+      <button id="btn-chat" class="tool" type="button" title="Chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4V5a1 1 0 0 1 1-1Z"/></svg>
+        <span>Chat</span>
+        <span id="chat-badge" class="badge" hidden>0</span>
+      </button>
+      <button id="btn-stats" class="tool icon" type="button" title="Connection details">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10h3v10H5Zm5.5 0V4h3v16h-3ZM16 20v-7h3v7h-3Z"/></svg>
+      </button>
+      <button id="btn-keys" class="tool icon" type="button" title="Keyboard controls">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm2 3v2h2V9H5Zm4 0v2h2V9H9Zm4 0v2h2V9h-2Zm4 0v2h2V9h-2ZM7 14v2h10v-2H7Z"/></svg>
+      </button>
+      <button id="btn-full" class="tool icon" type="button" title="Full screen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v2H6v4H4V4Zm10 0h6v6h-2V6h-4V4ZM4 14h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4Z"/></svg>
+      </button>
+      <button id="btn-leave" class="tool danger" type="button" title="Leave the session">Leave</button>
+    </div>
+  </div>
+
+  <div id="stats" class="stats" hidden></div>
+  <div id="cams" class="cams"></div>
+  <div id="toasts" class="toasts"></div>
+
+  <aside id="chat" class="chat" hidden>
+    <header>
+      <b>Chat</b>
+      <button id="chat-close" class="tool icon" type="button" title="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
+      </button>
+    </header>
+    <div id="chat-list" class="chat-list"></div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" type="text" maxlength="400" autocomplete="off" placeholder="Write to everybody…" aria-label="Message">
+      <button class="primary" type="submit">Send</button>
+    </form>
+  </aside>
+</div>
+
+<!-- ============================================================ keyboard help -->
+<dialog id="keys" class="dialog">
+  <h2>Keyboard controls</h2>
+  <p class="dim">A controller is the way to play: plug it in or pair it, then press any button. Without one, these keys stand in. They go by the key's place on the keyboard.</p>
+  <div id="keys-list" class="keys-list"></div>
+  <div class="row end">
+    <button id="keys-close" class="primary" type="button">Close</button>
+  </div>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
