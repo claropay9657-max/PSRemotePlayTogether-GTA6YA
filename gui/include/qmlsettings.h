@@ -105,6 +105,12 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString coplayMeetServer READ coplayMeetServer WRITE setCoplayMeetServer NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayMeetOn READ coplayMeetOn NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayMeetDefault READ coplayMeetDefault CONSTANT)
+    Q_PROPERTY(bool coplayWebSupported READ coplayWebSupported CONSTANT)
+    Q_PROPERTY(bool coplayWebGuests READ coplayWebGuests WRITE setCoplayWebGuests NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayWebUrl READ coplayWebUrl WRITE setCoplayWebUrl NOTIFY coplayChanged)
+    Q_PROPERTY(int coplayWebPort READ coplayWebPort WRITE setCoplayWebPort NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayWebDefault READ coplayWebDefault CONSTANT)
+    Q_PROPERTY(QString coplayInviteWeb READ coplayInviteWeb NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayAvatarUrl READ coplayAvatarUrl NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayVoiceEnabled READ coplayVoiceEnabled WRITE setCoplayVoiceEnabled NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayVoiceStartMuted READ coplayVoiceStartMuted WRITE setCoplayVoiceStartMuted NOTIFY coplayChanged)
@@ -661,6 +667,25 @@ public:
     Q_INVOKABLE void coplayCopyInviteLan();
     Q_INVOKABLE void coplayCopyInvitePublic();
     Q_INVOKABLE void coplayCopyInviteIPv6();
+    // Friends who join from a web browser, without the app
+    /** Whether this build can take them at all. */
+    bool coplayWebSupported() const;
+    bool coplayWebGuests() const;
+    void setCoplayWebGuests(bool enabled);
+    /** The page they open; empty is the built-in one. */
+    QString coplayWebUrl() const;
+    void setCoplayWebUrl(const QString &url);
+    /** The built-in page, for showing it in the empty field. */
+    QString coplayWebDefault() const;
+    /** The UDP port browsers come in on: 0 = one above the sharing port, -1 = any free one each. */
+    int coplayWebPort() const;
+    void setCoplayWebPort(int port);
+    /**
+     * The link for a friend's browser. Empty when browsers cannot join: switched off,
+     * not part of this build, or no meeting point (it is what leads a browser to the host).
+     */
+    QString coplayInviteWeb() const;
+    Q_INVOKABLE void coplayCopyInviteWeb();
     /** Address of the picture file for showing it, changes whenever the picture does. */
     QString coplayAvatarUrl() const;
     /** Lets the user pick an image and makes it the player's picture. */

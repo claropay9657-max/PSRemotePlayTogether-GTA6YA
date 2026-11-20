@@ -274,6 +274,18 @@ class Settings : public QObject
 		// Empty is the built-in one, "off" means that none is ever asked.
 		QString GetCoPlayMeetServer() const		{ return settings.value("coplay/meet_server").toString(); }
 		void SetCoPlayMeetServer(const QString &s)	{ settings.setValue("coplay/meet_server", s); }
+		// Friends who join from a web browser, without the app (coplay/web.h). The page
+		// they open: empty is the built-in one.
+		bool GetCoPlayWebGuests() const			{ return settings.value("coplay/web_guests", true).toBool(); }
+		void SetCoPlayWebGuests(bool on)			{ settings.setValue("coplay/web_guests", on); }
+		/**
+		 * The UDP port all browser guests come in on, for a host who forwards ports:
+		 * 0 = the one above the sharing port, -1 = any free one for each browser.
+		 */
+		int GetCoPlayWebPort() const				{ return settings.value("coplay/web_port", 0).toInt(); }
+		void SetCoPlayWebPort(int port)			{ settings.setValue("coplay/web_port", port); }
+		QString GetCoPlayWebUrl() const			{ return settings.value("coplay/web_url").toString(); }
+		void SetCoPlayWebUrl(const QString &s)	{ settings.setValue("coplay/web_url", s); }
 		QString GetCoPlaySecret() const			{ return settings.value("coplay/secret").toString(); }
 		void SetCoPlaySecret(const QString &s)	{ settings.setValue("coplay/secret", s); }
 		QString GetCoPlayName() const			{ return settings.value("coplay/name").toString(); }

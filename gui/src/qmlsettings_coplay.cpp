@@ -4,6 +4,7 @@
 
 #include "qmlsettings.h"
 
+#include <coplay/web.h>
 #include <coplay/invite.h>
 #include <coplay/socket.h>
 
@@ -278,6 +279,79 @@ void QmlSettings::coplayCopyInvitePublic()
 void QmlSettings::coplayCopyInviteIPv6()
 {
     CopyUnlessEmpty(coplayInviteIPv6());
+}
+
+// ------------------------------------------------------------------ friends in a web browser
+
+bool QmlSettings::coplayWebSupported() const
+{
+    return coplay::WebGuestsSupported();
+}
+
+bool QmlSettings::coplayWebGuests() const
+{
+    return settings->GetCoPlayWebGuests();
+}
+
+void QmlSettings::setCoplayWebGuests(bool enabled)
+{
+    if (enabled == settings->GetCoPlayWebGuests())
+        return;
+    settings->SetCoPlayWebGuests(enabled);
+    emit coplayChanged();
+}
+
+QString QmlSettings::coplayWebUrl() const
+{
+    return settings->GetCoPlayWebUrl();
+}
+
+void QmlSettings::setCoplayWebUrl(const QString &url)
+{
+    if (url.trimmed() == settings->GetCoPlayWebUrl())
+        return;
+    settings->SetCoPlayWebUrl(url.trimmed());
+    emit coplayChanged();
+}
+
+int QmlSettings::coplayWebPort() const
+{
+    return settings->GetCoPlayWebPort();
+}
+
+void QmlSettings::setCoplayWebPort(int port)
+{
+    if (port < -1 || port > 65535)
+        port = 0;
+    if (port == settings->GetCoPlayWebPort())
+        return;
+    settings->SetCoPlayWebPort(port);
+    emit coplayChanged();
+}
+
+QString QmlSettings::coplayWebDefault() const
+{
+    QString url = QString::fromLatin1(coplay::kDefaultWebUrl);
+    return url.startsWith(QLatin1String("https://")) ? url.mid(8) : url;
+}
+
+QString QmlSettings::coplayInviteWeb() const
+{
+    if (!coplay::WebGuestsSupported() || !settings->GetCoPlayWebGuests() || !coplayMeetOn())
+        return QString();
+    coplay::Secret secret;
+    if (!coplay::SecretFromString(settings->GetCoPlaySecret().toStdString(), secret)) {
+        // First use: there is no key yet
+        secret = coplay::GenerateSecret();
+        settings->SetCoPlaySecret(QString::fromStdString(coplay::SecretToString(secret)));
+    }
+    return QString::fromStdString(coplay::WebInviteLink(coplay::WebUrlFromText(settings->GetCoPlayWebUrl().toStdString()),
+        secret, CoPlayMeet::InviteValue(settings->GetCoPlayMeetServer())));
+}
+
+void QmlSettings::coplayCopyInviteWeb()
+{
+    CopyUnlessEmpty(coplayInviteWeb());
 }
 
 void QmlSettings::coplayNewKey()

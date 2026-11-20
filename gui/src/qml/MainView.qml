@@ -876,6 +876,21 @@ Pane {
                         }
                     }
 
+                    // For a friend without the app: a link that opens in a web browser
+                    PageButton {
+                        Layout.fillWidth: true
+                        visible: Chiaki.settings.coplayHostEnabled && (Chiaki.settings.coplayInviteWeb || "").length > 0
+                        text: webCopiedTimer.running ? qsTr("Link copied") : qsTr("Copy link for a web browser")
+                        onClicked: {
+                            Chiaki.settings.coplayCopyInviteWeb();
+                            webCopiedTimer.restart();
+                        }
+                        Timer {
+                            id: webCopiedTimer
+                            interval: 1600
+                        }
+                    }
+
                     // For a host who plays on the TV; see "Controller only" in PlayTogetherDialog
                     RowLayout {
                         Layout.fillWidth: true

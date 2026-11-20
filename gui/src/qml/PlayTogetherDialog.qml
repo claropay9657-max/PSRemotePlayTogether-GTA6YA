@@ -428,6 +428,25 @@ DialogView {
                             invite: hostEnabledCheck.checked ? invites.ipv6Invite : ""
                             note: qsTr("Try this one if the other internet invite does not work: many connections share their IPv4 address with others (DS-Lite) and can only be reached over IPv6. Your friend needs IPv6 too, and your router has to let UDP port %1 through to this computer.").arg(invites.port)
                         }
+
+                        // For a friend without the app: a link that opens in a web browser
+                        C.InviteRow {
+                            visible: !!Chiaki.settings.coplayWebSupported
+                            title: qsTr("Web browser")
+                            dot: "#34d399"
+                            secret: Chiaki.settings.streamerMode
+                            secretText: "https://••••••••••••••••"
+                            invite: hostEnabledCheck.checked ? (Chiaki.settings.coplayInviteWeb || "") : ""
+                            note: {
+                                if (!hostEnabledCheck.checked)
+                                    return "";
+                                if (!Chiaki.settings.coplayWebGuests)
+                                    return qsTr("Friends without the app could join from a web browser; that is switched off below.");
+                                if (!Chiaki.settings.coplayMeetOn)
+                                    return qsTr("Friends without the app could join from a web browser, but the meeting point that leads a browser to you is switched off below.");
+                                return qsTr("For friends without the app. They open this link in Chrome, Edge, Firefox or Safari, plug in a controller and play along: same picture and sound, voice and text chat. Nothing to install. Whoever has the link can join, like with every invite.");
+                            }
+                        }
                     }
 
                     GridLayout {
@@ -540,6 +559,67 @@ DialogView {
                             wrapMode: Text.WordWrap
                             opacity: 0.7
                             text: qsTr("Leave the address empty unless you have a name of your own for your connection (DynDNS), which stays valid when your provider gives you a new address. A forwarded UDP port is only needed when a friend cannot get in through the meeting point, or when the meeting point is switched off.")
+                        }
+
+                        Label {
+                            visible: !!Chiaki.settings.coplayWebSupported
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("Web browser:")
+                        }
+
+                        C.CheckBox {
+                            visible: !!Chiaki.settings.coplayWebSupported
+                            text: qsTr("Friends can join from a web browser")
+                            checked: !!Chiaki.settings.coplayWebGuests
+                            onToggled: Chiaki.settings.coplayWebGuests = checked
+                        }
+
+                        Label {
+                            visible: !!Chiaki.settings.coplayWebSupported
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("Page for browsers:")
+                        }
+
+                        C.TextField {
+                            visible: !!Chiaki.settings.coplayWebSupported
+                            Layout.fillWidth: true
+                            // Empty is the built-in one
+                            placeholderText: qsTr("%1 (default)").arg(Chiaki.settings.coplayWebDefault || "")
+                            text: Chiaki.settings.coplayWebUrl || ""
+                            onEditingFinished: Chiaki.settings.coplayWebUrl = text
+                        }
+
+                        Label {
+                            visible: !!Chiaki.settings.coplayWebSupported
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("UDP port for browsers:")
+                        }
+
+                        C.TextField {
+                            visible: !!Chiaki.settings.coplayWebSupported
+                            Layout.preferredWidth: 220
+                            validator: IntValidator { bottom: 1; top: 65535 }
+                            // Empty is the port above the sharing port
+                            placeholderText: qsTr("%1 (default)").arg(Chiaki.settings.coplayPort + 1)
+                            text: Chiaki.settings.coplayWebPort > 0 ? Chiaki.settings.coplayWebPort : ""
+                            onEditingFinished: {
+                                if (text.trim().length === 0)
+                                    Chiaki.settings.coplayWebPort = 0;
+                                else if (acceptableInput)
+                                    Chiaki.settings.coplayWebPort = parseInt(text);
+                                else
+                                    text = Chiaki.settings.coplayWebPort > 0 ? Chiaki.settings.coplayWebPort : "";
+                            }
+                        }
+
+                        Item { visible: !!Chiaki.settings.coplayWebSupported }
+
+                        Label {
+                            visible: !!Chiaki.settings.coplayWebSupported
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            opacity: 0.7
+                            text: qsTr("A browser connects to your computer directly, like the app does: the page only finds you through the meeting point, and picture, sound and controllers never pass a server. With most routers nothing has to be set up. If a friend's browser cannot connect, forward the UDP port for browsers to this computer as well; a browser cannot use the sharing port. A browser cannot do everything the app can: no haptics and adaptive triggers, no touchpad and motion, and a little more delay. The page is part of the project (folder \"web\"); leave its field empty for the built-in one or enter the address of your own copy.")
                         }
 
                         Item { }

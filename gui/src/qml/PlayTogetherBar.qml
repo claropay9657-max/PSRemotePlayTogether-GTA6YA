@@ -34,6 +34,8 @@ Item {
     readonly property string inviteLan: hosting ? (session.coplayInviteLan || session.coplayInvite || "") : ""
     readonly property string invitePublic: hosting ? (session.coplayInvitePublic || "") : ""
     readonly property string inviteIPv6: hosting ? (session.coplayInviteIPv6 || "") : ""
+    /** The link for a friend without the app, who joins from a web browser. */
+    readonly property string inviteWeb: hosting ? (session.coplayInviteWeb || "") : ""
 
     // Sharing has started: now the public address is worth asking for
     onHostingChanged: {
@@ -169,7 +171,7 @@ Item {
                     text: inviteCopied.running ? qsTr("Copied") : qsTr("Copy invite")
                     onClicked: {
                         // One invite: copy it. Several: ask which friend it is for.
-                        if (bar.invitePublic.length === 0 && bar.inviteIPv6.length === 0) {
+                        if (bar.invitePublic.length === 0 && bar.inviteIPv6.length === 0 && bar.inviteWeb.length === 0) {
                             bar.session.coplayCopyInvite();
                             inviteCopied.restart();
                         } else {
@@ -204,6 +206,13 @@ Item {
                             height: visible ? implicitHeight : 0
                             text: qsTr("For a friend over the internet, IPv6")
                             onTriggered: bar.copyText(bar.inviteIPv6)
+                        }
+
+                        MenuItem {
+                            visible: bar.inviteWeb.length > 0
+                            height: visible ? implicitHeight : 0
+                            text: qsTr("For a friend without the app: a link for the web browser")
+                            onTriggered: bar.copyText(bar.inviteWeb)
                         }
                     }
                 }
@@ -377,6 +386,22 @@ Item {
                                 font.pixelSize: 9
                                 font.bold: true
                                 text: qsTr("HOST")
+                            }
+                        }
+
+                        Rectangle {
+                            // Joined from a web browser, without the app
+                            visible: !!tile.modelData.web
+                            radius: 8
+                            color: Qt.rgba(0.2, 0.83, 0.6, 0.75)
+                            width: webLabel.implicitWidth + 10
+                            height: 16
+                            Label {
+                                id: webLabel
+                                anchors.centerIn: parent
+                                font.pixelSize: 9
+                                font.bold: true
+                                text: qsTr("WEB")
                             }
                         }
 

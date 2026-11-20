@@ -143,6 +143,11 @@ class SdeckHapticsWorker;
 		QString coplay_address;
 		QString coplay_stun_server;
 		QString coplay_meet_server;
+		/** Let friends in who join from a web browser, and the page they open (empty: the built-in one). */
+		bool coplay_web_guests = true;
+		QString coplay_web_url;
+		/** 0 = the port above the sharing port, -1 = any free one for each browser. */
+		int coplay_web_port = 0;
 		int coplay_mix_mode = 0;
 		/** The player's picture as image file bytes; shown to the others and in the overlay. */
 		QByteArray coplay_avatar;
@@ -205,6 +210,7 @@ class StreamSession : public QObject
 	Q_PROPERTY(QString coplayInviteLan READ GetCoPlayInviteLan NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInvitePublic READ GetCoPlayInvitePublic NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInviteIPv6 READ GetCoPlayInviteIPv6 NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayInviteWeb READ GetCoPlayInviteWeb NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayReachText READ GetCoPlayReachText NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayReachGood READ GetCoPlayReachGood NOTIFY CoPlayChanged)
 	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
@@ -500,6 +506,8 @@ class StreamSession : public QObject
 		QString GetCoPlayInvitePublic() const;
 		/** With its global IPv6 address; empty if it has none. */
 		QString GetCoPlayInviteIPv6() const;
+		/** The link for a friend's web browser; empty if this session takes no browsers. */
+		QString GetCoPlayInviteWeb() const;
 		/** While sharing: whether friends elsewhere get in without a forwarded port, in a sentence. Empty when there is nothing to say. */
 		QString GetCoPlayReachText() const;
 		/** Whether that sentence is good news. */
@@ -540,6 +548,7 @@ class StreamSession : public QObject
 		Q_INVOKABLE void coplayCopyInviteLan();
 		Q_INVOKABLE void coplayCopyInvitePublic();
 		Q_INVOKABLE void coplayCopyInviteIPv6();
+		Q_INVOKABLE void coplayCopyInviteWeb();
 		/** Sharing our session, or taking part in somebody else's. */
 		bool IsCoPlayActive() const;
 		bool GetCoPlayVoiceOn() const;

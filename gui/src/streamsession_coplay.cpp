@@ -18,6 +18,7 @@
 #include <chiaki/time.h>
 #include <chiaki/video.h>
 
+#include <coplay/web.h>
 #include <coplay/client.h>
 #include <coplay/host.h>
 #include <coplay/invite.h>
@@ -112,6 +113,8 @@ struct CoPlayState
 	// the invites say about it (nothing for the built-in one)
 	bool meet_on = false;
 	std::string invite_meet;
+	/** The page friends in a web browser open; empty if this session takes none. */
+	std::string web_page;
 	coplay::PadState local_pad;       // our own controllers, before merging
 	coplay::InputsSnapshot guest_inputs;
 	bool have_guest_inputs = false;
@@ -361,6 +364,18 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	callbacks.on_reach_changed = [this] {
 		QMetaObject::invokeMethod(this, [this] { emit CoPlayChanged(); }, Qt::QueuedConnection);
 	};
+	// Friends without the app join from a web browser; the meeting point leads them here
+	if(connect_info.coplay_web_guests && config.meet.Enabled() && coplay::WebGuestsSupported())
+	{
+		config.web.enabled = true;
+		config.web.stun_servers = config.meet.stun_servers;
+		// All browsers on one port that a host can forward next to the sharing port
+		int web_port = connect_info.coplay_web_port;
+		if(web_port == 0)
+			web_port = config.port < 65535 ? config.port + 1 : 0;
+		config.web.port = web_port > 0 && web_port < 65536 ? static_cast<uint16_t>(web_port) : 0;
+		coplay->web_page = coplay::WebUrlFromText(connect_info.coplay_web_url.toStdString());
+	}
 	coplay->host = std::make_unique<coplay::Host>(config, callbacks);
 
 	if(connect_info.coplay_mix_mode >= 0 && connect_info.coplay_mix_mode <= static_cast<int>(coplay::MixMode::HostOnly))
@@ -519,6 +534,13 @@ QString StreamSession::GetCoPlayInviteIPv6() const
 	return address.isEmpty() ? QString() : CoPlayInviteFor(address);
 }
 
+QString StreamSession::GetCoPlayInviteWeb() const
+{
+	if(!IsCoPlayHosting() || coplay->web_page.empty() || !coplay->host->WebGuestsOn())
+		return QString();
+	return QString::fromStdString(coplay::WebInviteLink(coplay->web_page, coplay->invite_secret, coplay->invite_meet));
+}
+
 QString StreamSession::GetCoPlayReachText() const
 {
 	if(!IsCoPlayHosting() || !coplay->meet_on)
@@ -648,6 +670,13 @@ void StreamSession::coplayCopyInviteIPv6()
 		QGuiApplication::clipboard()->setText(invite);
 }
 
+void StreamSession::coplayCopyInviteWeb()
+{
+	QString invite = GetCoPlayInviteWeb();
+	if(!invite.isEmpty())
+		QGuiApplication::clipboard()->setText(invite);
+}
+
 void StreamSession::SendControllerState(ChiakiControllerState *state)
 {
 	if(coplay)
@@ -703,6 +732,7 @@ void StreamSession::CoPlayUpdatePlayers()
 			p["inControl"] = g.in_control;
 			p["video"] = (g.want & coplay::kWantVideo) != 0;
 			p["address"] = QString::fromStdString(g.address);
+			p["web"] = g.web;
 			p["rttMs"] = static_cast<int>(g.rtt_ms);
 			p["controller"] = static_cast<int>(g.controller);
 			p["battery"] = static_cast<int>(g.battery);

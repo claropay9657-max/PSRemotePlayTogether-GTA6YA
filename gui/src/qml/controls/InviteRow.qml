@@ -14,6 +14,8 @@ Rectangle {
     property bool busy: false
     /** Hide the invite itself (streamer mode): it can still be copied. */
     property bool secret: false
+    /** What stands there instead while it is hidden. */
+    property string secretText: "psrpt://••••••••••••••••"
     /** A second button, for example "Try again"; hidden while empty. */
     property string actionText
     property color dot: "#8c52ff"
@@ -74,7 +76,7 @@ Rectangle {
                     opacity: 0.85
                     font.family: "Menlo, Consolas, DejaVu Sans Mono, monospace"
                     font.pixelSize: 13
-                    text: row.secret ? "psrpt://••••••••••••••••" : row.invite
+                    text: row.secret ? row.secretText : row.invite
                 }
 
                 BusyIndicator {
