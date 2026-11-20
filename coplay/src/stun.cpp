@@ -8,6 +8,8 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
+#include <thread>
 
 namespace coplay {
 
@@ -381,6 +383,163 @@ bool StunQueryFirst(const std::vector<StunServer> &servers, uint32_t timeout_ms,
 	if(servers.empty() && error)
 		*error = "No STUN server to ask";
 	return false;
+}
+
+// ------------------------------------------------------------------ for a session's own socket
+
+struct StunResolver::State
+{
+	std::mutex mutex;
+	bool done = false;
+	std::vector<Address> addresses;
+};
+
+void StunResolver::Start(const std::vector<StunServer> &servers)
+{
+	auto s = std::make_shared<State>();
+	state = s;
+	// Detached: nobody has to wait for a name server that does not answer
+	std::thread([s, servers] {
+		std::vector<Address> found;
+		for(const StunServer &server : servers)
+		{
+			std::vector<Address> resolved;
+			if(!Resolve(server.host, server.port, resolved, nullptr))
+				continue;
+			for(const Address &a : resolved)
+			{
+				uint8_t bytes[16];
+				if(a.Bytes(bytes) == 4)
+				{
+					found.push_back(a);
+					break;
+				}
+			}
+		}
+		std::lock_guard<std::mutex> lock(s->mutex);
+		s->addresses = std::move(found);
+		s->done = true;
+	}).detach();
+}
+
+bool StunResolver::Take(std::vector<Address> &out)
+{
+	if(!state)
+		return false;
+	{
+		std::lock_guard<std::mutex> lock(state->mutex);
+		if(!state->done)
+			return false;
+		out = std::move(state->addresses);
+	}
+	state.reset();
+	return true;
+}
+
+// A request that got no answer is repeated after these pauses, then every kSilentRetryMs
+static const uint32_t kProbeRetryMs[] = { 300, 600, 1200, 2400 };
+static const int kProbeRetries = static_cast<int>(sizeof(kProbeRetryMs) / sizeof(kProbeRetryMs[0]));
+static const uint32_t kSilentRetryMs = 5000;
+
+void StunProbe::SetServers(const std::vector<Address> &list)
+{
+	count = 0;
+	for(const Address &a : list)
+	{
+		if(count == 2)
+			break;
+		bool known = false;
+		for(int i = 0; i < count; i++)
+			known = known || servers[i].address.SameEndpoint(a);
+		if(known || !a.IsValid())
+			continue;
+		servers[count] = Server();
+		servers[count].address = a;
+		count++;
+	}
+	generation++;
+}
+
+void StunProbe::Tick(UdpSocket &socket, uint64_t now_ms)
+{
+	for(int i = 0; i < count; i++)
+	{
+		Server &s = servers[i];
+		if(now_ms < s.next_ms)
+			continue;
+		if(!RandomBytes(s.id.data(), s.id.size()))
+			continue;
+		const std::vector<uint8_t> request = StunBindingRequest(s.id);
+		socket.SendTo(request.data(), request.size(), s.address);
+		if(!s.waiting)
+			s.tries = 0;
+		s.waiting = true;
+		uint32_t pause = s.tries < kProbeRetries ? kProbeRetryMs[s.tries] : kSilentRetryMs;
+		s.tries++;
+		s.next_ms = now_ms + pause;
+	}
+}
+
+bool StunProbe::Handle(const uint8_t *data, size_t size, const Address &from, uint64_t now_ms)
+{
+	// Cheap test first: this runs for every datagram of a session
+	if(!count || size < kStunHeaderSize || (data[0] & 0xc0) != 0
+		|| data[4] != 0x21 || data[5] != 0x12 || data[6] != 0xa4 || data[7] != 0x42)
+		return false;
+	for(int i = 0; i < count; i++)
+	{
+		Server &s = servers[i];
+		if(!s.waiting || !from.SameEndpoint(s.address))
+			continue;
+		std::string text, problem;
+		uint16_t port = 0;
+		Answer answer = ParseResponse(data, size, s.id, text, &port, problem);
+		if(answer == Answer::NotOurs)
+			continue;
+		s.waiting = false;
+		s.next_ms = now_ms + kRefreshMs;
+		if(answer == Answer::Address)
+		{
+			Address mapped;
+			if(ParseAddress(text, port, mapped) && !mapped.SameEndpoint(s.mapped))
+			{
+				s.mapped = mapped;
+				generation++;
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+Address StunProbe::Public() const
+{
+	for(int i = 0; i < count; i++)
+	{
+		if(servers[i].mapped.IsValid())
+			return servers[i].mapped;
+	}
+	return Address();
+}
+
+PortMapping StunProbe::Mapping() const
+{
+	if(count < 2 || !servers[0].mapped.IsValid() || !servers[1].mapped.IsValid())
+		return PortMapping::Unknown;
+	return servers[0].mapped.SameEndpoint(servers[1].mapped) ? PortMapping::Stable : PortMapping::PerDestination;
+}
+
+bool StunProbe::GaveUp() const
+{
+	if(!count || Public().IsValid())
+		return false;
+	for(int i = 0; i < count; i++)
+	{
+		// The quick repeats are through when the slow ones have begun
+		if(servers[i].tries <= kProbeRetries)
+			return false;
+	}
+	return true;
 }
 
 } // namespace coplay

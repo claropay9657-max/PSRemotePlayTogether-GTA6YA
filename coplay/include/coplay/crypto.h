@@ -32,8 +32,15 @@ Key HkdfSha256(const uint8_t *ikm, size_t ikm_size, const uint8_t *salt, size_t 
  * a different version why it is turned away.
  */
 Key DeriveHelloKey(const Secret &secret);
-/** Key that seals Welcome and Reject packets (host -> guest). */
+/** Key that seals Welcome, Reject and Punch packets (host -> guest). */
 Key DeriveWelcomeKey(const Secret &secret);
+/** Key that seals the notes left at the meeting point (meet.h). */
+Key DeriveMeetKey(const Secret &secret);
+/**
+ * What names a session at the meeting point. Derived from the secret in one
+ * direction only, so the meeting point learns nothing it could join with.
+ */
+std::array<uint8_t, 16> DeriveMeetRoom(const Secret &secret);
 
 struct SessionKeys
 {

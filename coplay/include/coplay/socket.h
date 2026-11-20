@@ -6,6 +6,8 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -31,13 +33,30 @@ struct Address
 	std::string ToString() const;
 	bool operator==(const Address &o) const;
 	bool operator!=(const Address &o) const { return !(*this == o); }
+
+	/**
+	 * The address without the port: 4 bytes for IPv4, also when it is written as IPv6
+	 * ("::ffff:1.2.3.4", the way a socket for both kinds reports IPv4 peers), 16 for IPv6.
+	 * @return the number of bytes, 0 if this is no address
+	 */
+	size_t Bytes(uint8_t out[16]) const;
+	/** The same machine and port, however the address is written. */
+	bool SameEndpoint(const Address &o) const;
+	/** From 4 or 16 bytes; anything else gives an invalid address. */
+	static Address FromBytes(const uint8_t *bytes, size_t size, uint16_t port);
 };
+
+/** Reads "192.0.2.1" or "2001:db8::1" (no names: nothing is looked up). */
+bool ParseAddress(const std::string &literal, uint16_t port, Address &out);
 
 /** Resolves a host name or literal address. IPv6 results come first. */
 bool Resolve(const std::string &host, uint16_t port, std::vector<Address> &out, std::string *error);
 
 class UdpSocket
 {
+	private:
+		enum class Kind { Closed, IPv4, IPv6, Both };
+
 	public:
 		UdpSocket();
 		~UdpSocket();
@@ -55,6 +74,8 @@ class UdpSocket
 		void Close();
 		bool IsOpen() const;
 		uint16_t LocalPort() const;
+		/** Whether IPv6 addresses can be sent to from this socket. */
+		bool HasIPv6() const { return kind == Kind::Both || kind == Kind::IPv6; }
 
 		/** Safe to call from several threads at once. */
 		bool SendTo(const uint8_t *data, size_t size, const Address &to);
@@ -66,6 +87,21 @@ class UdpSocket
 		/** Randomly drops outgoing datagrams. For tests and the simulator. */
 		void SetSimulatedLoss(double probability, uint32_t seed = 1);
 
+		/**
+		 * Behaves like a socket behind a router without a forwarded port: what arrives
+		 * is dropped unless this socket has sent to where it comes from. For tests and
+		 * the simulator.
+		 */
+		enum class Filter
+		{
+			None,
+			/** Lets in whatever comes from a machine it has sent to, from any port. */
+			Address,
+			/** Lets in only what comes from the very address and port it has sent to. */
+			AddressAndPort
+		};
+		void SetSimulatedFilter(Filter filter);
+
 	private:
 #ifdef _WIN32
 		using Handle = SOCKET;
@@ -73,10 +109,15 @@ class UdpSocket
 		using Handle = int;
 #endif
 		void Configure();
+		std::string FilterKey(const Address &a, Filter f) const;
 
 		Handle handle;
+		Kind kind = Kind::Closed;
 		std::atomic<uint32_t> loss_threshold{0}; // of 2^32
 		std::atomic<uint32_t> loss_state{1};
+		std::atomic<int> filter{0};
+		std::mutex filter_mutex;
+		std::set<std::string> filter_open; // with filter_mutex
 };
 
 /**

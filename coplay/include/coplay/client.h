@@ -17,6 +17,7 @@
 #include "crypto.h"
 #include "invite.h"
 #include "media.h"
+#include "meet.h"
 #include "protocol.h"
 #include "socket.h"
 #include "video.h"
@@ -40,6 +41,11 @@ struct ClientConfig
 	/** The session counts as lost after this long without a packet from the host. */
 	uint32_t host_timeout_ms = 6000;
 	FrameAssembler::Config assembler;
+	/**
+	 * Finds a host that has no forwarded port (meet.h). Off unless a URL and a way to
+	 * ask it are given. The address in the invite is always tried as well.
+	 */
+	MeetConfig meet;
 };
 
 enum class DisconnectReason
@@ -103,9 +109,12 @@ class Client
 
 		/**
 		 * Finds the host and performs the handshake. Blocks for up to
-		 * connect_timeout_ms; CancelConnect() from another thread ends it early.
+		 * connect_timeout_ms, or up to meet.connect_ms once the host has been found at
+		 * the meeting point; CancelConnect() from another thread ends it early.
 		 */
 		bool Connect(std::string *error);
+		/** Whether the host answered under an address that was not in the invite. Valid after Connect() succeeded. */
+		bool ViaMeetingPoint() const { return via_meeting_point; }
 		void CancelConnect() { cancel_connect = true; }
 		bool IsConnected() const { return connected; }
 		/** What the host said about the session. Valid after Connect() succeeded. */
@@ -147,6 +156,8 @@ class Client
 
 		/** Outgoing packet loss for tests and the simulator. */
 		void SetSimulatedLoss(double probability, uint32_t seed = 1);
+		/** A router without a forwarded port in front of us, for tests and the simulator. Before Connect(). */
+		void SetSimulatedFilter(UdpSocket::Filter filter) { simulated_filter = filter; }
 
 	private:
 		void ThreadMain();
@@ -193,6 +204,8 @@ class Client
 		std::atomic<uint32_t> rtt_ms{0};
 		double loss_probability = 0.0;
 		uint32_t loss_seed = 1;
+		UdpSocket::Filter simulated_filter = UdpSocket::Filter::None;
+		bool via_meeting_point = false;
 
 		// Network thread only
 		FrameAssembler assembler;

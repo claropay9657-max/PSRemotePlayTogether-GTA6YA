@@ -142,6 +142,7 @@ class SdeckHapticsWorker;
 		QString coplay_name;
 		QString coplay_address;
 		QString coplay_stun_server;
+		QString coplay_meet_server;
 		int coplay_mix_mode = 0;
 		/** The player's picture as image file bytes; shown to the others and in the overlay. */
 		QByteArray coplay_avatar;
@@ -204,6 +205,8 @@ class StreamSession : public QObject
 	Q_PROPERTY(QString coplayInviteLan READ GetCoPlayInviteLan NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInvitePublic READ GetCoPlayInvitePublic NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInviteIPv6 READ GetCoPlayInviteIPv6 NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayReachText READ GetCoPlayReachText NOTIFY CoPlayChanged)
+	Q_PROPERTY(bool coplayReachGood READ GetCoPlayReachGood NOTIFY CoPlayChanged)
 	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
 	Q_PROPERTY(int coplayMixMode READ GetCoPlayMixMode WRITE SetCoPlayMixMode NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayVideoEnabled READ GetCoPlayVideoEnabled WRITE SetCoPlayVideoEnabled NOTIFY CoPlayChanged)
@@ -495,6 +498,10 @@ class StreamSession : public QObject
 		QString GetCoPlayInvitePublic() const;
 		/** With its global IPv6 address; empty if it has none. */
 		QString GetCoPlayInviteIPv6() const;
+		/** While sharing: whether friends elsewhere get in without a forwarded port, in a sentence. Empty when there is nothing to say. */
+		QString GetCoPlayReachText() const;
+		/** Whether that sentence is good news. */
+		bool GetCoPlayReachGood() const;
 		QVariantList GetCoPlayPlayers() const;
 		int GetCoPlayMixMode() const;
 		void SetCoPlayMixMode(int mode);

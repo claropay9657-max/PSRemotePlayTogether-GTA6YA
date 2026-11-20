@@ -146,16 +146,25 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
   <img src="docs/images/screenshots/start-page.jpg" alt="The start page: your console, joining a friend, sharing your console and Controller only" width="820">
 </div>
 
-### Which port the host has to open
+### Does the host have to open a port?
+
+Usually not.
 
 | Your friends are… | What the host does |
 | :--- | :--- |
 | in the same network or the same VPN | Nothing. Send the **Same network** invite. |
-| somewhere on the internet | Forward **UDP port 9410** to your computer in your router and send the **Internet** invite. The port can be changed under Play Together. |
+| somewhere on the internet | With most routers: nothing. Send the **Internet** invite. The two apps find each other through a small **meeting point** on the internet and then connect directly. |
+| somewhere on the internet, and it does not connect | Forward **UDP port 9410** to your computer in your router. That always works, and it is used by itself as soon as it is there. The port can be changed under Play Together. |
 
-Guests never open a port. For the Internet invite the app asks a STUN server for your address on the internet: Google's by default, and you can enter your own under **Play Together → STUN server**.
+Guests never open a port.
 
-> 💡 **Can't forward a port?** Put everybody into one virtual network with a mesh VPN such as Tailscale or ZeroTier, enter your VPN address under **Play Together → Own internet address** and send that invite.
+**How joining without a port works.** Host and guest each leave a short sealed note with their own addresses at the meeting point, read each other's, and send to each other at the same moment. That makes both routers let the other side in ("UDP hole punching"). The meeting point only passes these notes on: picture, sound and controllers go directly between the players, never through a server.
+
+It works with ordinary home routers and over IPv6. It does not get through when a router gives every connection a new port ("symmetric NAT", common in mobile networks and with some fibre providers) and the router on the other side is strict as well. While you share, the stream menu says which case you are in. The details are in [docs/nat-traversal.md](docs/nat-traversal.md).
+
+For this the app asks a STUN server for your address on the internet (Google's by default) and uses the meeting point at gamernova.net. Both can be changed or switched off under **Play Together**, and the meeting point is one small PHP file that you can host yourself: [server/meeting-point](server/meeting-point).
+
+> 💡 **Still no way through?** Put everybody into one virtual network with a mesh VPN such as Tailscale or ZeroTier, enter your VPN address under **Play Together → Own internet address** and send that invite.
 
 ### Join a friend
 
@@ -274,6 +283,12 @@ No. The game picture is in the app's window, which OBS can capture. Only if you 
 
 **How much upload does the host need?**
 Roughly the Remote Play bitrate per guest, plus 0.4 to 2.5 Mbit/s per webcam and receiver, depending on the picture size chosen.
+
+**Do I have to forward a port in my router?**
+Usually not: with most routers friends get in by themselves, through the meeting point. If a friend cannot connect, forwarding UDP port 9410 always works. See [Does the host have to open a port?](#does-the-host-have-to-open-a-port)
+
+**What does the meeting point learn about us?**
+The IP addresses of the computers that ask it, like any web server. It cannot read the notes the apps leave there, never sees the session's key, and no picture, sound or controller data passes through it. **Play Together → Meeting point → off** switches it off; then the forwarded port is the only way in.
 
 **Is the invite safe to share?**
 It is the key to your session, so give it only to the people who should join. Everything between host and guests is encrypted with it, and **Make a new invite** under Play Together makes old ones stop working.

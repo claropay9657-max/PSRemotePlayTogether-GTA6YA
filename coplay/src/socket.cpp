@@ -60,6 +60,9 @@ uint64_t NowUs()
 		std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
+/** How an IPv4 address starts when it is written as an IPv6 one (::ffff:a.b.c.d). */
+static const uint8_t kMappedPrefix[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
+
 uint16_t Address::Port() const
 {
 	if(storage.ss_family == AF_INET)
@@ -83,8 +86,7 @@ std::string Address::ToString() const
 		auto *in6 = reinterpret_cast<const sockaddr_in6 *>(&storage);
 		// Show IPv4 peers of a dual-stack socket the way people write them
 		const uint8_t *a = in6->sin6_addr.s6_addr;
-		static const uint8_t mapped_prefix[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
-		if(std::memcmp(a, mapped_prefix, sizeof(mapped_prefix)) == 0)
+		if(std::memcmp(a, kMappedPrefix, sizeof(kMappedPrefix)) == 0)
 		{
 			return std::to_string(a[12]) + "." + std::to_string(a[13]) + "." + std::to_string(a[14]) + "."
 				+ std::to_string(a[15]) + ":" + std::to_string(Port());
@@ -113,6 +115,77 @@ bool Address::operator==(const Address &o) const
 			&& std::memcmp(&a->sin6_addr, &b->sin6_addr, sizeof(a->sin6_addr)) == 0;
 	}
 	return length == o.length;
+}
+
+size_t Address::Bytes(uint8_t out[16]) const
+{
+	if(!IsValid())
+		return 0;
+	if(storage.ss_family == AF_INET)
+	{
+		std::memcpy(out, &reinterpret_cast<const sockaddr_in *>(&storage)->sin_addr, 4);
+		return 4;
+	}
+	if(storage.ss_family == AF_INET6)
+	{
+		const uint8_t *a = reinterpret_cast<const sockaddr_in6 *>(&storage)->sin6_addr.s6_addr;
+		if(std::memcmp(a, kMappedPrefix, sizeof(kMappedPrefix)) == 0)
+		{
+			std::memcpy(out, a + 12, 4);
+			return 4;
+		}
+		std::memcpy(out, a, 16);
+		return 16;
+	}
+	return 0;
+}
+
+bool Address::SameEndpoint(const Address &o) const
+{
+	uint8_t a[16], b[16];
+	size_t na = Bytes(a);
+	size_t nb = o.Bytes(b);
+	return na && na == nb && Port() == o.Port() && std::memcmp(a, b, na) == 0;
+}
+
+Address Address::FromBytes(const uint8_t *bytes, size_t size, uint16_t port)
+{
+	Address a;
+	if(bytes && size == 4)
+	{
+		auto *in = reinterpret_cast<sockaddr_in *>(&a.storage);
+		in->sin_family = AF_INET;
+		in->sin_port = htons(port);
+		std::memcpy(&in->sin_addr, bytes, 4);
+		a.length = sizeof(sockaddr_in);
+	}
+	else if(bytes && size == 16)
+	{
+		auto *in6 = reinterpret_cast<sockaddr_in6 *>(&a.storage);
+		in6->sin6_family = AF_INET6;
+		in6->sin6_port = htons(port);
+		std::memcpy(in6->sin6_addr.s6_addr, bytes, 16);
+		a.length = sizeof(sockaddr_in6);
+	}
+	return a;
+}
+
+bool ParseAddress(const std::string &literal, uint16_t port, Address &out)
+{
+	EnsureSocketsInitialized();
+	in_addr v4;
+	if(inet_pton(AF_INET, literal.c_str(), &v4) == 1)
+	{
+		out = Address::FromBytes(reinterpret_cast<const uint8_t *>(&v4), 4, port);
+		return true;
+	}
+	in6_addr v6;
+	if(inet_pton(AF_INET6, literal.c_str(), &v6) == 1)
+	{
+		out = Address::FromBytes(v6.s6_addr, 16, port);
+		return true;
+	}
+	return false;
 }
 
 bool Resolve(const std::string &host, uint16_t port, std::vector<Address> &out, std::string *error)
@@ -235,6 +308,28 @@ bool IsGlobalIPv6Address(const std::string &address)
 	return IsGlobalIPv6(addr.s6_addr);
 }
 
+/**
+ * A machine often has two global IPv6 addresses: a lasting one and a temporary one
+ * that it prefers for outgoing connections and replaces every day. An invite should
+ * carry the lasting one, which is also the one a router's firewall rule is made for,
+ * and a session's socket has to send from the address the invite (or the note at the
+ * meeting point) names, or the other side's firewall does not recognise the answer.
+ * Not every system lets us choose; then it is the temporary one, in both places.
+ */
+template <typename H>
+static void PreferLastingIPv6Address(H s)
+{
+#if defined(IPV6_ADDR_PREFERENCES) && defined(IPV6_PREFER_SRC_PUBLIC)
+	int prefer = IPV6_PREFER_SRC_PUBLIC;
+	setsockopt(s, IPPROTO_IPV6, IPV6_ADDR_PREFERENCES, reinterpret_cast<const char *>(&prefer), sizeof(prefer));
+#elif defined(IPV6_PREFER_TEMPADDR)
+	int prefer = 0;
+	setsockopt(s, IPPROTO_IPV6, IPV6_PREFER_TEMPADDR, reinterpret_cast<const char *>(&prefer), sizeof(prefer));
+#else
+	(void)s;
+#endif
+}
+
 std::string GuessGlobalIPv6Address()
 {
 	EnsureSocketsInitialized();
@@ -243,21 +338,7 @@ std::string GuessGlobalIPv6Address()
 	auto s = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 	if(s == kInvalidHandle)
 		return std::string();
-	// A machine often has two global addresses: a lasting one and a temporary one
-	// that it prefers for outgoing connections and replaces every day. An invite
-	// should carry the lasting one, which is also the one a router's firewall rule
-	// is made for. Not every system lets us choose; then it is the temporary one.
-#if defined(IPV6_ADDR_PREFERENCES) && defined(IPV6_PREFER_SRC_PUBLIC)
-	{
-		int prefer = IPV6_PREFER_SRC_PUBLIC;
-		setsockopt(s, IPPROTO_IPV6, IPV6_ADDR_PREFERENCES, reinterpret_cast<const char *>(&prefer), sizeof(prefer));
-	}
-#elif defined(IPV6_PREFER_TEMPADDR)
-	{
-		int prefer = 0;
-		setsockopt(s, IPPROTO_IPV6, IPV6_PREFER_TEMPADDR, reinterpret_cast<const char *>(&prefer), sizeof(prefer));
-	}
-#endif
+	PreferLastingIPv6Address(s);
 	sockaddr_in6 remote;
 	std::memset(&remote, 0, sizeof(remote));
 	remote.sin6_family = AF_INET6;
@@ -324,6 +405,8 @@ bool UdpSocket::Bind(uint16_t port, std::string *error)
 		addr.sin6_port = htons(port);
 		if(dual && bind(handle, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) == 0)
 		{
+			PreferLastingIPv6Address(handle);
+			kind = Kind::Both;
 			Configure();
 			return true;
 		}
@@ -351,6 +434,7 @@ bool UdpSocket::Bind(uint16_t port, std::string *error)
 		handle = kInvalidHandle;
 		return false;
 	}
+	kind = Kind::IPv4;
 	Configure();
 	return true;
 }
@@ -365,6 +449,7 @@ bool UdpSocket::OpenFor(const Address &peer, std::string *error)
 			*error = "Cannot create UDP socket: " + LastSocketError();
 		return false;
 	}
+	kind = peer.storage.ss_family == AF_INET6 ? Kind::IPv6 : Kind::IPv4;
 	Configure();
 	return true;
 }
@@ -376,6 +461,7 @@ void UdpSocket::Close()
 		CloseHandle_(handle);
 		handle = kInvalidHandle;
 	}
+	kind = Kind::Closed;
 }
 
 bool UdpSocket::IsOpen() const
@@ -406,10 +492,58 @@ void UdpSocket::SetSimulatedLoss(double probability, uint32_t seed)
 	loss_state = seed ? seed : 1;
 }
 
-bool UdpSocket::SendTo(const uint8_t *data, size_t size, const Address &to)
+void UdpSocket::SetSimulatedFilter(Filter f)
 {
-	if(handle == kInvalidHandle || !to.IsValid())
+	std::lock_guard<std::mutex> lock(filter_mutex);
+	filter_open.clear();
+	filter = static_cast<int>(f);
+}
+
+std::string UdpSocket::FilterKey(const Address &a, Filter f) const
+{
+	uint8_t bytes[16];
+	size_t n = a.Bytes(bytes);
+	std::string key(reinterpret_cast<const char *>(bytes), n);
+	if(f == Filter::AddressAndPort)
+		key += ":" + std::to_string(a.Port());
+	return key;
+}
+
+bool UdpSocket::SendTo(const uint8_t *data, size_t size, const Address &to_in)
+{
+	if(handle == kInvalidHandle || !to_in.IsValid())
 		return false;
+
+	// A socket for both kinds of address takes IPv4 ones written as IPv6, and a plain
+	// IPv4 socket takes them only as IPv4: callers need not care which one they hold
+	Address converted;
+	const Address *target = &to_in;
+	if(kind == Kind::Both && to_in.storage.ss_family == AF_INET)
+	{
+		uint8_t mapped[16];
+		std::memcpy(mapped, kMappedPrefix, sizeof(kMappedPrefix));
+		to_in.Bytes(mapped + 12);
+		converted = Address::FromBytes(mapped, 16, to_in.Port());
+		target = &converted;
+	}
+	else if(kind == Kind::IPv4 && to_in.storage.ss_family == AF_INET6)
+	{
+		uint8_t bytes[16];
+		if(to_in.Bytes(bytes) != 4)
+			return false; // no way to IPv6 from here
+		converted = Address::FromBytes(bytes, 4, to_in.Port());
+		target = &converted;
+	}
+	const Address &to = *target;
+
+	Filter f = static_cast<Filter>(filter.load(std::memory_order_relaxed));
+	if(f != Filter::None)
+	{
+		// What leaves opens the way back in, whether or not it arrives
+		std::lock_guard<std::mutex> lock(filter_mutex);
+		filter_open.insert(FilterKey(to, f));
+	}
+
 	uint32_t threshold = loss_threshold.load(std::memory_order_relaxed);
 	if(threshold)
 	{
@@ -487,6 +621,13 @@ int UdpSocket::RecvFrom(uint8_t *buf, size_t capacity, Address &from, int timeou
 		return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR || errno == ECONNREFUSED) ? 0 : -1;
 #endif
 	from.length = len;
+	Filter f = static_cast<Filter>(filter.load(std::memory_order_relaxed));
+	if(f != Filter::None)
+	{
+		std::lock_guard<std::mutex> lock(filter_mutex);
+		if(!filter_open.count(FilterKey(from, f)))
+			return 0; // the simulated router has never seen us send there
+	}
 	return static_cast<int>(r);
 }
 

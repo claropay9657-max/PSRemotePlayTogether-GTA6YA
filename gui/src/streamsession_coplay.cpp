@@ -23,6 +23,8 @@
 #include <coplay/invite.h>
 #include <coplay/socket.h>
 
+#include "coplaymeet.h"
+
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QHash>
@@ -106,6 +108,10 @@ struct CoPlayState
 	QString invite_address; // what the user wants in the invite, if anything
 	QString invite_lan;
 	QString stun_server;
+	// Joining without a forwarded port: whether a meeting point is asked, and what
+	// the invites say about it (nothing for the built-in one)
+	bool meet_on = false;
+	std::string invite_meet;
 	coplay::PadState local_pad;       // our own controllers, before merging
 	coplay::InputsSnapshot guest_inputs;
 	bool have_guest_inputs = false;
@@ -348,6 +354,13 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	callbacks.on_log = [session_log](const std::string &line) {
 		CHIAKI_LOGI(session_log, "Play Together: %s", line.c_str());
 	};
+	// Friends without a way through the host's router meet it at the meeting point
+	config.meet = CoPlayMeet::ForHost(connect_info.coplay_meet_server, connect_info.coplay_stun_server);
+	coplay->meet_on = config.meet.Enabled();
+	coplay->invite_meet = CoPlayMeet::InviteValue(connect_info.coplay_meet_server);
+	callbacks.on_reach_changed = [this] {
+		QMetaObject::invokeMethod(this, [this] { emit CoPlayChanged(); }, Qt::QueuedConnection);
+	};
 	coplay->host = std::make_unique<coplay::Host>(config, callbacks);
 
 	if(connect_info.coplay_mix_mode >= 0 && connect_info.coplay_mix_mode <= static_cast<int>(coplay::MixMode::HostOnly))
@@ -374,15 +387,20 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	connect(CoPlayPublicAddress::Instance(), &CoPlayPublicAddress::Changed, this, &StreamSession::CoPlayChanged);
 }
 
-/** The invite to this session under the given address; none without an address. */
+/**
+ * The invite to this session under the given address. Without an address there is
+ * none, unless a meeting point is asked: then the invite says so instead.
+ */
 QString StreamSession::CoPlayInviteFor(const QString &host) const
 {
-	if(!coplay || !coplay->host || host.isEmpty())
+	if(!coplay || !coplay->host || (host.isEmpty() && !coplay->meet_on))
 		return QString();
 	coplay::Invite invite;
 	invite.host = host.toStdString();
 	invite.port = coplay->invite_port;
 	invite.secret = coplay->invite_secret;
+	if(coplay->meet_on)
+		invite.meet = coplay->invite_meet;
 	return QString::fromStdString(coplay::EncodeInvite(invite));
 }
 
@@ -496,7 +514,39 @@ QString StreamSession::GetCoPlayInviteIPv6() const
 {
 	if(!IsCoPlayHosting())
 		return QString();
-	return CoPlayInviteFor(QString::fromStdString(coplay::GuessGlobalIPv6Address()));
+	// Without an IPv6 address there is no IPv6 invite, meeting point or not
+	const QString address = QString::fromStdString(coplay::GuessGlobalIPv6Address());
+	return address.isEmpty() ? QString() : CoPlayInviteFor(address);
+}
+
+QString StreamSession::GetCoPlayReachText() const
+{
+	if(!IsCoPlayHosting() || !coplay->meet_on)
+		return QString();
+	const coplay::HostReach reach = coplay->host->Reach();
+	const QString port = QString::number(coplay->invite_port);
+	switch(reach.meet)
+	{
+		case coplay::MeetState::Failed:
+			return tr("The meeting point cannot be reached: friends over the internet need UDP port %1 forwarded to this computer.").arg(port);
+		case coplay::MeetState::Ok:
+			if(reach.mapping == coplay::PortMapping::PerDestination)
+				return tr("Your router gives every connection a new port (symmetric NAT). Friends with an ordinary router may still get in; if not, forward UDP port %1.").arg(port);
+			if(reach.public_address.empty() && reach.stun_silent)
+				return tr("No STUN server answers, so friends cannot be told this computer's address on the internet. Over IPv6 it may still work; otherwise forward UDP port %1.").arg(port);
+			return tr("Friends over the internet can join without a forwarded port, through the meeting point.");
+		default:
+			return QString();
+	}
+}
+
+bool StreamSession::GetCoPlayReachGood() const
+{
+	if(!IsCoPlayHosting() || !coplay->meet_on)
+		return false;
+	const coplay::HostReach reach = coplay->host->Reach();
+	return reach.meet == coplay::MeetState::Ok && reach.mapping != coplay::PortMapping::PerDestination
+		&& !(reach.public_address.empty() && reach.stun_silent);
 }
 
 QVariantList StreamSession::GetCoPlayPlayers() const

@@ -8,6 +8,7 @@
 #include <coplay/host.h>
 #include <coplay/invite.h>
 #include <coplay/media.h>
+#include <coplay/meet.h>
 #include <coplay/mixer.h>
 #include <coplay/socket.h>
 #include <coplay/stun.h>
@@ -1043,6 +1044,7 @@ struct TestHost
 	std::atomic<int> input_changes{0};
 	std::atomic<int> keyframe_requests{0};
 	std::atomic<int> guest_changes{0};
+	std::atomic<int> reach_changes{0};
 	std::mutex mutex;
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
@@ -1051,14 +1053,18 @@ struct TestHost
 
 	~TestHost() { host->Stop(); } // before the counters the callbacks touch go away
 
-	explicit TestHost(size_t max_guests = 4, const std::vector<uint8_t> &avatar = {})
+	explicit TestHost(size_t max_guests = 4, const std::vector<uint8_t> &avatar = {},
+		const std::function<void(HostConfig &)> &tweak = nullptr)
 	{
 		config.port = 0; // any free port
 		config.secret = GenerateSecret();
 		config.name = "Host";
 		config.avatar = avatar;
 		config.max_guests = max_guests;
+		if(tweak)
+			tweak(config);
 		HostCallbacks cb;
+		cb.on_reach_changed = [this] { reach_changes++; };
 		cb.on_input_changed = [this] { input_changes++; };
 		cb.on_keyframe_needed = [this] { keyframe_requests++; };
 		cb.on_guests_changed = [this] { guest_changes++; };
@@ -1123,7 +1129,8 @@ struct TestGuest
 	~TestGuest() { client->Stop(); } // callbacks use the members below
 
 	TestGuest(const Invite &invite, const std::string &name, uint8_t want = kWantAll, uint32_t connect_timeout_ms = 3000,
-		const std::vector<uint8_t> &avatar = {}, uint64_t player_id = 0, uint32_t host_timeout_ms = 1500)
+		const std::vector<uint8_t> &avatar = {}, uint64_t player_id = 0, uint32_t host_timeout_ms = 1500,
+		const std::function<void(ClientConfig &)> &tweak = nullptr)
 	{
 		ClientConfig config;
 		config.invite = invite;
@@ -1134,6 +1141,8 @@ struct TestGuest
 		config.controller = ControllerKind::Xbox;
 		config.connect_timeout_ms = connect_timeout_ms;
 		config.host_timeout_ms = host_timeout_ms;
+		if(tweak)
+			tweak(config);
 		client = std::make_unique<Client>(config);
 	}
 
@@ -3364,6 +3373,850 @@ TEST(net_chat_link_preview_picture_travels)
 		BlobData d = a.client->ChatImage(sent.embed.image.hash);
 		return d && *d == other;
 	}, 3000));
+}
+
+// ------------------------------------------------------------------ joining without a forwarded port
+
+static Address Loopback(uint16_t port)
+{
+	Address a;
+	ParseAddress("127.0.0.1", port, a);
+	return a;
+}
+
+TEST(addresses_in_both_writings)
+{
+	Address v4, mapped, v6;
+	CHECK(ParseAddress("192.0.2.7", 9410, v4));
+	CHECK(ParseAddress("::ffff:192.0.2.7", 9410, mapped));
+	CHECK(ParseAddress("2001:db8::7", 9410, v6));
+	CHECK(!ParseAddress("example.org", 9410, v4) && !ParseAddress("", 1, v4));
+	uint8_t a[16], b[16];
+	CHECK(v4.Bytes(a) == 4 && mapped.Bytes(b) == 4 && std::memcmp(a, b, 4) == 0);
+	CHECK(v6.Bytes(a) == 16);
+	CHECK(v4.SameEndpoint(mapped) && mapped.SameEndpoint(v4));
+	CHECK(v4 != mapped); // the plain comparison stays exact
+	CHECK(!v4.SameEndpoint(v6));
+	Address other_port;
+	ParseAddress("192.0.2.7", 9411, other_port);
+	CHECK(!v4.SameEndpoint(other_port));
+	CHECK(Address::FromBytes(a, 16, 9410).SameEndpoint(v6));
+	CHECK(!Address::FromBytes(a, 5, 9410).IsValid());
+	CHECK(!Address().SameEndpoint(Address()));
+	CHECK(mapped.ToString() == "192.0.2.7:9410");
+}
+
+TEST(net_one_socket_for_both_kinds_of_address)
+{
+	UdpSocket a, b;
+	CHECK(a.Bind(0, nullptr) && b.Bind(0, nullptr));
+	// an IPv4 address written the plain way goes out through a socket that is open for both
+	const uint8_t hello[] = { 1, 2, 3 };
+	CHECK(a.SendTo(hello, sizeof(hello), Loopback(b.LocalPort())));
+	uint8_t buf[16];
+	Address from;
+	CHECK(b.RecvFrom(buf, sizeof(buf), from, 1000) == 3);
+	CHECK(from.SameEndpoint(Loopback(a.LocalPort())));
+	// and the answer finds its way with the address as it was received
+	CHECK(b.SendTo(hello, 2, from));
+	CHECK(a.RecvFrom(buf, sizeof(buf), from, 1000) == 2);
+}
+
+TEST(net_simulated_router_lets_in_only_answers)
+{
+	const uint8_t data[] = { 7 };
+	uint8_t buf[16];
+	Address from;
+	{
+		UdpSocket inside, outside, stranger;
+		CHECK(inside.Bind(0, nullptr) && outside.Bind(0, nullptr) && stranger.Bind(0, nullptr));
+		inside.SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+		CHECK(outside.SendTo(data, 1, Loopback(inside.LocalPort())));
+		CHECK(inside.RecvFrom(buf, sizeof(buf), from, 150) == 0); // nobody asked for this
+		CHECK(inside.SendTo(data, 1, Loopback(outside.LocalPort())));
+		CHECK(outside.SendTo(data, 1, Loopback(inside.LocalPort())));
+		CHECK(inside.RecvFrom(buf, sizeof(buf), from, 1000) == 1);
+		// the same machine, another port: still closed
+		CHECK(stranger.SendTo(data, 1, Loopback(inside.LocalPort())));
+		CHECK(inside.RecvFrom(buf, sizeof(buf), from, 150) == 0);
+	}
+	{
+		UdpSocket inside, outside, other_port;
+		CHECK(inside.Bind(0, nullptr) && outside.Bind(0, nullptr) && other_port.Bind(0, nullptr));
+		inside.SetSimulatedFilter(UdpSocket::Filter::Address);
+		CHECK(other_port.SendTo(data, 1, Loopback(inside.LocalPort())));
+		CHECK(inside.RecvFrom(buf, sizeof(buf), from, 150) == 0);
+		CHECK(inside.SendTo(data, 1, Loopback(outside.LocalPort())));
+		// this kind of router only looks at the machine, not at the port
+		CHECK(other_port.SendTo(data, 1, Loopback(inside.LocalPort())));
+		CHECK(inside.RecvFrom(buf, sizeof(buf), from, 1000) == 1);
+	}
+}
+
+TEST(meet_room_and_note)
+{
+	Secret secret = GenerateSecret();
+	Secret other = GenerateSecret();
+	std::string room = MeetRoomId(secret);
+	CHECK(room.size() == kMeetRoomIdLength);
+	CHECK(room.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") == std::string::npos);
+	CHECK(room == MeetRoomId(secret) && room != MeetRoomId(other));
+	// the room does not give the key away, not even its text form
+	CHECK(room != SecretToString(secret));
+
+	MeetNote note;
+	note.role = MeetRole::Host;
+	note.peer_id = 0x1122334455667788ull;
+	note.seq = 7;
+	MeetCandidate c;
+	c.kind = CandidateKind::Public;
+	ParseAddress("203.0.113.7", 40123, c.address);
+	note.candidates.push_back(c);
+	c.kind = CandidateKind::Local;
+	ParseAddress("192.168.1.20", 9410, c.address);
+	note.candidates.push_back(c);
+	c.kind = CandidateKind::IPv6;
+	ParseAddress("2001:db8:12:34::5", 9410, c.address);
+	note.candidates.push_back(c);
+
+	std::string text, again;
+	CHECK(SealMeetNote(secret, note, text) && SealMeetNote(secret, note, again));
+	CHECK(!text.empty() && text.size() <= kMeetMaxNoteText);
+	CHECK(text != again); // a fresh nonce every time
+	MeetNote opened;
+	CHECK(OpenMeetNote(secret, text, opened));
+	CHECK(opened.role == MeetRole::Host && opened.peer_id == note.peer_id && opened.seq == 7);
+	CHECK(opened.candidates.size() == 3 && opened.SameAddresses(note));
+	CHECK(opened.candidates[2].address.ToString() == "[2001:db8:12:34::5]:9410");
+	CHECK(OpenMeetNote(secret, again, opened) && opened.SameAddresses(note));
+
+	// only with the invite's key, and only unchanged
+	CHECK(!OpenMeetNote(other, text, opened));
+	std::string changed = text;
+	changed[changed.size() / 2] = changed[changed.size() / 2] == 'A' ? 'B' : 'A';
+	CHECK(!OpenMeetNote(secret, changed, opened));
+	CHECK(!OpenMeetNote(secret, text.substr(0, text.size() - 4), opened));
+	CHECK(!OpenMeetNote(secret, "", opened) && !OpenMeetNote(secret, "not a note", opened));
+	CHECK(!OpenMeetNote(secret, std::string(kMeetMaxNoteText + 1, 'A'), opened));
+
+	// something else sealed with the same key is no note
+	std::vector<uint8_t> packet;
+	const uint8_t body[] = { 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0 };
+	CHECK(SealHandshakePacket(DeriveMeetKey(secret), PacketType::Punch, body, sizeof(body), packet));
+	CHECK(!OpenMeetNote(secret, Base64UrlEncode(packet.data(), packet.size()), opened));
+	// while the same bytes as a note are one
+	CHECK(SealHandshakePacket(DeriveMeetKey(secret), PacketType::MeetNote, body, sizeof(body), packet));
+	CHECK(OpenMeetNote(secret, Base64UrlEncode(packet.data(), packet.size()), opened) && opened.candidates.empty());
+	// a role that does not exist
+	const uint8_t bad_role[] = { 1, 9, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0 };
+	CHECK(SealHandshakePacket(DeriveMeetKey(secret), PacketType::MeetNote, bad_role, sizeof(bad_role), packet));
+	CHECK(!OpenMeetNote(secret, Base64UrlEncode(packet.data(), packet.size()), opened));
+	// an address that is cut off
+	const uint8_t cut[] = { 1, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 4, 203, 0 };
+	CHECK(SealHandshakePacket(DeriveMeetKey(secret), PacketType::MeetNote, cut, sizeof(cut), packet));
+	CHECK(!OpenMeetNote(secret, Base64UrlEncode(packet.data(), packet.size()), opened));
+	// a kind of address from a later version is skipped, the others count
+	const uint8_t later[] = { 1, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 2,
+		9, 4, 10, 0, 0, 1, 0x24, 0xc2, 1, 4, 198, 51, 100, 2, 0x24, 0xc2 };
+	CHECK(SealHandshakePacket(DeriveMeetKey(secret), PacketType::MeetNote, later, sizeof(later), packet));
+	CHECK(OpenMeetNote(secret, Base64UrlEncode(packet.data(), packet.size()), opened));
+	CHECK(opened.candidates.size() == 1 && opened.candidates[0].address.ToString() == "198.51.100.2:9410");
+
+	// never more addresses than the limit, however many are known
+	MeetNote many;
+	for(int i = 0; i < 20; i++)
+	{
+		ParseAddress("198.51.100." + std::to_string(i + 1), 9410, c.address);
+		c.kind = CandidateKind::Public;
+		many.candidates.push_back(c);
+	}
+	CHECK(SealMeetNote(secret, many, text) && text.size() <= kMeetMaxNoteText);
+	CHECK(OpenMeetNote(secret, text, opened) && opened.candidates.size() == kMeetMaxCandidates);
+}
+
+TEST(meet_request_and_reply_text)
+{
+	CHECK(MeetRequestBody("ROOM", 0x1234, MeetRole::Host, "abc") == "v=1&room=ROOM&id=0000000000001234&role=h&note=abc");
+	CHECK(MeetRequestBody("ROOM", 0xfedcba9876543210ull, MeetRole::Guest, "") == "v=1&room=ROOM&id=fedcba9876543210&role=g&note=");
+
+	MeetReply reply;
+	std::string error;
+	CHECK(ParseMeetReply("psrpt-meet 1\npoll 3000\nnote AAA\nnote BBB\n", reply, &error));
+	CHECK(reply.poll_ms == 3000 && reply.notes.size() == 2 && reply.notes[0] == "AAA" && reply.notes[1] == "BBB");
+	// other line ends, lines of a later version, no notes at all
+	CHECK(ParseMeetReply("psrpt-meet 1\r\nlater 1 2 3\r\nnote AAA\r\n\r\n", reply, &error));
+	CHECK(reply.poll_ms == 0 && reply.notes.size() == 1 && reply.notes[0] == "AAA");
+	CHECK(ParseMeetReply("psrpt-meet 1", reply, &error) && reply.notes.empty());
+	CHECK(ParseMeetReply("psrpt-meet 1\npoll soon\npoll 99999999\n", reply, &error) && reply.poll_ms == 0);
+	// what is no answer of a meeting point
+	CHECK(!ParseMeetReply("", reply, &error) && !error.empty());
+	CHECK(!ParseMeetReply("<!doctype html><html>Not found</html>", reply, &error));
+	CHECK(!ParseMeetReply("psrpt-meet 1\nerror the room is full\n", reply, &error));
+	CHECK(error.find("the room is full") != std::string::npos);
+}
+
+TEST(meet_address_text)
+{
+	const std::string standard = kDefaultMeetUrl;
+	CHECK(standard.compare(0, 8, "https://") == 0);
+	CHECK(MeetUrlFromText("") == standard && MeetUrlFromText("   ") == standard);
+	CHECK(MeetUrlFromText("off").empty() && MeetUrlFromText(" OFF ").empty());
+	CHECK(MeetIsOff("Off") && !MeetIsOff("") && !MeetIsOff("offline.example.org"));
+	CHECK(MeetUrlFromText("example.org/meet.php") == "https://example.org/meet.php");
+	CHECK(MeetUrlFromText(" https://example.org/meet.php ") == "https://example.org/meet.php");
+	CHECK(MeetUrlFromText("http://127.0.0.1:8080/meet.php") == "http://127.0.0.1:8080/meet.php");
+	CHECK(MeetUrlFromText("ftp://example.org/meet").empty());
+	CHECK(MeetUrlFromText("example.org/a b").empty());
+	CHECK(MeetUrlFromText("", "http://127.0.0.1:1/x") == "http://127.0.0.1:1/x");
+
+	// in an invite: nothing for the standard one, otherwise without the "https://"
+	CHECK(MeetUrlToInvite(standard).empty() && MeetUrlToInvite("").empty());
+	CHECK(MeetUrlToInvite("https://example.org/meet.php") == "example.org/meet.php");
+	CHECK(MeetUrlToInvite("http://example.org/meet.php").empty());
+	CHECK(MeetUrlToInvite("https://example.org/meet.php?x=1").empty());
+	CHECK(MeetUrlFromInvite("") == standard);
+	CHECK(MeetUrlFromInvite("example.org/meet.php") == "https://example.org/meet.php");
+	CHECK(MeetUrlFromInvite("exa mple.org").empty());
+	CHECK(IsInviteMeetAddress("example.org:8443/a/b_c-d.php") && IsInviteMeetAddress("[2001:db8::1]/meet"));
+	CHECK(!IsInviteMeetAddress("") && !IsInviteMeetAddress("/etc/passwd") && !IsInviteMeetAddress("a//b")
+		&& !IsInviteMeetAddress("a?b") && !IsInviteMeetAddress("a&b") && !IsInviteMeetAddress(std::string(201, 'a')));
+}
+
+TEST(invite_without_address_and_with_meeting_point)
+{
+	Invite invite;
+	invite.secret = GenerateSecret();
+	std::string key = SecretToString(invite.secret);
+
+	// no address: the host is found through the meeting point
+	CHECK(EncodeInvite(invite) == "psrpt://-/" + key);
+	Invite decoded;
+	std::string error;
+	decoded.host = "left over";
+	CHECK(DecodeInvite("psrpt://-/" + key, decoded, &error));
+	CHECK(decoded.host.empty() && decoded.secret == invite.secret && decoded.meet.empty());
+	CHECK(!DecodeInvite("psrpt://-:9410/" + key, decoded, &error));
+
+	// a meeting point of one's own
+	invite.host = "203.0.113.7";
+	invite.port = 9410;
+	invite.meet = "example.org/psrpt_meet.php";
+	std::string text = EncodeInvite(invite);
+	CHECK(text == "psrpt://203.0.113.7:9410/" + key + "?meet=example.org/psrpt_meet.php");
+	CHECK(DecodeInvite(text, decoded, &error));
+	CHECK(decoded.host == "203.0.113.7" && decoded.port == 9410 && decoded.secret == invite.secret
+		&& decoded.meet == "example.org/psrpt_meet.php");
+	invite.host.clear();
+	CHECK(DecodeInvite(EncodeInvite(invite), decoded, &error) && decoded.host.empty() && decoded.meet == invite.meet);
+	invite.host = "2001:db8::1";
+	CHECK(DecodeInvite(EncodeInvite(invite), decoded, &error) && decoded.host == "2001:db8::1" && decoded.meet == invite.meet);
+
+	// additions of a later version are skipped
+	CHECK(DecodeInvite("psrpt://203.0.113.7:9410/" + key + "?x=1&meet=a.example/m&y=2", decoded, &error));
+	CHECK(decoded.meet == "a.example/m" && decoded.host == "203.0.113.7");
+	CHECK(DecodeInvite("psrpt://203.0.113.7:9410/" + key + "?x=1", decoded, &error) && decoded.meet.empty());
+	CHECK(!DecodeInvite("psrpt://203.0.113.7:9410/" + key + "?meet=a b", decoded, &error));
+	CHECK(!DecodeInvite("psrpt://203.0.113.7:9410/" + key + "?meet=", decoded, &error));
+
+	// an invite as it always was
+	CHECK(DecodeInvite("psrpt://203.0.113.7:9410/" + key, decoded, &error) && decoded.meet.empty() && decoded.host == "203.0.113.7");
+}
+
+/** A STUN server that tells the truth: the address a request came from. */
+struct EchoStunServer
+{
+	Address asked_from; // only on the server's thread
+	std::atomic<int> port_offset{0}; // a lie, the way a router with a new port for every destination makes STUN lie
+	std::atomic<int> silent_for{0};  // this many requests get no answer
+	FakeStunServer server;
+	uint16_t port;
+
+	EchoStunServer()
+		: server([this](int n, const uint8_t *id) {
+			if(n <= silent_for)
+				return Datagrams{};
+			uint8_t bytes[16];
+			size_t size = asked_from.Bytes(bytes);
+			return Datagrams{ StunAnswer(id, std::vector<uint8_t>(bytes, bytes + size),
+				static_cast<uint16_t>(asked_from.Port() + port_offset)) };
+		}, [this](const uint8_t *, const Address &from) { asked_from = from; }),
+		port(server.port)
+	{
+	}
+};
+
+/** Lets a StunProbe work on a socket until the condition holds. */
+static bool RunProbe(StunProbe &probe, UdpSocket &socket, const std::function<bool()> &until, int timeout_ms,
+	int *strangers = nullptr)
+{
+	uint64_t end = NowMs() + static_cast<uint64_t>(timeout_ms);
+	uint8_t buf[1500];
+	while(NowMs() < end)
+	{
+		probe.Tick(socket, NowMs());
+		Address from;
+		int n = socket.RecvFrom(buf, sizeof(buf), from, 5);
+		if(n > 0 && !probe.Handle(buf, static_cast<size_t>(n), from, NowMs()) && strangers)
+			(*strangers)++;
+		if(until())
+			return true;
+	}
+	return until();
+}
+
+TEST(net_stun_probe_on_a_socket_in_use)
+{
+	{
+		EchoStunServer one, two;
+		UdpSocket socket, friend_socket;
+		CHECK(socket.Bind(0, nullptr) && friend_socket.Bind(0, nullptr));
+		StunProbe probe;
+		CHECK(!probe.HasServers() && !probe.Public().IsValid() && probe.Mapping() == PortMapping::Unknown && !probe.GaveUp());
+		// nothing is asked before there is somebody to ask
+		probe.Tick(socket, NowMs());
+		uint32_t before = probe.Generation();
+		probe.SetServers({ Loopback(one.port), Loopback(two.port), Loopback(one.port) });
+		CHECK(probe.HasServers());
+
+		// other traffic on the socket is not touched
+		const uint8_t other[] = { 0x10, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 };
+		friend_socket.SendTo(other, sizeof(other), Loopback(socket.LocalPort()));
+		int strangers = 0;
+		CHECK(RunProbe(probe, socket, [&] { return probe.Mapping() != PortMapping::Unknown && strangers == 1; }, 3000, &strangers));
+		// both servers saw the same port: the address can be handed out
+		CHECK(probe.Mapping() == PortMapping::Stable);
+		CHECK(probe.Public().SameEndpoint(Loopback(socket.LocalPort())));
+		CHECK(probe.Generation() != before);
+		CHECK(one.server.requests == 1 && two.server.requests == 1 && one.server.malformed == 0);
+
+		// what merely looks like an answer is none
+		uint8_t fake[32] = { 0x01, 0x01, 0x00, 0x0c, 0x21, 0x12, 0xa4, 0x42 };
+		CHECK(!probe.Handle(fake, sizeof(fake), Loopback(one.port), NowMs()));
+		CHECK(!probe.Handle(other, sizeof(other), Loopback(one.port), NowMs()));
+	}
+	{
+		// a router that gives every destination another port
+		EchoStunServer one, two;
+		two.port_offset = 1;
+		UdpSocket socket;
+		CHECK(socket.Bind(0, nullptr));
+		StunProbe probe;
+		probe.SetServers({ Loopback(one.port), Loopback(two.port) });
+		CHECK(RunProbe(probe, socket, [&] { return probe.Mapping() != PortMapping::Unknown; }, 3000));
+		CHECK(probe.Mapping() == PortMapping::PerDestination);
+	}
+	{
+		// one server: an address, but no saying what kind of router it is. And a lost request is asked again.
+		EchoStunServer one;
+		one.silent_for = 2;
+		UdpSocket socket;
+		CHECK(socket.Bind(0, nullptr));
+		StunProbe probe;
+		probe.SetServers({ Loopback(one.port) });
+		CHECK(RunProbe(probe, socket, [&] { return probe.Public().IsValid(); }, 5000));
+		CHECK(probe.Public().SameEndpoint(Loopback(socket.LocalPort())));
+		CHECK(probe.Mapping() == PortMapping::Unknown && !probe.GaveUp());
+		CHECK(one.server.requests == 3);
+	}
+}
+
+/** A meeting point in memory that follows the same rules as server/meeting-point/psrpt_meet.php. */
+struct FakeMeetingPoint
+{
+	struct Entry
+	{
+		std::string id;
+		std::string role;
+		std::string note;
+		uint64_t at_ms;
+	};
+	std::mutex mutex;
+	std::map<std::string, std::vector<Entry>> rooms;
+	std::atomic<int> requests{0};
+	std::atomic<int> status{200};
+	std::atomic<bool> unreachable{false};
+	std::atomic<bool> hangs{false};
+	std::atomic<uint32_t> poll_ms{0};
+	uint64_t ttl_ms = 30000;
+
+	static std::map<std::string, std::string> Form(const std::string &body)
+	{
+		std::map<std::string, std::string> out;
+		size_t pos = 0;
+		while(pos <= body.size())
+		{
+			size_t end = body.find('&', pos);
+			if(end == std::string::npos)
+				end = body.size();
+			std::string pair = body.substr(pos, end - pos);
+			size_t eq = pair.find('=');
+			if(eq != std::string::npos)
+				out[pair.substr(0, eq)] = pair.substr(eq + 1);
+			pos = end + 1;
+		}
+		return out;
+	}
+
+	HttpPost Post()
+	{
+		return [this](const HttpRequest &request, HttpResponse &response, std::string *error) {
+			requests++;
+			if(hangs)
+			{
+				// a server that accepts the connection and never answers
+				uint64_t end = NowMs() + request.timeout_ms;
+				while(NowMs() < end && !(request.cancel && *request.cancel))
+					SleepMs(2);
+				if(error)
+					*error = "timed out";
+				return false;
+			}
+			if(unreachable)
+			{
+				if(error)
+					*error = "cannot connect";
+				return false;
+			}
+			if(status != 200)
+			{
+				response.status = status;
+				response.body = "<!doctype html><title>Not found</title>";
+				return true;
+			}
+			auto form = Form(request.body);
+			const std::string &role = form["role"];
+			if(form["v"] != "1" || form["room"].size() != kMeetRoomIdLength || form["id"].size() != 16
+				|| (role != "h" && role != "g") || form["note"].size() > kMeetMaxNoteText)
+			{
+				response.status = 400;
+				response.body = "psrpt-meet 1\nerror malformed request\n";
+				return true;
+			}
+			std::lock_guard<std::mutex> lock(mutex);
+			uint64_t now = NowMs();
+			auto &room = rooms[form["room"]];
+			room.erase(std::remove_if(room.begin(), room.end(), [&](const Entry &e) {
+				return e.id == form["id"] || now - e.at_ms > ttl_ms;
+			}), room.end());
+			if(!form["note"].empty())
+				room.push_back({ form["id"], role, form["note"], now });
+			std::string out = "psrpt-meet 1\n";
+			if(poll_ms)
+				out += "poll " + std::to_string(poll_ms.load()) + "\n";
+			for(const Entry &e : room)
+			{
+				if(e.role != role)
+					out += "note " + e.note + "\n";
+			}
+			response.status = 200;
+			response.body = out;
+			return true;
+		};
+	}
+
+	int Notes(const std::string &role)
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		int n = 0;
+		for(const auto &room : rooms)
+		{
+			for(const Entry &e : room.second)
+				n += e.role == role;
+		}
+		return n;
+	}
+};
+
+/** Fast enough for a test, and without the machine's real addresses: only what the STUN stand-in says. */
+static MeetConfig TestMeet(FakeMeetingPoint &point, const std::vector<uint16_t> &stun_ports)
+{
+	MeetConfig m;
+	m.url = "https://meet.test/psrpt_meet.php";
+	m.post = point.Post();
+	for(uint16_t port : stun_ports)
+		m.stun_servers.push_back({ "127.0.0.1", port });
+	m.own_addresses = false;
+	m.host_poll_ms = 40;
+	m.guest_poll_ms = 30;
+	m.host_retry_ms = 100;
+	m.guest_retry_ms = 60;
+	m.punch_ms = 2500;
+	m.connect_ms = 6000;
+	return m;
+}
+
+TEST(net_meet_worker_keeps_a_note_and_collects_the_others)
+{
+	FakeMeetingPoint point;
+	Secret secret = GenerateSecret();
+	MeetConfig config = TestMeet(point, {});
+	std::mutex mutex;
+	std::vector<MeetNote> seen_by_host, seen_by_guest;
+	MeetWorker host(config, secret, MeetRole::Host, [&](const std::vector<MeetNote> &notes) {
+		std::lock_guard<std::mutex> lock(mutex);
+		seen_by_host.insert(seen_by_host.end(), notes.begin(), notes.end());
+	});
+	// nothing is sent before there is a note
+	SleepMs(150);
+	CHECK(point.requests == 0 && host.State() == MeetState::Trying);
+
+	MeetNote note;
+	note.role = MeetRole::Host;
+	note.peer_id = 1;
+	note.seq = 1;
+	MeetCandidate c;
+	ParseAddress("203.0.113.7", 9410, c.address);
+	note.candidates.push_back(c);
+	host.SetNote(note);
+	CHECK(WaitFor([&] { return point.Notes("h") == 1 && host.State() == MeetState::Ok; }, 2000));
+
+	MeetWorker guest(config, secret, MeetRole::Guest, [&](const std::vector<MeetNote> &notes) {
+		std::lock_guard<std::mutex> lock(mutex);
+		seen_by_guest.insert(seen_by_guest.end(), notes.begin(), notes.end());
+	});
+	MeetNote guest_note;
+	guest_note.role = MeetRole::Guest;
+	guest_note.peer_id = 2;
+	guest_note.seq = 1;
+	ParseAddress("198.51.100.9", 50000, c.address);
+	guest_note.candidates.push_back(c);
+	guest.SetNote(guest_note);
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(mutex);
+		return !seen_by_host.empty() && !seen_by_guest.empty();
+	}, 2000));
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		CHECK(seen_by_host[0].role == MeetRole::Guest && seen_by_host[0].peer_id == 2 && seen_by_host[0].SameAddresses(guest_note));
+		CHECK(seen_by_guest[0].role == MeetRole::Host && seen_by_guest[0].peer_id == 1 && seen_by_guest[0].SameAddresses(note));
+	}
+
+	// somebody with another invite is in another room and sees nothing
+	std::atomic<int> stranger_saw{0};
+	MeetWorker stranger(config, GenerateSecret(), MeetRole::Guest, [&](const std::vector<MeetNote> &notes) {
+		stranger_saw += static_cast<int>(notes.size());
+	});
+	stranger.SetNote(guest_note);
+	CHECK(WaitFor([&] { return stranger.State() == MeetState::Ok; }, 2000));
+	SleepMs(150);
+	CHECK(stranger_saw == 0);
+
+	// a note that was not sealed with the invite's key is not passed on
+	{
+		std::lock_guard<std::mutex> lock(point.mutex);
+		point.rooms[MeetRoomId(secret)].push_back({ "ffffffffffffffff", "g", "bm90IGEgbm90ZQ", NowMs() });
+	}
+	size_t before;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		before = seen_by_host.size();
+	}
+	SleepMs(200);
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		CHECK(seen_by_host.size() > before); // the real guest's note keeps coming
+		for(const MeetNote &n : seen_by_host)
+			CHECK(n.peer_id == 2);
+	}
+}
+
+TEST(net_meet_worker_leaves_a_failing_meeting_point_alone)
+{
+	FakeMeetingPoint point;
+	point.status = 404; // as if nothing was installed at that address
+	MeetConfig config = TestMeet(point, {});
+	MeetWorker worker(config, GenerateSecret(), MeetRole::Host, nullptr);
+	MeetNote note;
+	note.role = MeetRole::Host;
+	note.peer_id = 1;
+	worker.SetNote(note);
+	CHECK(WaitFor([&] { return worker.State() == MeetState::Failed; }, 2000));
+	CHECK(worker.Error().find("404") != std::string::npos);
+	// At the pace of a working meeting point this second would see 25 requests. After
+	// failures the pauses are 100, 200, 400, 800 ms: five at most.
+	uint64_t start = NowMs();
+	while(NowMs() - start < 1000)
+	{
+		worker.SetNote(note); // a changed note is no reason to ask sooner
+		SleepMs(20);
+	}
+	CHECK(point.requests >= 2 && point.requests <= 5);
+
+	// it is found again by itself
+	point.status = 200;
+	CHECK(WaitFor([&] { return worker.State() == MeetState::Ok; }, 4000));
+	CHECK(worker.Error().empty());
+
+	// a web page where a meeting point should be
+	FakeMeetingPoint page;
+	MeetConfig other = TestMeet(page, {});
+	other.post = [](const HttpRequest &, HttpResponse &response, std::string *) {
+		response.status = 200;
+		response.body = "<html><body>Welcome!</body></html>";
+		return true;
+	};
+	MeetWorker lost(other, GenerateSecret(), MeetRole::Guest, nullptr);
+	lost.SetNote(note);
+	CHECK(WaitFor([&] { return lost.State() == MeetState::Failed; }, 2000));
+
+	// the meeting point can ask a host for a slower pace
+	FakeMeetingPoint slow;
+	slow.poll_ms = 400;
+	MeetConfig paced = TestMeet(slow, {});
+	MeetWorker patient(paced, GenerateSecret(), MeetRole::Host, nullptr);
+	patient.SetNote(note);
+	CHECK(WaitFor([&] { return slow.requests >= 1; }, 2000));
+	start = NowMs();
+	while(NowMs() - start < 1000)
+		SleepMs(20);
+	CHECK(slow.requests >= 2 && slow.requests <= 5); // not 25
+}
+
+TEST(net_closed_port_keeps_guests_out_without_a_meeting_point)
+{
+	// The control for the tests below: the simulated router does what a real one does
+	TestHost h;
+	h.host->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+	TestGuest g(h.MakeInvite(), "Ann", kWantAll, 500);
+	g.client->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+	std::string error;
+	CHECK(!g.Connect(&error));
+	CHECK(error.find("No answer from the host") != std::string::npos);
+	CHECK(h.host->Guests().empty());
+
+	// an invite without an address is of no use when no meeting point is asked
+	Invite nameless = h.MakeInvite();
+	nameless.host.clear();
+	TestGuest g2(nameless, "Ann", kWantAll, 500);
+	CHECK(!g2.Connect(&error));
+	CHECK(error.find("meeting point") != std::string::npos);
+}
+
+TEST(net_join_through_the_meeting_point_with_closed_ports)
+{
+	FakeMeetingPoint point;
+	EchoStunServer stun;
+	TestHost h(4, {}, [&](HostConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+	h.host->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+	CHECK(WaitFor([&] { return point.Notes("h") == 1; }, 3000));
+	CHECK(WaitFor([&] { return h.host->Reach().meet == MeetState::Ok; }, 3000));
+
+	// The invite as it is today, with the host's address in it: the address is right,
+	// only the router does not let anybody in who was not sent to first
+	{
+		TestGuest g(h.MakeInvite(), "Ann", kWantAll, 2000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		g.client->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+		std::string error;
+		bool ok = g.Connect(&error);
+		CHECK(ok);
+		if(!ok)
+			std::printf("    %s\n", error.c_str());
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+		CHECK(WaitFor([&] { return g.LastState().participants.size() == 2; }, 2000));
+		// and the session itself runs through the opened way
+		PadState pad = Pad(1);
+		g.client->SetInput(pad);
+		CHECK(WaitFor([&] { return h.host->MixedInput().buttons == 1; }, 2000));
+	}
+	CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 3000));
+
+	// An invite without any address: everything comes from the meeting point
+	{
+		Invite nameless = h.MakeInvite();
+		nameless.host.clear();
+		TestGuest g(nameless, "Ben", kWantAll, 2000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		g.client->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+		std::string error;
+		bool ok = g.Connect(&error);
+		CHECK(ok);
+		if(!ok)
+			std::printf("    %s\n", error.c_str());
+		CHECK(g.client->ViaMeetingPoint());
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+	}
+
+	// An invite whose address is out of date (a new address over night) still leads in
+	{
+		Invite stale = h.MakeInvite();
+		stale.port = static_cast<uint16_t>(stale.port == 65535 ? 65534 : stale.port + 1);
+		TestGuest g(stale, "Cleo", kWantAll, 2000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		g.client->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+		CHECK(g.Connect());
+		CHECK(g.client->ViaMeetingPoint());
+	}
+}
+
+TEST(net_open_port_never_waits_for_the_meeting_point)
+{
+	// The host has its port open. The meeting point accepts connections and then says nothing.
+	FakeMeetingPoint point;
+	point.hangs = true;
+	EchoStunServer stun;
+	TestHost h(4, {}, [&](HostConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+	uint64_t start = NowMs();
+	{
+		TestGuest g(h.MakeInvite(), "Ann", kWantAll, 3000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		CHECK(g.Connect());
+		CHECK(!g.client->ViaMeetingPoint());
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+	}
+	// joining and leaving again, with a request to the meeting point hanging on both sides
+	CHECK(NowMs() - start < 2500);
+
+	// The same when it cannot be reached at all, or is not there
+	point.hangs = false;
+	point.unreachable = true;
+	{
+		TestGuest g(h.MakeInvite(), "Ben", kWantAll, 3000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		CHECK(g.Connect());
+	}
+	point.unreachable = false;
+	point.status = 404;
+	{
+		TestGuest g(h.MakeInvite(), "Cleo", kWantAll, 3000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		CHECK(g.Connect());
+	}
+	// and a host from before the meeting point existed
+	TestHost old_host;
+	{
+		point.status = 200;
+		TestGuest g(old_host.MakeInvite(), "Dana", kWantAll, 3000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		CHECK(g.Connect());
+		CHECK(!g.client->ViaMeetingPoint());
+	}
+}
+
+TEST(net_guest_is_told_why_it_did_not_get_in)
+{
+	FakeMeetingPoint point;
+	EchoStunServer stun;
+	// A host with a closed port that does not use the meeting point
+	TestHost h;
+	h.host->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+	{
+		TestGuest g(h.MakeInvite(), "Ann", kWantAll, 2000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		std::string error;
+		CHECK(!g.Connect(&error));
+		CHECK(error.find("not at the meeting point") != std::string::npos);
+	}
+	// The meeting point cannot be asked
+	point.unreachable = true;
+	{
+		TestGuest g(h.MakeInvite(), "Ann", kWantAll, 2000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { stun.port }); });
+		std::string error;
+		CHECK(!g.Connect(&error));
+		CHECK(error.find("could not be asked") != std::string::npos && error.find("cannot connect") != std::string::npos);
+	}
+}
+
+TEST(net_router_with_a_new_port_for_every_destination)
+{
+	// The host's router gives every destination another port, so what the STUN server
+	// saw is not where the guest has to send to.
+	FakeMeetingPoint point;
+	EchoStunServer truth, lie;
+	lie.port_offset = 1;
+	TestHost h(4, {}, [&](HostConfig &c) { c.meet = TestMeet(point, { lie.port }); });
+	h.host->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+	CHECK(WaitFor([&] { return point.Notes("h") == 1; }, 3000));
+	Invite nameless = h.MakeInvite();
+	nameless.host.clear();
+
+	// A guest whose router only looks at the machine a packet comes from: the host's
+	// first packet shows the right port, and the guest follows it
+	{
+		TestGuest g(nameless, "Ann", kWantAll, 2000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { truth.port }); });
+		g.client->SetSimulatedFilter(UdpSocket::Filter::Address);
+		std::string error;
+		bool ok = g.Connect(&error);
+		CHECK(ok);
+		if(!ok)
+			std::printf("    %s\n", error.c_str());
+		CHECK(g.client->ViaMeetingPoint());
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+	}
+	CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 3000));
+
+	// A guest whose router also looks at the port: no way in, and the guest is told
+	// that the host was found but could not be reached
+	{
+		TestGuest g(nameless, "Ben", kWantAll, 2000, {}, 0, 1500, [&](ClientConfig &c) {
+			c.meet = TestMeet(point, { truth.port });
+			c.meet.connect_ms = 900;
+		});
+		g.client->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+		std::string error;
+		uint64_t start = NowMs();
+		CHECK(!g.Connect(&error));
+		CHECK(error.find("The host is sharing, but no connection could be made") != std::string::npos);
+		CHECK(error.find("Your own router") == std::string::npos); // the guest's is fine, as far as it can tell
+		CHECK(NowMs() - start >= 1900); // it kept trying, and gave up when its time was over
+		CHECK(h.host->Guests().empty());
+	}
+
+	// The other way round: the guest's router is the one with a new port every time.
+	// The host follows the address the join request really comes from, as it always did.
+	TestHost h2(4, {}, [&](HostConfig &c) { c.meet = TestMeet(point, { truth.port }); });
+	h2.host->SetSimulatedFilter(UdpSocket::Filter::Address);
+	CHECK(WaitFor([&] { return point.Notes("h") == 2; }, 3000));
+	{
+		Invite invite = h2.MakeInvite();
+		invite.host.clear();
+		TestGuest g(invite, "Cleo", kWantAll, 2000, {}, 0, 1500,
+			[&](ClientConfig &c) { c.meet = TestMeet(point, { lie.port, truth.port }); });
+		g.client->SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+		CHECK(g.Connect());
+		CHECK(WaitFor([&] { return h2.host->Guests().size() == 1; }, 2000));
+	}
+}
+
+TEST(net_host_says_how_it_can_be_reached)
+{
+	{
+		TestHost plain;
+		CHECK(plain.host->Reach().meet == MeetState::Off);
+	}
+	FakeMeetingPoint point;
+	EchoStunServer one, two;
+	{
+		TestHost h(4, {}, [&](HostConfig &c) { c.meet = TestMeet(point, { one.port, two.port }); });
+		CHECK(WaitFor([&] {
+			HostReach r = h.host->Reach();
+			return r.meet == MeetState::Ok && r.mapping == PortMapping::Stable;
+		}, 4000));
+		HostReach r = h.host->Reach();
+		CHECK(r.public_address == "127.0.0.1:" + std::to_string(h.host->Port()));
+		CHECK(r.meet_error.empty() && !r.stun_silent);
+		CHECK(h.reach_changes >= 1);
+
+		// the meeting point goes away and comes back
+		point.unreachable = true;
+		CHECK(WaitFor([&] { return h.host->Reach().meet == MeetState::Failed; }, 4000));
+		CHECK(h.host->Reach().meet_error.find("cannot connect") != std::string::npos);
+		point.unreachable = false;
+		CHECK(WaitFor([&] { return h.host->Reach().meet == MeetState::Ok; }, 6000));
+	}
+	{
+		two.port_offset = 3;
+		TestHost h(4, {}, [&](HostConfig &c) { c.meet = TestMeet(point, { one.port, two.port }); });
+		CHECK(WaitFor([&] { return h.host->Reach().mapping == PortMapping::PerDestination; }, 4000));
+	}
+	{
+		// no STUN server at all: the note still goes out (with nothing in it here), the host just has no address to show
+		TestHost h(4, {}, [&](HostConfig &c) { c.meet = TestMeet(point, {}); });
+		CHECK(WaitFor([&] { return h.host->Reach().meet == MeetState::Ok; }, 4000));
+		CHECK(h.host->Reach().public_address.empty() && h.host->Reach().mapping == PortMapping::Unknown);
+	}
 }
 
 int main(int argc, char **argv)

@@ -76,6 +76,15 @@ enum class PacketType : uint8_t
 	Hello = 0x01,           // guest -> host
 	Welcome = 0x02,         // host -> guest
 	Reject = 0x03,          // host -> guest
+	/**
+	 * host -> an address a guest left at the meeting point. Sealed like Welcome; holds
+	 * the 8 bytes of that guest's id. Sending it opens the host's router for the guest,
+	 * and it shows the guest which address the host's packets come from. Versions that
+	 * do not know it ignore it.
+	 */
+	Punch = 0x04,
+	/** Never a datagram: the type in the header of a note left at the meeting point (meet.h). */
+	MeetNote = 0x05,
 
 	Input = 0x10,           // guest -> host
 	Ping = 0x11,            // guest -> host

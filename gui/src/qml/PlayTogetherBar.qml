@@ -209,6 +209,18 @@ Item {
                 }
             }
 
+            // While sharing: whether friends elsewhere get in without a forwarded port
+            Label {
+                readonly property string reach: bar.hosting ? (bar.session.coplayReachText || "") : ""
+                visible: reach.length > 0
+                Layout.maximumWidth: 440
+                wrapMode: Text.WordWrap
+                opacity: bar.session && bar.session.coplayReachGood ? 0.6 : 1.0
+                color: bar.session && bar.session.coplayReachGood ? Material.foreground : "#ffb74d"
+                font.pixelSize: 13
+                text: reach
+            }
+
             Label {
                 visible: !bar.hosting
                 Layout.maximumWidth: bar.active ? 440 : 760

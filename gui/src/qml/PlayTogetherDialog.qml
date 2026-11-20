@@ -399,6 +399,14 @@ DialogView {
                             note: {
                                 if (!hostEnabledCheck.checked)
                                     return "";
+                                // With a meeting point there is always an invite, even before the address is found
+                                const meet = !!Chiaki.settings.coplayMeetOn;
+                                if (meet && invites.lookup === 1)
+                                    return qsTr("Finding your public address…");
+                                if (meet && invites.publicInvite.length > 0) {
+                                    return qsTr("For friends anywhere. With most routers they get in by themselves, through the meeting point. If a friend cannot connect, forward UDP port %1 to this computer in your router.").arg(invites.port)
+                                        + (invites.lookup === 3 ? " " + qsTr("Your public address could not be found, so this invite works through the meeting point only.") : "");
+                                }
                                 if (invites.publicInvite.length > 0) {
                                     const upnp = Chiaki.settings.coplayUpnpStatus || "";
                                     return qsTr("For friends anywhere. UDP port %1 has to reach this computer: forward it in your router.").arg(invites.port)
@@ -503,13 +511,35 @@ DialogView {
                             text: qsTr("The STUN server is asked for your address on the internet, which goes into the Internet invite. Nothing else is sent to it. Leave the field empty for the default (Google's server, then Cloudflare's), enter your own as host:port, or write \"off\" to never ask.")
                         }
 
+                        Label {
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("Meeting point:")
+                        }
+
+                        C.TextField {
+                            Layout.fillWidth: true
+                            // Empty is the built-in one
+                            placeholderText: qsTr("%1 (default)").arg(Chiaki.settings.coplayMeetDefault || "")
+                            text: Chiaki.settings.coplayMeetServer
+                            onEditingFinished: Chiaki.settings.coplayMeetServer = text
+                        }
+
                         Item { }
 
                         Label {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             opacity: 0.7
-                            text: qsTr("Leave the address empty unless you have a name of your own for your connection (DynDNS), which stays valid when your provider gives you a new address. For the internet invites, the UDP port has to be forwarded to this computer in your router.")
+                            text: qsTr("Lets friends join without a forwarded port: your computer and theirs each leave a short sealed note with their addresses at the meeting point and then connect to each other directly. Picture, sound and controllers never go through it. Leave the field empty for the default, enter the address of your own, or write \"off\" to never ask one; with \"off\" you cannot join friends that way either.")
+                        }
+
+                        Item { }
+
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            opacity: 0.7
+                            text: qsTr("Leave the address empty unless you have a name of your own for your connection (DynDNS), which stays valid when your provider gives you a new address. A forwarded UDP port is only needed when a friend cannot get in through the meeting point, or when the meeting point is switched off.")
                         }
 
                         Item { }

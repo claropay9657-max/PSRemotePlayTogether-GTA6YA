@@ -10,6 +10,7 @@
 #include <coplay/client.h>
 #include <coplay/host.h>
 #include <coplay/invite.h>
+#include <coplay/meet.h>
 #include <coplay/socket.h>
 #include <coplay/stun.h>
 
@@ -71,6 +72,13 @@ static void Usage()
 		"      --voice             the host talks: a short tone every two seconds (needs Opus)\n"
 		"      --chat              the host writes in the chat now and then; prints what others write\n"
 		"      --cam A.jpg,B.jpg   the host has a webcam: these pictures in turn, 8 per second\n"
+		"      --meet URL|default  let friends in without a forwarded port: leave a note at this\n"
+		"                          meeting point (see server/meeting-point). Needs curl.\n"
+		"      --stun HOST[:PORT]  ask this STUN server for the session's address on the internet\n"
+		"                          (with --meet; default: the servers the app asks; \"off\": nobody)\n"
+		"      --closed            behave as if behind a router without a forwarded port: what\n"
+		"                          comes from an address that was not sent to first is dropped\n"
+		"      --no-address        print an invite without an address (psrpt://-/...)\n"
 		"    Ends on SIGINT or SIGTERM like a host that stops sharing. On SIGUSR1 it ends like\n"
 		"    one that lost its console and is getting it back, so that the guests wait for it;\n"
 		"    killed (SIGKILL) it just goes silent.\n"
@@ -82,6 +90,9 @@ static void Usage()
 		"      --no-video          controller only\n"
 		"      --dump FILE         write the received video stream to FILE\n"
 		"      --press             press and release Cross once per second\n"
+		"      --meet URL|default  find the host through this meeting point as well (needs curl)\n"
+		"      --stun HOST[:PORT]  as for the host\n"
+		"      --closed            as for the host\n"
 		"      --loss PERCENT      drop this share of outgoing packets\n"
 		"      --seconds N         leave after N seconds\n"
 		"\n"
@@ -110,6 +121,9 @@ struct Options
 	bool voice = false;
 	bool chat = false;
 	std::string cam;
+	std::string meet, stun;
+	bool closed = false;
+	bool no_address = false;
 };
 
 static bool ParseOptions(int argc, char **argv, Options &o)
@@ -137,6 +151,10 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--loss") { if(!value(v)) return false; o.loss = std::atof(v.c_str()) / 100.0; }
 		else if(a == "--seconds") { if(!value(v)) return false; o.seconds = std::atoi(v.c_str()); }
 		else if(a == "--cam") { if(!value(o.cam)) return false; }
+		else if(a == "--meet") { if(!value(o.meet)) return false; }
+		else if(a == "--stun") { if(!value(o.stun)) return false; }
+		else if(a == "--closed") o.closed = true;
+		else if(a == "--no-address") o.no_address = true;
 		else if(a == "--voice") o.voice = true;
 		else if(a == "--chat") o.chat = true;
 		else if(a == "--no-video") o.no_video = true;
@@ -325,6 +343,87 @@ static std::string DescribePad(const PadState &s)
 
 // ---------------------------------------------------------------- host
 
+// ------------------------------------------------------------------ meeting point
+
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
+
+/** One POST request with the curl program. Good enough for a test tool; the app uses Qt. */
+static bool CurlPost(const HttpRequest &request, HttpResponse &response, std::string *error)
+{
+	auto fail = [error](const std::string &why) {
+		if(error)
+			*error = why;
+		return false;
+	};
+	// Both go into a command line: nothing but what a URL and our form fields are made of
+	static const char kAllowed[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_~:/[]@=&";
+	if(request.url.find_first_not_of(kAllowed) != std::string::npos || request.body.find_first_not_of(kAllowed) != std::string::npos)
+		return fail("the meeting point's address has characters this tool does not pass on");
+	uint32_t seconds = (request.timeout_ms + 999) / 1000;
+	std::string command = "curl -s -m " + std::to_string(seconds ? seconds : 1) + " -w \"\\n%{http_code}\" --data \""
+		+ request.body + "\" \"" + request.url + "\"";
+#ifdef _WIN32
+	command += " 2>NUL";
+#else
+	command += " 2>/dev/null";
+#endif
+	FILE *pipe = popen(command.c_str(), "r");
+	if(!pipe)
+		return fail("cannot run curl");
+	std::string out;
+	char buf[4096];
+	size_t n;
+	while((n = std::fread(buf, 1, sizeof(buf), pipe)) > 0 && out.size() < 256 * 1024)
+		out.append(buf, n);
+	int result = pclose(pipe);
+	size_t line = out.rfind('\n');
+	if(result != 0 || line == std::string::npos)
+		return fail("no answer (curl gave up)");
+	response.status = std::atoi(out.c_str() + line + 1);
+	response.body = out.substr(0, line);
+	return response.status != 0 || fail("no answer");
+}
+
+/** What --meet, --stun say. Without --meet nothing is asked. */
+static bool MeetOptions(const Options &o, MeetConfig &meet)
+{
+	if(o.meet.empty())
+		return true;
+	meet.url = MeetUrlFromText(o.meet == "default" ? std::string() : o.meet);
+	if(meet.url.empty())
+	{
+		std::fprintf(stderr, "--meet: \"%s\" is no address of a meeting point\n", o.meet.c_str());
+		return false;
+	}
+	meet.post = CurlPost;
+	if(o.stun.empty())
+		meet.stun_servers = DefaultStunServers();
+	else if(o.stun != "off")
+	{
+		StunServer server;
+		if(!ParseStunServer(o.stun, server))
+		{
+			std::fprintf(stderr, "--stun: \"%s\" is no server address\n", o.stun.c_str());
+			return false;
+		}
+		meet.stun_servers.push_back(server);
+	}
+	return true;
+}
+
+static const char *MappingText(PortMapping mapping)
+{
+	switch(mapping)
+	{
+		case PortMapping::Stable: return "one port for every destination (hole punching can work)";
+		case PortMapping::PerDestination: return "a new port for every destination (symmetric NAT)";
+		default: return "unknown kind of router";
+	}
+}
+
 static int RunHost(const Options &o)
 {
 	if(o.positional.empty())
@@ -411,12 +510,28 @@ static int RunHost(const Options &o)
 			m.embed.Valid() ? (m.embed.title + (m.embed.image.Valid() ? ", with picture]" : "]")).c_str() : "");
 		std::fflush(stdout);
 	};
+	if(!MeetOptions(o, config.meet))
+		return 2;
+	Host *host_for_reach = nullptr;
+	cb.on_reach_changed = [&] {
+		HostReach r = host_for_reach->Reach();
+		std::lock_guard<std::mutex> lock(print_mutex);
+		std::printf("[host] meeting point: %s%s%s; address on the internet: %s; router: %s\n",
+			r.meet == MeetState::Ok ? "answers" : r.meet == MeetState::Failed ? "cannot be asked (" : "not asked yet",
+			r.meet == MeetState::Failed ? r.meet_error.c_str() : "", r.meet == MeetState::Failed ? ")" : "",
+			r.public_address.empty() ? (r.stun_silent ? "no STUN server answers" : "not known") : r.public_address.c_str(),
+			MappingText(r.mapping));
+		std::fflush(stdout);
+	};
 	Host host(config, cb);
+	host_for_reach = &host;
 	if(!host.Start(&error))
 	{
 		std::fprintf(stderr, "%s\n", error.c_str());
 		return 1;
 	}
+	if(o.closed)
+		host.SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
 	if(o.mode == "last-active")
 		host.SetMixMode(MixMode::LastActive);
 	else if(o.mode == "host-only")
@@ -436,9 +551,11 @@ static int RunHost(const Options &o)
 	host.SetStreamInfo(info);
 
 	Invite invite;
-	invite.host = o.address;
+	if(!o.no_address)
+		invite.host = o.address;
 	invite.port = host.Port();
 	invite.secret = config.secret;
+	invite.meet = MeetUrlToInvite(config.meet.url);
 	std::printf("Sharing on UDP port %u. Invite:\n\n    %s\n\n", host.Port(), EncodeInvite(invite).c_str());
 	std::fflush(stdout);
 
@@ -734,14 +851,25 @@ static int RunGuest(const Options &o)
 	if(!o.avatar.empty())
 		config.avatar = ReadFile(o.avatar);
 
+	if(!MeetOptions(o, config.meet))
+		return 2;
+	// An invite that names a meeting point of its own wins over "default"
+	if(!config.meet.url.empty() && !config.invite.meet.empty())
+		config.meet.url = MeetUrlFromInvite(config.invite.meet);
+
 	Client client(config);
 	if(o.loss > 0)
 		client.SetSimulatedLoss(o.loss, 54321);
+	if(o.closed)
+		client.SetSimulatedFilter(UdpSocket::Filter::AddressAndPort);
+	uint64_t connect_started = NowMs();
 	if(!client.Connect(&error))
 	{
 		std::fprintf(stderr, "%s\n", error.c_str());
 		return 1;
 	}
+	std::printf("Connected after %llu ms, %s\n", static_cast<unsigned long long>(NowMs() - connect_started),
+		client.ViaMeetingPoint() ? "under an address from the meeting point" : "under the address in the invite");
 	const WelcomePayload &welcome = client.Welcome();
 	static const char *codecs[] = { "H.264", "H.265", "H.265 HDR" };
 	std::printf("Joined \"%s\" at %s as player %u: %s %ux%u @ %u fps\n", welcome.host_name.c_str(),

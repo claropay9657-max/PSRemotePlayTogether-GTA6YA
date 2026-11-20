@@ -9,6 +9,7 @@
 
 #include "overlayserver.h"
 #include "coplayaddress.h"
+#include "coplaymeet.h"
 #include "coplaycamera.h"
 
 #include <QApplication>
@@ -122,10 +123,14 @@ QString QmlSettings::coplayLocalAddress() const
     return QString::fromStdString(coplay::GuessLocalAddress());
 }
 
-/** The invite that leads to this computer under the given address; none without an address. */
+/**
+ * The invite that leads to this computer under the given address. Without an
+ * address there is none, unless a meeting point is asked: then the invite says so.
+ */
 QString QmlSettings::coplayInviteFor(const QString &host) const
 {
-    if (host.isEmpty())
+    const bool meet = coplayMeetOn();
+    if (host.isEmpty() && !meet)
         return QString();
     coplay::Invite invite;
     if (!coplay::SecretFromString(settings->GetCoPlaySecret().toStdString(), invite.secret)) {
@@ -136,6 +141,8 @@ QString QmlSettings::coplayInviteFor(const QString &host) const
     invite.host = host.toStdString();
     int port = settings->GetCoPlayPort();
     invite.port = static_cast<uint16_t>(port > 0 && port < 65536 ? port : coplay::kDefaultPort);
+    if (meet)
+        invite.meet = CoPlayMeet::InviteValue(settings->GetCoPlayMeetServer());
     return QString::fromStdString(coplay::EncodeInvite(invite));
 }
 
@@ -194,7 +201,33 @@ QString QmlSettings::coplayIPv6Address() const
 
 QString QmlSettings::coplayInviteIPv6() const
 {
-    return coplayInviteFor(coplayIPv6Address());
+    // Without an IPv6 address there is no IPv6 invite, meeting point or not
+    const QString address = coplayIPv6Address();
+    return address.isEmpty() ? QString() : coplayInviteFor(address);
+}
+
+QString QmlSettings::coplayMeetServer() const
+{
+    return settings->GetCoPlayMeetServer();
+}
+
+void QmlSettings::setCoplayMeetServer(const QString &server)
+{
+    if (server.trimmed() == settings->GetCoPlayMeetServer())
+        return;
+    settings->SetCoPlayMeetServer(server.trimmed());
+    emit coplayChanged();
+}
+
+bool QmlSettings::coplayMeetOn() const
+{
+    return CoPlayMeet::ForHost(settings->GetCoPlayMeetServer(), QStringLiteral("off")).Enabled();
+}
+
+QString QmlSettings::coplayMeetDefault() const
+{
+    QString url = QString::fromStdString(CoPlayMeet::DefaultUrl());
+    return url.startsWith(QLatin1String("https://")) ? url.mid(8) : url;
 }
 
 QString QmlSettings::coplayStunServer() const

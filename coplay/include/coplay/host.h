@@ -16,6 +16,7 @@
 #include "blob.h"
 #include "crypto.h"
 #include "media.h"
+#include "meet.h"
 #include "mixer.h"
 #include "protocol.h"
 #include "socket.h"
@@ -42,6 +43,33 @@ struct HostConfig
 	/** on_keyframe_needed fires at most this often. */
 	uint32_t keyframe_min_interval_ms = 400;
 	InputMixer::Config mixer;
+	/** Lets friends in without a forwarded port (meet.h). Off unless a URL and a way to ask it are given. */
+	MeetConfig meet;
+};
+
+/** How friends elsewhere can reach this host, as far as the host can tell. */
+struct HostReach
+{
+	/** Off when no meeting point is used. */
+	MeetState meet = MeetState::Off;
+	/** Why the meeting point could not be asked; empty unless meet is Failed. */
+	std::string meet_error;
+	/** The session's address and port on the internet as a STUN server saw them ("203.0.113.7:9410"); empty until one has answered. */
+	std::string public_address;
+	/** No STUN server has answered although several were asked several times. */
+	bool stun_silent = false;
+	/**
+	 * Stable: friends can be told where to send, hole punching can work.
+	 * PerDestination: this router gives every connection a new port; only friends
+	 * whose own router is easy-going get in without a forwarded port.
+	 */
+	PortMapping mapping = PortMapping::Unknown;
+
+	bool operator==(const HostReach &o) const
+	{
+		return meet == o.meet && meet_error == o.meet_error && public_address == o.public_address
+			&& stun_silent == o.stun_silent && mapping == o.mapping;
+	}
 };
 
 struct GuestInfo
@@ -82,6 +110,8 @@ struct HostCallbacks
 	std::function<void(const ChatMessage &)> on_chat;
 	/** The picture of a link preview has arrived; fetch it with Host::ChatImage(). */
 	std::function<void(const BlobRef &)> on_chat_image;
+	/** What Host::Reach() says has changed. */
+	std::function<void()> on_reach_changed;
 	std::function<void(const std::string &)> on_log;
 };
 
@@ -172,8 +202,13 @@ class Host
 		/** A player's picture, or null if it is not (yet) here. */
 		BlobData Avatar(const BlobHash &hash);
 
+		/** How friends elsewhere can reach this host; see HostCallbacks::on_reach_changed. */
+		HostReach Reach();
+
 		/** Outgoing packet loss for tests and the simulator. */
 		void SetSimulatedLoss(double probability, uint32_t seed = 1) { socket.SetSimulatedLoss(probability, seed); }
+		/** A router without a forwarded port in front of this host, for tests and the simulator. */
+		void SetSimulatedFilter(UdpSocket::Filter filter) { socket.SetSimulatedFilter(filter); }
 
 	private:
 		struct Guest
@@ -223,6 +258,7 @@ class Host
 			bool input_changed = false;
 			bool keyframe_needed = false;
 			bool guests_changed = false;
+			bool reach_changed = false;
 			std::vector<std::string> logs;
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, Opus frame
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
@@ -259,6 +295,10 @@ class Host
 		void TrackChatImage(const BlobHash &hash);
 		void BumpSeq(uint16_t &seq);
 		Guest *FindBySlot(uint8_t slot);
+		void TickMeet(uint64_t now_ms, Deferred &d);
+		/** On the meeting point's thread: guests that want in. */
+		void OnMeetNotes(const std::vector<MeetNote> &notes);
+		HostReach BuildReach();
 
 		HostConfig config;
 		HostCallbacks callbacks;
@@ -306,6 +346,31 @@ class Host
 		InputsSnapshot last_inputs;
 		uint64_t last_inputs_ms = 0;
 		uint64_t last_blob_poll_ms = 0;
+
+		// Joining without a forwarded port. All of it with the mutex, but meet_on and
+		// meet_worker, which are set before the network thread starts.
+		bool meet_on = false;
+		std::unique_ptr<MeetWorker> meet_worker;
+		StunResolver stun_resolver;
+		StunProbe stun;
+		uint64_t meet_id = 0;
+		uint64_t meet_started_ms = 0;
+		bool have_note = false;
+		MeetNote last_note;
+		uint32_t note_stun_generation = 0;
+		uint64_t note_checked_ms = 0;
+		/** An address of a guest that is being sent to, so that this host's router lets the guest in. */
+		struct Punching
+		{
+			Address to;
+			uint64_t peer_id = 0;
+			uint64_t until_ms = 0;
+			uint64_t next_ms = 0;
+		};
+		std::vector<Punching> punches;
+		std::map<uint64_t, uint32_t> punched; // guest's id -> the counter of its note that was acted on
+		HostReach reach;
+		uint64_t reach_checked_ms = 0;
 };
 
 } // namespace coplay

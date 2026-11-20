@@ -9,6 +9,14 @@
 namespace coplay {
 
 static const uint32_t kUnconfirmedTimeoutMs = 3000;
+/** The first note waits this long for the STUN answer, so that it is complete. */
+static const uint32_t kFirstNoteWaitMs = 600;
+/** How often the addresses in the note are checked: a laptop changes networks. */
+static const uint32_t kOwnAddressCheckMs = 10000;
+static const uint32_t kPunchIntervalMs = 200;
+static const size_t kMaxPunches = 64;
+static const size_t kMaxPunchedGuests = 128;
+static const uint32_t kReachCheckMs = 500;
 static const uint64_t kFastStateWindowMs = 100;
 static const uint32_t kFastStateIntervalMs = 30;
 static const size_t kMaxSeenNonces = 256;
@@ -72,6 +80,27 @@ bool Host::Start(std::string *error)
 		return false;
 	stop_requested = false;
 	running = true;
+	meet_on = config.meet.Enabled();
+	if(meet_on)
+	{
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			RandomBytes(reinterpret_cast<uint8_t *>(&meet_id), sizeof(meet_id));
+			meet_started_ms = NowMs();
+			have_note = false;
+			last_note = MeetNote();
+			stun = StunProbe();
+			punches.clear();
+			punched.clear();
+			reach = HostReach();
+			reach.meet = MeetState::Trying;
+			if(!config.meet.stun_servers.empty())
+				stun_resolver.Start(config.meet.stun_servers);
+		}
+		// Before the network thread, which hands it the note; it asks nobody until it has one
+		meet_worker = std::make_unique<MeetWorker>(config.meet, config.secret, MeetRole::Host,
+			[this](const std::vector<MeetNote> &notes) { OnMeetNotes(notes); });
+	}
 	thread = std::thread(&Host::ThreadMain, this);
 	return true;
 }
@@ -90,6 +119,9 @@ void Host::StopWith(ByeReason reason)
 {
 	if(!running)
 		return;
+	// First, and without the lock: what it finds is handed over under the lock
+	if(meet_worker)
+		meet_worker->Stop();
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 		for(auto &entry : guests)
@@ -105,11 +137,15 @@ void Host::StopWith(ByeReason reason)
 	if(thread.joinable())
 		thread.join();
 	socket.Close();
+	meet_worker.reset();
+	meet_on = false;
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 		for(auto &entry : guests)
 			mixer.RemoveSource(entry.second->slot);
 		guests.clear();
+		punches.clear();
+		reach = HostReach();
 	}
 	running = false;
 }
@@ -153,6 +189,8 @@ void Host::Fire(Deferred &d)
 	}
 	if(d.guests_changed && callbacks.on_guests_changed)
 		callbacks.on_guests_changed();
+	if(d.reach_changed && callbacks.on_reach_changed)
+		callbacks.on_reach_changed();
 	if(callbacks.on_voice)
 	{
 		for(const auto &v : d.voice)
@@ -383,6 +421,10 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 
 void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, uint64_t now_ms, Deferred &d)
 {
+	// A STUN server telling this socket's address on the internet
+	if(meet_on && stun.Handle(data, size, from, now_ms))
+		return;
+
 	PacketHeader header;
 	if(!ParseHeader(data, size, header))
 		return;
@@ -706,6 +748,155 @@ void Host::Tick(uint64_t now_ms, Deferred &d)
 		if(g.confirmed && now_ms - g.last_state_ms >= interval)
 			SendState(g, now_ms);
 	}
+
+	if(meet_on)
+		TickMeet(now_ms, d);
+}
+
+// ------------------------------------------------------------------ joining without a forwarded port
+
+void Host::TickMeet(uint64_t now_ms, Deferred &d)
+{
+	std::vector<Address> servers;
+	if(stun_resolver.Take(servers))
+	{
+		if(servers.empty())
+			d.logs.push_back("The STUN server could not be found: friends are not told this computer's address on the internet");
+		stun.SetServers(servers);
+	}
+	stun.Tick(socket, now_ms);
+
+	// The note says where friends should send to. It is written again when an address in it changes.
+	bool first_due = !have_note && (stun.Public().IsValid() || config.meet.stun_servers.empty()
+		|| ElapsedMs(now_ms, meet_started_ms) >= kFirstNoteWaitMs);
+	bool check_due = have_note && (stun.Generation() != note_stun_generation
+		|| ElapsedMs(now_ms, note_checked_ms) >= kOwnAddressCheckMs);
+	if(first_due || check_due)
+	{
+		note_stun_generation = stun.Generation();
+		note_checked_ms = now_ms;
+		MeetNote note;
+		note.role = MeetRole::Host;
+		note.peer_id = meet_id;
+		note.candidates = GatherCandidates(stun, socket, config.meet.own_addresses);
+		if(!have_note || !note.SameAddresses(last_note))
+		{
+			note.seq = last_note.seq + 1;
+			last_note = note;
+			have_note = true;
+			meet_worker->SetNote(note);
+		}
+	}
+
+	// Sending to a guest's addresses makes this side's router let the guest's packets in
+	for(auto it = punches.begin(); it != punches.end();)
+	{
+		if(now_ms >= it->until_ms)
+		{
+			it = punches.erase(it);
+			continue;
+		}
+		if(now_ms >= it->next_ms)
+		{
+			it->next_ms = now_ms + kPunchIntervalMs;
+			std::vector<uint8_t> body;
+			ByteWriter w(body);
+			w.U64(it->peer_id);
+			std::vector<uint8_t> packet;
+			if(SealHandshakePacket(welcome_key, PacketType::Punch, body.data(), body.size(), packet))
+				socket.SendTo(packet.data(), packet.size(), it->to);
+		}
+		++it;
+	}
+
+	if(ElapsedMs(now_ms, reach_checked_ms) >= kReachCheckMs)
+	{
+		reach_checked_ms = now_ms;
+		HostReach current = BuildReach();
+		if(!(current == reach))
+		{
+			// Addresses stay out of the log: logs get passed around
+			if(current.meet != reach.meet || current.meet_error != reach.meet_error)
+			{
+				if(current.meet == MeetState::Ok)
+					d.logs.push_back("The meeting point answers: friends can find this session without a forwarded port");
+				else if(current.meet == MeetState::Failed)
+					d.logs.push_back("The meeting point cannot be asked (" + current.meet_error + "): friends need the forwarded port");
+			}
+			if(current.mapping != reach.mapping && current.mapping == PortMapping::PerDestination)
+				d.logs.push_back("This router gives every connection a new port (symmetric NAT): only some friends get in without a forwarded port");
+			if(current.mapping != reach.mapping && current.mapping == PortMapping::Stable)
+				d.logs.push_back("This router keeps one port for the session: hole punching can work");
+			reach = current;
+			d.reach_changed = true;
+		}
+	}
+}
+
+HostReach Host::BuildReach()
+{
+	HostReach r;
+	r.meet = meet_worker ? meet_worker->State() : MeetState::Off;
+	if(r.meet == MeetState::Failed)
+		r.meet_error = meet_worker->Error();
+	Address seen = stun.Public();
+	if(seen.IsValid())
+		r.public_address = seen.ToString();
+	r.stun_silent = stun.GaveUp();
+	r.mapping = stun.Mapping();
+	return r;
+}
+
+HostReach Host::Reach()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return reach;
+}
+
+void Host::OnMeetNotes(const std::vector<MeetNote> &notes)
+{
+	bool newcomer = false;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		uint64_t now_ms = NowMs();
+		for(const MeetNote &note : notes)
+		{
+			if(note.role != MeetRole::Guest)
+				continue;
+			auto known = punched.find(note.peer_id);
+			if(known != punched.end() && known->second == note.seq)
+				continue; // this note has been acted on
+			if(known == punched.end())
+			{
+				if(punched.size() >= kMaxPunchedGuests)
+					punched.clear();
+				newcomer = true;
+			}
+			punched[note.peer_id] = note.seq;
+			for(const MeetCandidate &c : note.candidates)
+			{
+				bool running_already = false;
+				for(Punching &p : punches)
+				{
+					if(p.peer_id == note.peer_id && p.to.SameEndpoint(c.address))
+					{
+						p.until_ms = now_ms + config.meet.punch_ms;
+						running_already = true;
+					}
+				}
+				if(running_already || punches.size() >= kMaxPunches)
+					continue;
+				Punching p;
+				p.to = c.address;
+				p.peer_id = note.peer_id;
+				p.until_ms = now_ms + config.meet.punch_ms;
+				p.next_ms = now_ms;
+				punches.push_back(p);
+			}
+		}
+	}
+	if(newcomer && callbacks.on_log)
+		callbacks.on_log("A friend is on the way in through the meeting point");
 }
 
 void Host::SendState(Guest &g, uint64_t now_ms)

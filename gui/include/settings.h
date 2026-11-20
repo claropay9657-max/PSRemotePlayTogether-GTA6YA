@@ -270,6 +270,10 @@ class Settings : public QObject
 		 */
 		QString GetCoPlayStunServer() const		{ return settings.value("coplay/stun_server").toString(); }
 		void SetCoPlayStunServer(const QString &s)	{ settings.setValue("coplay/stun_server", s); }
+		// The meeting point that lets friends in without a forwarded port (coplaymeet.h).
+		// Empty is the built-in one, "off" means that none is ever asked.
+		QString GetCoPlayMeetServer() const		{ return settings.value("coplay/meet_server").toString(); }
+		void SetCoPlayMeetServer(const QString &s)	{ settings.setValue("coplay/meet_server", s); }
 		QString GetCoPlaySecret() const			{ return settings.value("coplay/secret").toString(); }
 		void SetCoPlaySecret(const QString &s)	{ settings.setValue("coplay/secret", s); }
 		QString GetCoPlayName() const			{ return settings.value("coplay/name").toString(); }

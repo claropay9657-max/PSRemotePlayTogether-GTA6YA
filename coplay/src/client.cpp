@@ -5,10 +5,15 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <thread>
 
 namespace coplay {
 
 static const uint32_t kHelloIntervalMs = 250;
+/** The first note waits this long for the STUN answer, so that it is complete. */
+static const uint32_t kFirstNoteWaitMs = 500;
+/** More addresses than this are not tried for one host. */
+static const size_t kMaxTargets = 24;
 static const uint32_t kPingIntervalMs = 500;
 static const uint32_t kFastPingIntervalMs = 100;
 static const uint32_t kFastPings = 5;
@@ -57,9 +62,42 @@ bool Client::Connect(std::string *error)
 	if(connected)
 		return true;
 
-	std::vector<Address> addresses;
-	if(!Resolve(config.invite.host, config.invite.port, addresses, error))
-		return false;
+	const bool use_meet = config.meet.Enabled();
+	const bool named = !config.invite.host.empty();
+	if(!named && !use_meet)
+		return fail("This invite names no address: the host is found through the meeting point, which is switched off here.");
+
+	// Every address the host may answer under. The one in the invite comes first; the
+	// meeting point, if there is one, adds what the host itself says.
+	struct Target
+	{
+		Address address;
+		bool from_invite;
+	};
+	std::vector<Target> targets;
+	std::string lookup_error;
+	if(named)
+	{
+		std::vector<Address> addresses;
+		if(Resolve(config.invite.host, config.invite.port, addresses, &lookup_error))
+		{
+			for(const Address &a : addresses)
+				targets.push_back({ a, true });
+		}
+		else if(!use_meet)
+			return fail(lookup_error);
+	}
+	auto add_target = [&targets](const Address &a) {
+		if(!a.IsValid() || targets.size() >= kMaxTargets)
+			return false;
+		for(const Target &t : targets)
+		{
+			if(t.address.SameEndpoint(a))
+				return false;
+		}
+		targets.push_back({ a, false });
+		return true;
+	};
 
 	HelloPayload hello;
 	if(!RandomBytes(hello.guest_nonce.data(), hello.guest_nonce.size()))
@@ -78,85 +116,181 @@ bool Client::Connect(std::string *error)
 	if(!SealHandshakePacket(hello_key, PacketType::Hello, body.data(), body.size(), hello_packet))
 		return fail("Cannot build the join request");
 
-	// One socket per address family; whichever path answers first is used
-	std::unique_ptr<UdpSocket> sockets[2]; // 0 = IPv6, 1 = IPv4
-	for(const Address &a : addresses)
-	{
-		int idx = a.IsIPv6() ? 0 : 1;
-		if(!sockets[idx])
-		{
-			auto s = std::make_unique<UdpSocket>();
-			if(s->OpenFor(a, nullptr))
-				sockets[idx] = std::move(s);
-		}
-	}
-	if(!sockets[0] && !sockets[1])
+	// One socket for IPv4 and IPv6, on a port of its own: the address this socket
+	// has on the internet is what the host is told to send to
+	auto s = std::make_unique<UdpSocket>();
+	if(!s->Bind(0, nullptr))
 		return fail("Cannot open a network socket");
+	s->SetSimulatedFilter(simulated_filter);
+
+	// What the meeting point's thread finds; it goes away before these do
+	std::mutex found_mutex;
+	std::vector<MeetNote> found;
+	StunResolver resolver;
+	StunProbe stun;
+	uint64_t my_id = 0;
+	MeetNote my_note;
+	bool have_note = false;
+	uint32_t note_stun_generation = 0;
+	bool host_found = false;
+	std::unique_ptr<MeetWorker> worker;
+	if(use_meet)
+	{
+		RandomBytes(reinterpret_cast<uint8_t *>(&my_id), sizeof(my_id));
+		if(!config.meet.stun_servers.empty())
+			resolver.Start(config.meet.stun_servers);
+		worker = std::make_unique<MeetWorker>(config.meet, config.invite.secret, MeetRole::Guest,
+			[&found_mutex, &found](const std::vector<MeetNote> &notes) {
+				std::lock_guard<std::mutex> lock(found_mutex);
+				found.insert(found.end(), notes.begin(), notes.end());
+			});
+	}
+
+	auto gave_up = [&]() {
+		if(!use_meet)
+			return std::string("No answer from the host. Check the invite, and that the host is sharing and reachable on its port.");
+		if(host_found)
+		{
+			std::string msg = "The host is sharing, but no connection could be made through your two routers. "
+				"That happens when a router gives every connection a new port, or blocks this kind of traffic. "
+				"It works when the host forwards the port of the invite, or when you both use the same VPN.";
+			if(stun.Mapping() == PortMapping::PerDestination)
+				msg += " Your own router is one of that kind.";
+			return msg;
+		}
+		std::string msg = targets.empty() && !lookup_error.empty() ? lookup_error + ". " : std::string();
+		if(worker->State() == MeetState::Ok)
+			return msg + "No answer from the host, and it is not at the meeting point either. Check the invite, and that the host is sharing right now.";
+		std::string why = worker->Error();
+		return msg + "No answer from the host. Check the invite, and that the host is sharing and reachable on its port. "
+			"The meeting point could not be asked either" + (why.empty() ? std::string(".") : " (" + why + ").");
+	};
 
 	uint64_t start = NowMs();
 	uint64_t last_hello = 0;
+	bool hello_now = true;
 	uint8_t buf[2048];
 	while(!cancel_connect)
 	{
 		uint64_t now = NowMs();
-		if(now - start >= config.connect_timeout_ms)
-			return fail("No answer from the host. Check the invite, and that the host is sharing and reachable on its port.");
-		if(last_hello == 0 || now - last_hello >= kHelloIntervalMs)
+		// A host that was found at the meeting point looks for us only every few seconds
+		uint64_t allowed = config.connect_timeout_ms;
+		if(host_found && config.meet.connect_ms > allowed)
+			allowed = config.meet.connect_ms;
+		if(ElapsedMs(now, start) >= allowed)
+			return fail(gave_up());
+
+		if(use_meet)
 		{
+			std::vector<Address> servers;
+			if(resolver.Take(servers))
+				stun.SetServers(servers);
+			stun.Tick(*s, now);
+
+			bool first_due = !have_note && (stun.Public().IsValid() || config.meet.stun_servers.empty()
+				|| ElapsedMs(now, start) >= kFirstNoteWaitMs);
+			if(first_due || (have_note && stun.Generation() != note_stun_generation))
+			{
+				note_stun_generation = stun.Generation();
+				MeetNote note;
+				note.role = MeetRole::Guest;
+				note.peer_id = my_id;
+				note.candidates = GatherCandidates(stun, *s, config.meet.own_addresses);
+				if(!have_note || !note.SameAddresses(my_note))
+				{
+					note.seq = my_note.seq + 1;
+					my_note = note;
+					have_note = true;
+					worker->SetNote(note);
+				}
+			}
+
+			std::vector<MeetNote> notes;
+			{
+				std::lock_guard<std::mutex> lock(found_mutex);
+				notes.swap(found);
+			}
+			for(const MeetNote &note : notes)
+			{
+				host_found = true;
+				for(const MeetCandidate &c : note.candidates)
+					hello_now = add_target(c.address) || hello_now;
+			}
+		}
+
+		if(hello_now || now - last_hello >= kHelloIntervalMs)
+		{
+			hello_now = false;
 			last_hello = now;
-			for(const Address &a : addresses)
-			{
-				UdpSocket *s = sockets[a.IsIPv6() ? 0 : 1].get();
-				if(s)
-					s->SendTo(hello_packet.data(), hello_packet.size(), a);
-			}
+			for(const Target &t : targets)
+				s->SendTo(hello_packet.data(), hello_packet.size(), t.address);
 		}
-		for(int idx = 0; idx < 2; idx++)
+
+		Address from;
+		int n = s->RecvFrom(buf, sizeof(buf), from, 10);
+		if(n < 0)
+			std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		if(n <= 0)
+			continue;
+		if(use_meet && stun.Handle(buf, static_cast<size_t>(n), from, NowMs()))
+			continue;
+		PacketHeader header;
+		if(!ParseHeader(buf, static_cast<size_t>(n), header))
+			continue;
+		if(header.type == PacketType::Punch)
 		{
-			if(!sockets[idx])
-				continue;
-			Address from;
-			int n = sockets[idx]->RecvFrom(buf, sizeof(buf), from, 10);
-			if(n <= 0)
-				continue;
-			PacketHeader header;
-			if(!ParseHeader(buf, static_cast<size_t>(n), header))
-				continue;
-			if(header.type != PacketType::Welcome && header.type != PacketType::Reject)
-				continue;
 			std::vector<uint8_t> payload;
-			if(!OpenPacket(welcome_key, buf, static_cast<size_t>(n), payload))
+			if(!use_meet || !OpenPacket(welcome_key, buf, static_cast<size_t>(n), payload))
 				continue;
-			if(payload.size() < kHandshakeNonceSize
-				|| std::memcmp(payload.data(), hello.guest_nonce.data(), kHandshakeNonceSize) != 0)
-				continue; // answer to someone else's or an old request
-			if(header.type == PacketType::Reject)
-			{
-				uint8_t reason = payload.size() > kHandshakeNonceSize ? payload[kHandshakeNonceSize] : 0;
-				if(reason == static_cast<uint8_t>(RejectReason::Full))
-					return fail("The session is full.");
-				if(reason == static_cast<uint8_t>(RejectReason::Version))
-					return fail("The host runs a different version of the app. Both sides need the same version.");
-				return fail("The host declined the connection.");
-			}
-			if(header.version != kProtocolVersion)
-				return fail("The host runs a different version of the app. Both sides need the same version.");
 			ByteReader r(payload.data(), payload.size());
-			WelcomePayload p;
-			if(!ReadWelcome(r, p) || p.conn_id == 0)
+			if(r.U64() != my_id || !r.ok())
 				continue;
-			welcome = p;
-			keys = DeriveSessionKeys(config.invite.secret, hello.guest_nonce, p.host_nonce);
-			host_addr = from;
-			socket = std::move(sockets[idx]);
-			socket->SetSimulatedLoss(loss_probability, loss_seed);
-			send_counter = 0;
-			connected = true;
-			// The host only counts us in once it has seen a packet sealed with the session
-			// keys. Send one now, the caller may take a while before it calls Start().
-			SendPing(NowMs());
-			return true;
+			// This is where the host's packets come from, whatever its note says: its
+			// router may give every connection a new port. Answer right there.
+			host_found = true;
+			hello_now = add_target(from) || hello_now;
+			continue;
 		}
+		if(header.type != PacketType::Welcome && header.type != PacketType::Reject)
+			continue;
+		std::vector<uint8_t> payload;
+		if(!OpenPacket(welcome_key, buf, static_cast<size_t>(n), payload))
+			continue;
+		if(payload.size() < kHandshakeNonceSize
+			|| std::memcmp(payload.data(), hello.guest_nonce.data(), kHandshakeNonceSize) != 0)
+			continue; // answer to someone else's or an old request
+		if(header.type == PacketType::Reject)
+		{
+			uint8_t reason = payload.size() > kHandshakeNonceSize ? payload[kHandshakeNonceSize] : 0;
+			if(reason == static_cast<uint8_t>(RejectReason::Full))
+				return fail("The session is full.");
+			if(reason == static_cast<uint8_t>(RejectReason::Version))
+				return fail("The host runs a different version of the app. Both sides need the same version.");
+			return fail("The host declined the connection.");
+		}
+		if(header.version != kProtocolVersion)
+			return fail("The host runs a different version of the app. Both sides need the same version.");
+		ByteReader r(payload.data(), payload.size());
+		WelcomePayload p;
+		if(!ReadWelcome(r, p) || p.conn_id == 0)
+			continue;
+		welcome = p;
+		keys = DeriveSessionKeys(config.invite.secret, hello.guest_nonce, p.host_nonce);
+		host_addr = from;
+		via_meeting_point = true;
+		for(const Target &t : targets)
+		{
+			if(t.from_invite && t.address.SameEndpoint(from))
+				via_meeting_point = false;
+		}
+		socket = std::move(s);
+		socket->SetSimulatedLoss(loss_probability, loss_seed);
+		send_counter = 0;
+		connected = true;
+		// The host only counts us in once it has seen a packet sealed with the session
+		// keys. Send one now, the caller may take a while before it calls Start().
+		SendPing(NowMs());
+		return true;
 	}
 	return fail("Cancelled");
 }

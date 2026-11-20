@@ -52,6 +52,19 @@ Key DeriveWelcomeKey(const Secret &secret)
 	return HkdfSha256(secret.data(), secret.size(), nullptr, 0, "psrpt coplay welcome");
 }
 
+Key DeriveMeetKey(const Secret &secret)
+{
+	return HkdfSha256(secret.data(), secret.size(), nullptr, 0, "psrpt coplay meet note");
+}
+
+std::array<uint8_t, 16> DeriveMeetRoom(const Secret &secret)
+{
+	Key k = HkdfSha256(secret.data(), secret.size(), nullptr, 0, "psrpt coplay meet room");
+	std::array<uint8_t, 16> room{};
+	std::memcpy(room.data(), k.data(), room.size());
+	return room;
+}
+
 SessionKeys DeriveSessionKeys(const Secret &secret, const HandshakeNonce &guest_nonce, const HandshakeNonce &host_nonce)
 {
 	uint8_t salt[kHandshakeNonceSize * 2];

@@ -9,12 +9,17 @@
 #include <coplay/client.h>
 #include <coplay/invite.h>
 
+#include "coplaymeet.h"
+
 #include <QClipboard>
 #include <QFile>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QLoggingCategory>
 #include <QRandomGenerator>
 #include <QtConcurrentRun>
+
+Q_DECLARE_LOGGING_CATEGORY(chiakiGui)
 
 void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, bool controller_only)
 {
@@ -69,6 +74,10 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
         coplay_player_id = QRandomGenerator::system()->generate64();
     config.player_id = coplay_player_id;
 
+    // A host without a forwarded port is met at the meeting point. The address in the
+    // invite is tried all the same, and first.
+    config.meet = CoPlayMeet::ForGuest(settings->GetCoPlayMeetServer(), settings->GetCoPlayStunServer(), config.invite);
+
     auto client = std::make_shared<coplay::Client>(config);
     // Kept with the session, which joins again by itself when it loses the host
     auto client_config = std::make_shared<const coplay::ClientConfig>(config);
@@ -95,6 +104,9 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
         }
 
         const coplay::WelcomePayload &welcome = client->Welcome();
+        // An invite may name no address: then the session is known by the one the host answered from
+        const QString session_host = host_address.isEmpty() ? QString::fromStdString(client->HostAddress()) : host_address;
+        qCInfo(chiakiGui) << "Play Together: joined" << (client->ViaMeetingPoint() ? "through the meeting point" : "under the address in the invite");
 
         bool fullscreen = false, zoom = false, stretch = false;
         switch (settings->GetWindowType()) {
@@ -119,7 +131,7 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
         StreamSessionConnectInfo info(
                 settings,
                 welcome.stream.ps5 ? CHIAKI_TARGET_PS5_1 : CHIAKI_TARGET_PS4_10,
-                host_address,
+                session_host,
                 QString::fromStdString(welcome.host_name),
                 QByteArray(),
                 QByteArray(),

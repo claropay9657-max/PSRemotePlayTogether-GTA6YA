@@ -102,6 +102,9 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString coplayPublicLookupError READ coplayPublicLookupError NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayIPv6Address READ coplayIPv6Address NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayStunServer READ coplayStunServer WRITE setCoplayStunServer NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayMeetServer READ coplayMeetServer WRITE setCoplayMeetServer NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayMeetOn READ coplayMeetOn NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayMeetDefault READ coplayMeetDefault CONSTANT)
     Q_PROPERTY(QString coplayAvatarUrl READ coplayAvatarUrl NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayVoiceEnabled READ coplayVoiceEnabled WRITE setCoplayVoiceEnabled NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayVoiceStartMuted READ coplayVoiceStartMuted WRITE setCoplayVoiceStartMuted NOTIFY coplayChanged)
@@ -640,6 +643,12 @@ public:
     /** "host:port" of the STUN server to ask; empty = the built-in ones, "off" = never look up. */
     QString coplayStunServer() const;
     void setCoplayStunServer(const QString &server);
+    QString coplayMeetServer() const;
+    void setCoplayMeetServer(const QString &server);
+    /** Whether a meeting point is asked when sharing: the setting is neither "off" nor unusable. */
+    bool coplayMeetOn() const;
+    /** The built-in meeting point, for showing it in the empty field. */
+    QString coplayMeetDefault() const;
     /**
      * Looks the public address up without holding up the caller; the result arrives
      * through coplayChanged. This asks a server on the internet, so call it when the
