@@ -1269,7 +1269,8 @@ TEST(net_handshake_and_roster)
 		CHECK(guests[0].controller == ControllerKind::Xbox);
 		CHECK(guests[0].want == kWantAll);
 	}
-	CHECK(h.guest_changes > 0);
+	// The host says so a moment after its list has changed, outside its lock
+	CHECK(WaitFor([&] { return h.guest_changes > 0; }, 2000));
 	// a guest that wants video needs a key frame to start
 	CHECK(WaitFor([&] { return h.keyframe_requests > 0; }, 2000));
 
