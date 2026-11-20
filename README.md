@@ -10,6 +10,8 @@
 
 Free and open source, for Windows, Linux and macOS. Powered by [GamerNova.net](https://gamernova.net/).
 
+![Four players on one game picture: their names, a webcam and everybody's controller](docs/images/screenshots/playing.jpg)
+
 ## What it does
 
 - **Shared play.** Everybody's controller is merged into the one Remote Play controller. Three ways to share it: everyone at once, one at a time (control passes to whoever is playing while the others rest), or only the host while guests watch.
@@ -45,6 +47,8 @@ Guests need no PlayStation account and no access to the console. The invite cont
 3. Copy the invite and send it to your friends.
 4. Connect to your console. Friends can join as long as you are connected.
 
+![The start page: your console, joining a friend, sharing your console and Controller only](docs/images/screenshots/start-page.jpg)
+
 **Playing on the TV.** Switch on **Controller only** (on the start page, or under **Play Together**) before you connect: the computer then shows no picture and plays no sound, and its window stays as it is instead of going full screen. Your controller goes to the console through the computer, the overlays keep working, and friends who join get picture and sound as usual. With **Let friends join my sessions** off, the console is also asked for the smallest picture, since nobody looks at it. The console may show the game on the TV in the resolution of the Remote Play stream while you are connected.
 
 Friends in your own network can join right away. For friends elsewhere, forward UDP port **9410** to your computer in your router and put your public address (or a DNS name) into the invite's address field.
@@ -64,6 +68,8 @@ Add `--controller-only` to join without picture and sound.
 ### While you play: the stream menu
 
 Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. Next to the usual Remote Play buttons it has the players, your microphone, the others' voices and your webcam, who may control, the invite, and under **Overlays** the preset, **Arrange** and **Options…** for everything shown on the game picture and in OBS. The host can click a player to mute them for everybody, let them only watch, or remove them. All of it can be changed while the game runs.
+
+![The stream menu on top of the game](docs/images/screenshots/stream-menu.jpg)
 
 The controller shortcut can be changed in **Settings → General → Stream Menu Combo**.
 
@@ -93,13 +99,19 @@ Press **⌘T** (Ctrl+T on Windows and Linux), or choose **Chat** in the stream m
 
 Choose **Arrange** in the stream menu to drag the pieces into place; the mouse wheel or the + and − buttons change a piece's size. **Reset places and sizes** puts everything back.
 
+![Arranging the display: every piece can be dragged, resized and hidden](docs/images/screenshots/arrange.jpg)
+
 Three looks: transparent without boxes (the default), glass boxes, dark boxes. A set of choices is a **preset**: make as many as you like, for example one for playing and one for watching, and switch between them at any time. Changes go into the selected preset by themselves.
+
+![The options for the display on the game picture and for the OBS overlay](docs/images/screenshots/overlay-options.jpg)
 
 ### Stream overlay for OBS
 
 1. **Play Together → Overlays → OBS overlay → Overlay on**.
 2. Add the address shown there (`http://localhost:9412/` by default) to OBS as a **Browser Source**.
 3. For the players' voices to reach your stream, tick **Control audio via OBS** in the Browser Source.
+
+![The OBS overlay over a stream scene: players, webcam and controllers](docs/images/screenshots/obs-overlay.jpg)
 
 What the overlay shows, how it looks and where everything sits is set in the same place, also from the stream menu during play, and OBS follows at once. The background is transparent; players and controllers come without boxes unless you choose the glass or the dark ones.
 
