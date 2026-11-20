@@ -103,5 +103,15 @@ if [ -n "$store" ]; then
 	check "an old note is forgotten" "psrpt-meet 1|poll 3000|200" "$(post "$d" $guest g GUESTNOTE1)"
 fi
 
+# Not a check, but good to know: can a web page use this meeting point? It can if
+# an answer carries exactly one "Access-Control-Allow-Origin" (see README.md).
+cors="$(curl -s -m 10 -D - -o /dev/null -H 'Origin: https://example.org' --data "v=1&room=$(room)&id=$guest&role=g&note=" "$url" \
+	| tr -d '\r' | grep -i -c '^access-control-allow-origin:')"
+case "$cors" in
+	1) echo "Friends in a web browser can use this meeting point." ;;
+	0) echo "Note: friends in a web browser cannot use this meeting point: its answers carry no Access-Control-Allow-Origin header (set PSRPT_MEET_CORS, see README.md). The app is not affected." ;;
+	*) echo "Note: friends in a web browser cannot use this meeting point: its answers carry $cors Access-Control-Allow-Origin headers, and more than one counts as none. Leave PSRPT_MEET_CORS empty if the web server adds the header. The app is not affected." ;;
+esac
+
 echo "$checks checks, $failed failed ($url)"
 [ "$failed" -eq 0 ]

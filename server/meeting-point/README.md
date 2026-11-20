@@ -67,6 +67,26 @@ The app is careful on its side: after any failed request it waits 15 seconds,
 then twice as long each time up to 5 minutes. An endpoint that is missing or
 down sees a few requests per minute and app, not one every 3 seconds.
 
+## Friends in a web browser
+
+Friends can also join from a web browser, without the app
+([docs/web-guests.md](../../docs/web-guests.md)). The page they open talks to
+the meeting point like the app does, with the same requests. One thing is
+different: the page is served from another address, and a browser only lets it
+read the answers if they carry the header `Access-Control-Allow-Origin`.
+
+- If nothing in front of the script adds that header, set `PSRPT_MEET_CORS` to
+  `*` (as an environment variable, or the constant at the top of the file).
+  That is safe here: the script uses no cookies, and a note is of no use to
+  anybody without the invite.
+- If your reverse proxy already adds it for the whole site, leave the setting
+  empty. Two such headers count as none, and browsers would be locked out.
+- No bot challenge and no cookie wall on this path, as above: the page's
+  requests are made by a script, not by a person clicking.
+
+`selftest.sh` says at its end whether a web page could use the meeting point
+it tested. The app itself does not care about any of this.
+
 ## What it stores, and what it can see
 
 - Stored: per room a list of `id`, `role`, sealed note and time, for 30 seconds
@@ -98,6 +118,8 @@ infrastructure notes on 2026-11-20):
   CSRF exemptions), a line in the architecture overview (a new poll loop from
   outside), and the privacy note above (no personal data is stored; IP
   addresses only in the web server's usual log).
+- **Web browsers:** BunkerWeb adds `Access-Control-Allow-Origin: *` for the
+  whole site, so `PSRPT_MEET_CORS` stays empty there.
 - **STUN:** the app asks Google's and Cloudflare's STUN servers by default. The
   site runs its own (`turn.gamernova.net:3478`); a user can enter it under Play
   Together → STUN server. With a single server the app can no longer tell

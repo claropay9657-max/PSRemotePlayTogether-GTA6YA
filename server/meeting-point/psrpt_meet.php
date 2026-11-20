@@ -42,8 +42,17 @@ const PSRPT_MEET_MAX_ROOMS = 5000;
 /** Notes per room: of hosts (there is one; a second slot covers a host that restarted) and of guests. */
 const PSRPT_MEET_MAX_HOSTS = 2;
 const PSRPT_MEET_MAX_GUESTS = 10;
-/** Longest note, in characters. The app's notes have about 150. */
+/** Longest note, in characters. The app's notes have about 150, those for a web browser up to 700. */
 const PSRPT_MEET_MAX_NOTE = 1024;
+/**
+ * For friends who join from a web browser: the page they open is served from somewhere
+ * else and may only read this script's answers if they carry the header
+ * "Access-Control-Allow-Origin". '*' sends it for every page (fine: there are no cookies
+ * here, and a note is of no use without the invite), an address such as
+ * 'https://example.org' for that page only. Empty sends none: for a server whose
+ * reverse proxy adds the header already, because two of them count as none.
+ */
+const PSRPT_MEET_CORS = '';
 
 function psrpt_meet_setting(string $name, $default)
 {
@@ -61,6 +70,10 @@ function psrpt_meet_answer(int $status, array $lines): void
     header('Cache-Control: no-store');
     header('X-Content-Type-Options: nosniff');
     header('X-Robots-Tag: noindex, nofollow');
+    $cors = (string) psrpt_meet_setting('PSRPT_MEET_CORS', PSRPT_MEET_CORS);
+    if ($cors !== '' && preg_match('/^(\*|https?:\/\/[A-Za-z0-9.:\[\]-]+)$/', $cors)) {
+        header('Access-Control-Allow-Origin: ' . $cors);
+    }
     echo "psrpt-meet 1\n";
     foreach ($lines as $line) {
         echo $line, "\n";
