@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="gui/chiaking.png" width="160" alt="PSRemotePlayTogether icon">
+  <img src="docs/images/banner.png" alt="PSRemotePlayTogether: play one PlayStation together, from anywhere">
 </p>
 
 # PSRemotePlayTogether
