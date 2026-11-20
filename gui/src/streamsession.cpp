@@ -37,6 +37,12 @@
 #define PS5_TOUCHPAD_MAX_X 1919.0f
 #define PS5_TOUCHPAD_MAX_Y 1079.0f
 #define SESSION_RETRY_SECONDS 20
+/**
+ * The pause before a first connection that failed is tried again. A console that
+ * refuses (in use, not ready yet after waking up) answers within milliseconds, so
+ * without a real pause it gets asked a hundred times a second.
+ */
+#define SESSION_RETRY_PAUSE_MS 1000
 // A console that is connected but sent no picture for this long counts as lost
 #define VIDEO_STALL_MS 8000
 #define HAPTIC_RUMBLE_MIN_STRENGTH 100
@@ -902,6 +908,25 @@ void StreamSession::Start()
 		throw ChiakiException("Chiaki Session Start failed");
 	}
 	session_started = true;
+}
+
+/** Tries a first connection that failed once more. On the session's own thread, after the pause. */
+void StreamSession::RetryStart()
+{
+	// The attempt that failed is over: its thread goes before the next one starts
+	if(session_started)
+	{
+		chiaki_session_join(&session);
+		session_started = false;
+	}
+	if(stop_requested)
+	{
+		// Cancelled during the pause: nothing runs that could still say that it has quit
+		mic_active.storeRelaxed(false);
+		emit SessionQuit(CHIAKI_QUIT_REASON_STOPPED, QString());
+		return;
+	}
+	Start();
 }
 
 void StreamSession::Stop()
@@ -2525,9 +2550,16 @@ void StreamSession::Event(ChiakiEvent *event)
 		case CHIAKI_EVENT_QUIT:
 			// The session's own retries are for the first connection; an attempt to get a lost
 			// session back is repeated by whoever started it
-			if(!connected && !reconnect_attempt && !holepunch_session && chiaki_quit_reason_is_error(event->quit.reason) && connect_timer.elapsed() < SESSION_RETRY_SECONDS * 1000)
+			// Not for what another try cannot change: the console speaks another version (the
+			// session has already asked again with that one), or does not know this account.
+			if(!connected && !reconnect_attempt && !holepunch_session && chiaki_quit_reason_is_error(event->quit.reason)
+				&& event->quit.reason != CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_VERSION_MISMATCH
+				&& event->quit.reason != CHIAKI_QUIT_REASON_PSN_REGIST_FAILED
+				&& !stop_requested
+				&& connect_timer.elapsed() < SESSION_RETRY_SECONDS * 1000)
 			{
-				QTimer::singleShot(SESSION_RETRY_SECONDS / 3, this, &StreamSession::Start);
+				// This runs on the thread of the attempt that failed, which ends right after
+				QTimer::singleShot(SESSION_RETRY_PAUSE_MS, this, &StreamSession::RetryStart);
 				return;
 			}
 			// The object may stay around for a while (see QmlBackend), with nothing to send to

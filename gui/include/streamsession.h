@@ -456,6 +456,8 @@ class StreamSession : public QObject
 		void InitMic(unsigned int channels, unsigned int rate);
 		void InitHaptics();
 		void Event(ChiakiEvent *event);
+		/** A first connection that failed is tried again, after a pause. */
+		void RetryStart();
 		void DisconnectHaptics();
 		void ConnectHaptics();
 #if CHIAKI_GUI_ENABLE_STEAMDECK_NATIVE
