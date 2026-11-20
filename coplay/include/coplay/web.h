@@ -133,8 +133,18 @@ std::string WebOfferToSdp(const WebOffer &offer);
  * The link a friend opens: the page, and behind a "#" (the part a browser keeps
  * to itself) the invite's key and, if it is not the default one, the meeting point.
  * @param meet as in Invite::meet
+ * @param stun what WebStunForLink() made of the host's setting; empty for the page's own choice
  */
-std::string WebInviteLink(const std::string &page_url, const Secret &secret, const std::string &meet);
+std::string WebInviteLink(const std::string &page_url, const Secret &secret, const std::string &meet,
+		const std::string &stun = std::string());
+
+/**
+ * What a link says about the STUN server a browser asks for its address on the
+ * internet, from what the host has set for itself: nothing for the built-in
+ * ones, "off" for nobody, otherwise "host:port". Empty as well for what is no
+ * server address.
+ */
+std::string WebStunForLink(const std::string &setting);
 
 /**
  * The page for what a user wrote into the setting: nothing is the default,

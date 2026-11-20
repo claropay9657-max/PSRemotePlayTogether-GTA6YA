@@ -36,6 +36,8 @@ std::unique_ptr<WebGateway> CreateWebGateway(const WebConfig &, const WebGateway
 #include <rtc/rtc.hpp>
 
 #include <openssl/bio.h>
+#include <openssl/bn.h>
+#include <openssl/asn1.h>
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -97,25 +99,34 @@ static bool MakeCertificate(std::string &cert_pem, std::string &key_pem,
 		cert = X509_new();
 		if(!cert)
 			break;
-		uint8_t serial[8];
-		if(!RandomBytes(serial, sizeof(serial)))
+		uint8_t serial_bytes[8];
+		if(!RandomBytes(serial_bytes, sizeof(serial_bytes)))
 			break;
-		serial[0] &= 0x7f;
-		BIGNUM *bn = BN_bin2bn(serial, sizeof(serial), nullptr);
-		if(!bn)
-			break;
-		BN_to_ASN1_INTEGER(bn, X509_get_serialNumber(cert));
+		serial_bytes[0] &= 0x7f;
+		// Made on their own and then handed to the certificate: newer versions of OpenSSL
+		// do not let go of the certificate's own serial number and names for writing
+		BIGNUM *bn = BN_bin2bn(serial_bytes, sizeof(serial_bytes), nullptr);
+		ASN1_INTEGER *serial = ASN1_INTEGER_new();
+		bool serial_ok = bn && serial && BN_to_ASN1_INTEGER(bn, serial) && X509_set_serialNumber(cert, serial) == 1;
 		BN_free(bn);
+		ASN1_INTEGER_free(serial);
+		if(!serial_ok)
+			break;
 		X509_set_version(cert, 2);
 		// A day back for clocks that are behind; no session lasts a year
 		X509_gmtime_adj(X509_getm_notBefore(cert), -24 * 3600);
 		X509_gmtime_adj(X509_getm_notAfter(cert), 365L * 24 * 3600);
 		if(X509_set_pubkey(cert, key) != 1)
 			break;
-		X509_NAME *name = X509_get_subject_name(cert);
-		X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-			reinterpret_cast<const unsigned char *>("PSRemotePlayTogether"), -1, -1, 0);
-		X509_set_issuer_name(cert, name);
+		X509_NAME *name = X509_NAME_new();
+		bool name_ok = name
+			&& X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+				reinterpret_cast<const unsigned char *>("PSRemotePlayTogether"), -1, -1, 0) == 1
+			&& X509_set_subject_name(cert, name) == 1
+			&& X509_set_issuer_name(cert, name) == 1;
+		X509_NAME_free(name);
+		if(!name_ok)
+			break;
 		if(!X509_sign(cert, key, EVP_sha256()))
 			break;
 		unsigned int md_size = 0;

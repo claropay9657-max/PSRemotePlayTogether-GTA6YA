@@ -538,7 +538,8 @@ QString StreamSession::GetCoPlayInviteWeb() const
 {
 	if(!IsCoPlayHosting() || coplay->web_page.empty() || !coplay->host->WebGuestsOn())
 		return QString();
-	return QString::fromStdString(coplay::WebInviteLink(coplay->web_page, coplay->invite_secret, coplay->invite_meet));
+	return QString::fromStdString(coplay::WebInviteLink(coplay->web_page, coplay->invite_secret, coplay->invite_meet,
+		coplay::WebStunForLink(coplay->stun_server.toStdString())));
 }
 
 QString StreamSession::GetCoPlayReachText() const

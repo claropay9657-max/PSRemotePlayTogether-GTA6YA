@@ -104,6 +104,13 @@ if(COPLAY_ENABLE_WEB)
 		FetchContent_MakeAvailable(libdatachannel)
 	endif()
 	set(BUILD_SHARED_LIBS "${COPLAY_SAVED_BUILD_SHARED_LIBS}")
+	# This version of libdatachannel uses std::transform in a file that does not include
+	# <algorithm>, which newer standard libraries (llvm-mingw's libc++) no longer bring along
+	if(MSVC)
+		target_compile_options(datachannel-static PRIVATE /FIalgorithm)
+	else()
+		target_compile_options(datachannel-static PRIVATE -include algorithm)
+	endif()
 	target_link_libraries(coplay PRIVATE LibDataChannel::LibDataChannelStatic)
 	target_compile_definitions(coplay PRIVATE COPLAY_WEB)
 	message(STATUS "Co-play: guests can join from a web browser (libdatachannel)")

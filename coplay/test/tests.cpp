@@ -4381,6 +4381,16 @@ TEST(web_session_description_and_link)
 	CHECK(WebInviteLink("https://example.org/play/", secret, "meet.example.org/m.php")
 		== "https://example.org/play/#" + key + "?meet=meet.example.org/m.php");
 	CHECK(WebInviteLink("", secret, "").empty());
+	// the host's choice of STUN server travels with the link
+	CHECK(WebInviteLink("https://example.org/play/", secret, "", "off") == "https://example.org/play/#" + key + "?stun=off");
+	CHECK(WebInviteLink("https://example.org/play/", secret, "m.example.org/m.php", "stun.example.org:3478")
+		== "https://example.org/play/#" + key + "?meet=m.example.org/m.php&stun=stun.example.org:3478");
+	CHECK(WebStunForLink("").empty() && WebStunForLink("  ").empty());
+	CHECK(WebStunForLink("off") == "off" && WebStunForLink(" OFF ") == "off");
+	CHECK(WebStunForLink("stun.example.org") == "stun.example.org:3478");
+	CHECK(WebStunForLink("stun.example.org:19302") == "stun.example.org:19302");
+	CHECK(WebStunForLink("[2001:db8::1]:3478") == "[2001:db8::1]:3478");
+	CHECK(WebStunForLink("exa mple").empty() && WebStunForLink("a&b=c").empty());
 
 	CHECK(WebUrlFromText("") == kDefaultWebUrl);
 	CHECK(WebUrlFromText("  ") == kDefaultWebUrl);

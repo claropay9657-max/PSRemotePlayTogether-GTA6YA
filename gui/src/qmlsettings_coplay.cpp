@@ -346,7 +346,8 @@ QString QmlSettings::coplayInviteWeb() const
         settings->SetCoPlaySecret(QString::fromStdString(coplay::SecretToString(secret)));
     }
     return QString::fromStdString(coplay::WebInviteLink(coplay::WebUrlFromText(settings->GetCoPlayWebUrl().toStdString()),
-        secret, CoPlayMeet::InviteValue(settings->GetCoPlayMeetServer())));
+        secret, CoPlayMeet::InviteValue(settings->GetCoPlayMeetServer()),
+        coplay::WebStunForLink(settings->GetCoPlayStunServer().toStdString())));
 }
 
 void QmlSettings::coplayCopyInviteWeb()

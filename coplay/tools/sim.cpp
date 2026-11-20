@@ -590,7 +590,9 @@ static int RunHost(const Options &o)
 		std::string meet = invite.meet;
 		if(meet.empty() && config.meet.url != kDefaultMeetUrl)
 			meet = config.meet.url;
-		std::printf("For a web browser:\n\n    %s\n\n", WebInviteLink(web_page, config.secret, meet).c_str());
+		// "--stun off" also keeps the browser from asking anybody
+		std::printf("For a web browser:\n\n    %s\n\n",
+			WebInviteLink(web_page, config.secret, meet, WebStunForLink(o.stun)).c_str());
 	}
 	std::fflush(stdout);
 

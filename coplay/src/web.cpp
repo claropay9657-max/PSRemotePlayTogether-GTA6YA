@@ -398,14 +398,42 @@ std::string WebUrlFromText(const std::string &text, const std::string &default_u
 	return "https://" + s;
 }
 
-std::string WebInviteLink(const std::string &page_url, const Secret &secret, const std::string &meet)
+std::string WebInviteLink(const std::string &page_url, const Secret &secret, const std::string &meet,
+		const std::string &stun)
 {
 	if(page_url.empty())
 		return std::string();
 	std::string link = page_url + "#" + SecretToString(secret);
+	char separator = '?';
 	if(!meet.empty())
-		link += "?meet=" + meet;
+	{
+		link += std::string(1, separator) + "meet=" + meet;
+		separator = '&';
+	}
+	if(!stun.empty())
+		link += std::string(1, separator) + "stun=" + stun;
 	return link;
+}
+
+std::string WebStunForLink(const std::string &setting)
+{
+	std::string s = TrimText(setting);
+	if(s.empty())
+		return std::string();
+	if(MeetIsOff(s))
+		return "off";
+	StunServer server;
+	if(!ParseStunServer(s, server) || server.host.empty())
+		return std::string();
+	for(char c : server.host)
+	{
+		bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == ':';
+		if(!ok)
+			return std::string();
+	}
+	// An IPv6 address needs brackets to be told from its port
+	std::string host = server.host.find(':') != std::string::npos ? "[" + server.host + "]" : server.host;
+	return host + ":" + std::to_string(server.port);
 }
 
 } // namespace coplay
