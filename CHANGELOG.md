@@ -8,6 +8,7 @@ becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh
 - **Update check.** The app asks GitHub at start whether a newer version exists and tells you, with a link to the download. Nothing is downloaded by itself, and it can be switched off under Settings → General.
 - **Support the project.** A Ko-fi button on the start page, for everybody who wants to buy the developer a coffee.
 - **Now on GitHub.** The source code, the releases and the builds for Windows, Linux (x86_64 and arm64) and macOS all live on GitHub. Every release is built by GitHub Actions.
+- **STUN server of your choice.** Play Together has a field for the server that is asked for your address on the internet. Empty means the default, Google's.
 - **Linux arm64.** A real arm64 AppImage, built on an arm64 machine.
 
 ## 0.1.1

@@ -153,7 +153,7 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
 | in the same network or the same VPN | Nothing. Send the **Same network** invite. |
 | somewhere on the internet | Forward **UDP port 9410** to your computer in your router and send the **Internet** invite. The port can be changed under Play Together. |
 
-Guests never open a port.
+Guests never open a port. For the Internet invite the app asks a STUN server for your address on the internet: Google's by default, and you can enter your own under **Play Together → STUN server**.
 
 > 💡 **Can't forward a port?** Put everybody into one virtual network with a mesh VPN such as Tailscale or ZeroTier, enter your VPN address under **Play Together → Own internet address** and send that invite.
 

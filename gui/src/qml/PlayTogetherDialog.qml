@@ -477,6 +477,32 @@ DialogView {
                             }
                         }
 
+                        Label {
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("STUN server:")
+                        }
+
+                        C.TextField {
+                            Layout.fillWidth: true
+                            // Empty is the built-in choice: Google's server, and Cloudflare's if that one does not answer
+                            placeholderText: qsTr("stun.l.google.com:19302 (default)")
+                            text: Chiaki.settings.coplayStunServer
+                            onEditingFinished: {
+                                Chiaki.settings.coplayStunServer = text;
+                                // What the other server said is forgotten: ask this one
+                                invites.lookUp();
+                            }
+                        }
+
+                        Item { }
+
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            opacity: 0.7
+                            text: qsTr("The STUN server is asked for your address on the internet, which goes into the Internet invite. Nothing else is sent to it. Leave the field empty for the default (Google's server, then Cloudflare's), enter your own as host:port, or write \"off\" to never ask.")
+                        }
+
                         Item { }
 
                         Label {
