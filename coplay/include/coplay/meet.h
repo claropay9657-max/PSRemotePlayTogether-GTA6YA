@@ -194,8 +194,14 @@ class MeetWorker
 	public:
 		/** Called on the worker's thread with every note that could be opened, each time it is seen. */
 		using OnNotes = std::function<void(const std::vector<MeetNote> &)>;
+		/**
+		 * Called on the worker's thread with the notes that are not of the kind above, as
+		 * they stand at the meeting point: what a browser leaves there (web.h).
+		 */
+		using OnOtherNotes = std::function<void(const std::vector<std::string> &)>;
 
-		MeetWorker(const MeetConfig &config, const Secret &secret, MeetRole role, OnNotes on_notes);
+		MeetWorker(const MeetConfig &config, const Secret &secret, MeetRole role, OnNotes on_notes,
+			OnOtherNotes on_other_notes = nullptr);
 		/** Stops; returns when the thread has ended. */
 		~MeetWorker();
 		MeetWorker(const MeetWorker &) = delete;
@@ -203,6 +209,12 @@ class MeetWorker
 
 		/** The note to keep there from now on. Nothing is sent before the first one is set. */
 		void SetNote(const MeetNote &note);
+		/**
+		 * A second note to keep there next to the first, already sealed by the caller
+		 * (a host's answers to browsers, web.h). Empty takes it away again. It costs one
+		 * more request per round, so it is only set while it is needed.
+		 */
+		void SetExtraNote(const std::string &text);
 		void Stop();
 
 		MeetState State();
@@ -217,6 +229,7 @@ class MeetWorker
 		const Secret secret;
 		const MeetRole role;
 		const OnNotes on_notes;
+		const OnOtherNotes on_other_notes;
 		const std::string room;
 		uint64_t sender_id = 0;
 
@@ -229,6 +242,11 @@ class MeetWorker
 		bool have_note = false;
 		bool note_new = false;
 		std::string note_text;
+		std::string extra_text;
+		/** The extra note differs from what the meeting point has. */
+		bool extra_new = false;
+		/** The meeting point holds an extra note of ours. */
+		bool extra_there = false;
 		MeetState state = MeetState::Trying;
 		std::string error;
 };

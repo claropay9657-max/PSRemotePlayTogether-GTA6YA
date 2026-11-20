@@ -15,6 +15,8 @@ endif()
 
 option(COPLAY_ENABLE_TESTS "Build the co-play tests" ON)
 option(COPLAY_ENABLE_SIM "Build coplay-sim, a simulated console for testing without a PlayStation" ON)
+option(COPLAY_ENABLE_WEB "Let friends join from a web browser (downloads and builds libdatachannel)" ON)
+set(COPLAY_LIBDATACHANNEL_DIR "" CACHE PATH "A libdatachannel source tree to build instead of downloading one")
 
 add_library(coplay STATIC
 	include/coplay/blob.h
@@ -30,6 +32,7 @@ add_library(coplay STATIC
 	include/coplay/socket.h
 	include/coplay/stun.h
 	include/coplay/video.h
+	include/coplay/web.h
 	src/blob.cpp
 	src/client.cpp
 	src/crypto.cpp
@@ -42,6 +45,8 @@ add_library(coplay STATIC
 	src/socket.cpp
 	src/stun.cpp
 	src/video.cpp
+	src/web.cpp
+	src/webrtc.cpp
 )
 target_compile_features(coplay PUBLIC cxx_std_17)
 set_target_properties(coplay PROPERTIES CXX_EXTENSIONS OFF POSITION_INDEPENDENT_CODE ON)
@@ -64,6 +69,46 @@ find_package(Threads REQUIRED)
 target_link_libraries(coplay PUBLIC Threads::Threads)
 if(WIN32)
 	target_link_libraries(coplay PUBLIC ws2_32)
+endif()
+
+# Guests in a web browser reach the host over WebRTC. The library for that is
+# libdatachannel (MPL 2.0) with its own copies of libjuice and usrsctp, built
+# into the app; nothing of it has to be installed. The commit is pinned, and
+# only what data channels need is built (no media transport, no WebSocket).
+if(COPLAY_ENABLE_WEB)
+	include(FetchContent)
+	if(COPLAY_LIBDATACHANNEL_DIR)
+		set(FETCHCONTENT_SOURCE_DIR_LIBDATACHANNEL "${COPLAY_LIBDATACHANNEL_DIR}" CACHE PATH "" FORCE)
+	endif()
+	set(NO_MEDIA ON CACHE BOOL "" FORCE)
+	set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
+	set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
+	set(NO_TESTS ON CACHE BOOL "" FORCE)
+	set(COPLAY_LIBDATACHANNEL_SOURCE
+		GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
+		GIT_TAG 6b1e2e620f1e37f0eafeee702eaea0043cb305fd # v0.24.6
+		GIT_SUBMODULES deps/plog deps/usrsctp deps/libjuice
+		GIT_SUBMODULES_RECURSE OFF)
+	# Static, and out of "all" and "install": only what the app links is built
+	set(COPLAY_SAVED_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
+	set(BUILD_SHARED_LIBS OFF)
+	if(CMAKE_VERSION VERSION_LESS 3.28)
+		FetchContent_Declare(libdatachannel ${COPLAY_LIBDATACHANNEL_SOURCE})
+		FetchContent_GetProperties(libdatachannel)
+		if(NOT libdatachannel_POPULATED)
+			FetchContent_Populate(libdatachannel)
+			add_subdirectory("${libdatachannel_SOURCE_DIR}" "${libdatachannel_BINARY_DIR}" EXCLUDE_FROM_ALL)
+		endif()
+	else()
+		FetchContent_Declare(libdatachannel ${COPLAY_LIBDATACHANNEL_SOURCE} EXCLUDE_FROM_ALL)
+		FetchContent_MakeAvailable(libdatachannel)
+	endif()
+	set(BUILD_SHARED_LIBS "${COPLAY_SAVED_BUILD_SHARED_LIBS}")
+	target_link_libraries(coplay PRIVATE LibDataChannel::LibDataChannelStatic)
+	target_compile_definitions(coplay PRIVATE COPLAY_WEB)
+	message(STATUS "Co-play: guests can join from a web browser (libdatachannel)")
+else()
+	message(STATUS "Co-play: built without support for guests in a web browser")
 endif()
 
 if(COPLAY_ENABLE_TESTS)

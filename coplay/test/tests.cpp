@@ -13,6 +13,7 @@
 #include <coplay/socket.h>
 #include <coplay/stun.h>
 #include <coplay/video.h>
+#include <coplay/web.h>
 
 #include <algorithm>
 #include <atomic>
@@ -4219,6 +4220,660 @@ TEST(net_host_says_how_it_can_be_reached)
 		CHECK(WaitFor([&] { return h.host->Reach().meet == MeetState::Ok; }, 4000));
 		CHECK(h.host->Reach().public_address.empty() && h.host->Reach().mapping == PortMapping::Unknown);
 	}
+}
+
+// ---------------------------------------------------------------- guests in a web browser
+
+static WebOffer SampleOffer()
+{
+	WebOffer o;
+	o.peer_id = 0x1122334455667788ull;
+	o.protocol = kProtocolVersion;
+	for(size_t i = 0; i < o.fingerprint.size(); i++)
+		o.fingerprint[i] = static_cast<uint8_t>(i * 7 + 1);
+	o.mid = "0";
+	o.side.ufrag = "abcd";
+	o.side.pwd = "0123456789abcdefghijklmn";
+	WebCandidate c;
+	c.type = WebCandidateType::Reflexive;
+	ParseAddress("203.0.113.7", 54321, c.address);
+	o.side.candidates.push_back(c);
+	c.type = WebCandidateType::Host;
+	ParseAddress("2001:db8::5", 4242, c.address);
+	o.side.candidates.push_back(c);
+	return o;
+}
+
+TEST(web_notes_round_trip_and_are_sealed)
+{
+	Secret secret = GenerateSecret();
+	WebOffer offer = SampleOffer();
+	std::string text;
+	CHECK(SealWebOffer(secret, offer, text));
+	CHECK(!text.empty() && text.size() <= kMeetMaxNoteText);
+	// the meeting point only takes letters, digits, "-" and "_"
+	CHECK(text.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") == std::string::npos);
+
+	WebOffer back;
+	CHECK(OpenWebOffer(secret, text, back));
+	CHECK(back.peer_id == offer.peer_id && back.protocol == offer.protocol && back.fingerprint == offer.fingerprint);
+	CHECK(back.mid == "0" && back.side.ufrag == offer.side.ufrag && back.side.pwd == offer.side.pwd);
+	CHECK(back.side.candidates.size() == 2);
+	if(back.side.candidates.size() == 2)
+	{
+		CHECK(back.side.candidates[0] == offer.side.candidates[0]);
+		CHECK(back.side.candidates[1] == offer.side.candidates[1]);
+		CHECK(back.side.candidates[0].address.ToString() == "203.0.113.7:54321");
+	}
+
+	// sealed twice, it never looks the same
+	std::string again;
+	CHECK(SealWebOffer(secret, offer, again) && again != text);
+
+	// nobody without the invite reads or writes one
+	CHECK(!OpenWebOffer(GenerateSecret(), text, back));
+	std::string tampered = text;
+	tampered[tampered.size() / 2] = tampered[tampered.size() / 2] == 'A' ? 'B' : 'A';
+	CHECK(!OpenWebOffer(secret, tampered, back));
+	CHECK(!OpenWebOffer(secret, "", back));
+	CHECK(!OpenWebOffer(secret, "not base64 !", back));
+
+	// the app's own notes and the browsers' are told apart by what opens them
+	MeetNote app_note;
+	app_note.role = MeetRole::Guest;
+	app_note.peer_id = 5;
+	std::string app_text;
+	CHECK(SealMeetNote(secret, app_note, app_text));
+	CHECK(!OpenWebOffer(secret, app_text, back));
+	MeetNote not_an_app_note;
+	CHECK(!OpenMeetNote(secret, text, not_an_app_note));
+
+	// what would end up in a session description is checked
+	WebOffer bad = offer;
+	bad.mid = "0\r\na=evil";
+	CHECK(SealWebOffer(secret, bad, text) && !OpenWebOffer(secret, text, back));
+	bad = offer;
+	bad.side.pwd = "too short";
+	CHECK(SealWebOffer(secret, bad, text) && !OpenWebOffer(secret, text, back));
+	bad = offer;
+	bad.side.ufrag = "ab cd";
+	CHECK(SealWebOffer(secret, bad, text) && !OpenWebOffer(secret, text, back));
+	bad = offer;
+	bad.peer_id = 0;
+	CHECK(SealWebOffer(secret, bad, text) && !OpenWebOffer(secret, text, back));
+
+	// the host's answers
+	WebAnswers answers;
+	answers.protocol = kProtocolVersion;
+	answers.fingerprint = offer.fingerprint;
+	for(uint64_t i = 1; i <= 3; i++)
+	{
+		WebAnswer a;
+		a.peer_id = i * 1000;
+		a.active = i != 2;
+		a.side = offer.side;
+		answers.answers.push_back(a);
+	}
+	CHECK(SealWebAnswers(secret, answers, text));
+	WebAnswers answers_back;
+	CHECK(OpenWebAnswers(secret, text, answers_back));
+	CHECK(answers_back.protocol == kProtocolVersion && answers_back.fingerprint == answers.fingerprint);
+	CHECK(answers_back.answers.size() == 3);
+	if(answers_back.answers.size() == 3)
+	{
+		CHECK(answers_back.answers[0] == answers.answers[0]);
+		CHECK(answers_back.answers[1] == answers.answers[1] && !answers_back.answers[1].active);
+		CHECK(answers_back.answers[2] == answers.answers[2]);
+	}
+	// an offer is no answer and the other way round
+	CHECK(!OpenWebOffer(secret, text, back));
+	std::string offer_text;
+	CHECK(SealWebOffer(secret, offer, offer_text) && !OpenWebAnswers(secret, offer_text, answers_back));
+	CHECK(!OpenWebAnswers(GenerateSecret(), text, answers_back));
+
+	// The largest answers there can be still fit into a note: four browsers at once, IPv6 everywhere
+	WebAnswers large;
+	large.protocol = kProtocolVersion;
+	for(uint64_t i = 1; i <= kWebMaxPending; i++)
+	{
+		WebAnswer a;
+		a.peer_id = i;
+		a.side.ufrag = "abcdefgh";
+		a.side.pwd = "0123456789abcdefghijklmnopqrstuv";
+		for(uint16_t k = 0; k < 4; k++)
+		{
+			WebCandidate c;
+			ParseAddress("2001:db8:1:2:3:4:5:" + std::to_string(k + 1), static_cast<uint16_t>(9000 + k), c.address);
+			a.side.candidates.push_back(c);
+		}
+		large.answers.push_back(a);
+	}
+	CHECK(SealWebAnswers(secret, large, text));
+	CHECK(OpenWebAnswers(secret, text, answers_back) && answers_back.answers.size() == kWebMaxPending);
+}
+
+TEST(web_session_description_and_link)
+{
+	WebOffer offer = SampleOffer();
+	std::string print = WebFingerprintToString(offer.fingerprint);
+	CHECK(print.size() == 32 * 3 - 1 && print.substr(0, 5) == "01:08");
+	std::array<uint8_t, kWebFingerprintSize> parsed{};
+	CHECK(WebFingerprintFromString(print, parsed) && parsed == offer.fingerprint);
+	CHECK(WebFingerprintFromString("01:08:0f", parsed) == false);
+	CHECK(WebFingerprintFromString(print + ":00", parsed) == false);
+	CHECK(WebFingerprintFromString("zz" + print.substr(2), parsed) == false);
+
+	std::string sdp = WebOfferToSdp(offer);
+	CHECK(sdp.find("m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n") != std::string::npos);
+	CHECK(sdp.find("a=mid:0\r\n") != std::string::npos);
+	CHECK(sdp.find("a=ice-ufrag:abcd\r\n") != std::string::npos);
+	CHECK(sdp.find("a=ice-pwd:0123456789abcdefghijklmn\r\n") != std::string::npos);
+	CHECK(sdp.find("a=fingerprint:sha-256 " + print + "\r\n") != std::string::npos);
+	CHECK(sdp.find("a=setup:actpass\r\n") != std::string::npos);
+	CHECK(sdp.find(" 203.0.113.7 54321 typ srflx raddr 0.0.0.0 rport 0\r\n") != std::string::npos);
+	CHECK(sdp.find(" 2001:db8::5 4242 typ host\r\n") != std::string::npos);
+
+	Secret secret{};
+	for(size_t i = 0; i < secret.size(); i++)
+		secret[i] = static_cast<uint8_t>(i);
+	std::string key = SecretToString(secret);
+	CHECK(WebInviteLink("https://example.org/play/", secret, "") == "https://example.org/play/#" + key);
+	CHECK(WebInviteLink("https://example.org/play/", secret, "meet.example.org/m.php")
+		== "https://example.org/play/#" + key + "?meet=meet.example.org/m.php");
+	CHECK(WebInviteLink("", secret, "").empty());
+
+	CHECK(WebUrlFromText("") == kDefaultWebUrl);
+	CHECK(WebUrlFromText("  ") == kDefaultWebUrl);
+	CHECK(WebUrlFromText("example.org/play/") == "https://example.org/play/");
+	CHECK(WebUrlFromText(" https://example.org/p/ ") == "https://example.org/p/");
+	CHECK(WebUrlFromText("http://127.0.0.1:8080/web/") == "http://127.0.0.1:8080/web/");
+	// nothing that would put the key where a server sees it, or that is no web address
+	CHECK(WebUrlFromText("example.org/play/?x=").empty());
+	CHECK(WebUrlFromText("example.org/#top").empty());
+	CHECK(WebUrlFromText("ftp://example.org/").empty());
+	CHECK(WebUrlFromText("exa mple.org").empty());
+}
+
+/** Stands in for the WebRTC side: what the host sends is kept, what a browser would send is handed in by the test. */
+struct FakeGateway : WebGateway
+{
+	struct Shared
+	{
+		std::mutex mutex;
+		Callbacks callbacks;
+		std::vector<WebOffer> offers;
+		std::map<uint64_t, std::vector<std::vector<uint8_t>>> sent;
+		std::map<uint64_t, size_t> buffered;
+		std::vector<uint64_t> closed;
+		std::vector<uint64_t> connected;
+		bool alive = true;
+	};
+	std::shared_ptr<Shared> shared;
+
+	explicit FakeGateway(std::shared_ptr<Shared> s) : shared(std::move(s)) {}
+	~FakeGateway() override
+	{
+		std::lock_guard<std::mutex> lock(shared->mutex);
+		shared->alive = false;
+	}
+
+	void Offer(const WebOffer &offer) override
+	{
+		Callbacks cb;
+		{
+			std::lock_guard<std::mutex> lock(shared->mutex);
+			shared->offers.push_back(offer);
+			cb = shared->callbacks;
+		}
+		cb.on_answers_changed();
+	}
+
+	WebAnswers Answers() override
+	{
+		WebAnswers out;
+		out.protocol = kProtocolVersion;
+		out.fingerprint.fill(0x42);
+		std::lock_guard<std::mutex> lock(shared->mutex);
+		for(const WebOffer &o : shared->offers)
+		{
+			if(std::find(shared->connected.begin(), shared->connected.end(), o.peer_id) != shared->connected.end())
+				continue;
+			WebAnswer a;
+			a.peer_id = o.peer_id;
+			a.side.ufrag = "host";
+			a.side.pwd = "hosthosthosthosthosthost";
+			WebCandidate c;
+			ParseAddress("198.51.100.9", 9411, c.address);
+			a.side.candidates.push_back(c);
+			out.answers.push_back(a);
+		}
+		return out;
+	}
+
+	bool Send(uint64_t peer_id, const uint8_t *data, size_t size) override
+	{
+		std::lock_guard<std::mutex> lock(shared->mutex);
+		shared->sent[peer_id].emplace_back(data, data + size);
+		return true;
+	}
+
+	size_t Buffered(uint64_t peer_id) override
+	{
+		std::lock_guard<std::mutex> lock(shared->mutex);
+		auto it = shared->buffered.find(peer_id);
+		return it == shared->buffered.end() ? 0 : it->second;
+	}
+
+	void Close(uint64_t peer_id) override
+	{
+		std::lock_guard<std::mutex> lock(shared->mutex);
+		shared->closed.push_back(peer_id);
+	}
+
+	std::string PeerAddress(uint64_t) override { return "203.0.113.7:54321"; }
+};
+
+/** A host that takes browser guests through a FakeGateway, with a stand-in meeting point. */
+struct WebTestHost
+{
+	FakeMeetingPoint point;
+	std::shared_ptr<FakeGateway::Shared> web = std::make_shared<FakeGateway::Shared>();
+	std::unique_ptr<TestHost> h;
+
+	explicit WebTestHost(size_t max_guests = 4)
+	{
+		h = std::make_unique<TestHost>(max_guests, std::vector<uint8_t>(), [this](HostConfig &c) {
+			c.meet = TestMeet(point, {});
+			c.web.enabled = true;
+			c.web_factory = [this](const WebConfig &, const WebGateway::Callbacks &cb) {
+				{
+					std::lock_guard<std::mutex> lock(web->mutex);
+					web->callbacks = cb;
+				}
+				return std::unique_ptr<WebGateway>(new FakeGateway(web));
+			};
+		});
+	}
+
+	/** As if a browser's data channel delivered this message. */
+	void FromBrowser(uint64_t peer, const std::vector<uint8_t> &frame)
+	{
+		WebGateway::Callbacks cb;
+		{
+			std::lock_guard<std::mutex> lock(web->mutex);
+			if(!web->alive)
+				return;
+			cb = web->callbacks;
+		}
+		cb.on_message(peer, frame.data(), frame.size());
+	}
+
+	std::vector<uint8_t> HelloFrame(const std::string &name, uint8_t version = kProtocolVersion, uint64_t player_id = 0)
+	{
+		HelloPayload hello;
+		hello.name = name;
+		hello.want = kWantVideo | kWantAudio;
+		hello.controller = ControllerKind::Xbox;
+		hello.player_id = player_id;
+		std::vector<uint8_t> frame;
+		frame.push_back(static_cast<uint8_t>(PacketType::Hello));
+		frame.push_back(version);
+		ByteWriter w(frame);
+		WriteHello(w, hello);
+		return frame;
+	}
+
+	void Join(uint64_t peer, const std::string &name, uint64_t player_id = 0)
+	{
+		{
+			std::lock_guard<std::mutex> lock(web->mutex);
+			web->connected.push_back(peer);
+		}
+		FromBrowser(peer, HelloFrame(name, kProtocolVersion, player_id));
+	}
+
+	/** What the host has sent to this browser so far, of one type. */
+	std::vector<std::vector<uint8_t>> Sent(uint64_t peer, PacketType type)
+	{
+		std::vector<std::vector<uint8_t>> out;
+		std::lock_guard<std::mutex> lock(web->mutex);
+		for(const auto &frame : web->sent[peer])
+		{
+			if(!frame.empty() && frame[0] == static_cast<uint8_t>(type))
+				out.push_back(frame);
+		}
+		return out;
+	}
+
+	size_t Count(uint64_t peer, PacketType type) { return Sent(peer, type).size(); }
+};
+
+TEST(net_browser_is_led_to_the_host_by_the_meeting_point)
+{
+	WebTestHost t;
+	const Secret secret = t.h->config.secret;
+	const std::string room = MeetRoomId(secret);
+	CHECK(t.h->host->WebGuestsOn());
+	CHECK(WaitFor([&] { return t.h->host->Reach().meet == MeetState::Ok; }, 4000));
+
+	// A browser leaves its note, as the page does
+	WebOffer offer = SampleOffer();
+	std::string note;
+	CHECK(SealWebOffer(secret, offer, note));
+	HttpPost post = t.point.Post();
+	auto visit = [&](const std::string &text) {
+		HttpRequest request;
+		request.url = "https://meet.test/psrpt_meet.php";
+		request.body = MeetRequestBody(room, offer.peer_id, MeetRole::Guest, text);
+		HttpResponse response;
+		MeetReply reply;
+		if(post(request, response, nullptr) && response.status == 200)
+			ParseMeetReply(response.body, reply, nullptr);
+		return reply.notes;
+	};
+	visit(note);
+
+	// The host finds it, hands it to the WebRTC side once, and answers with a note of its own
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(t.web->mutex);
+		return t.web->offers.size() == 1;
+	}, 4000));
+	{
+		std::lock_guard<std::mutex> lock(t.web->mutex);
+		CHECK(t.web->offers[0].peer_id == offer.peer_id && t.web->offers[0].side.ufrag == "abcd");
+	}
+	WebAnswers answers;
+	CHECK(WaitFor([&] {
+		for(const std::string &text : visit(note))
+		{
+			if(OpenWebAnswers(secret, text, answers))
+				return true;
+		}
+		return false;
+	}, 4000));
+	CHECK(answers.protocol == kProtocolVersion && answers.answers.size() == 1);
+	if(answers.answers.size() == 1)
+	{
+		CHECK(answers.answers[0].peer_id == offer.peer_id && answers.answers[0].side.ufrag == "host");
+		CHECK(answers.answers[0].side.candidates.size() == 1);
+	}
+	// the app's own note is still there next to it: two notes of the host
+	CHECK(visit(note).size() == 2);
+
+	// The note stays at the meeting point for a while: it is acted on only once
+	SleepMs(300);
+	{
+		std::lock_guard<std::mutex> lock(t.web->mutex);
+		CHECK(t.web->offers.size() == 1);
+	}
+
+	// Once the browser is in, the answer is taken away again
+	t.Join(offer.peer_id, "Pixel");
+	CHECK(WaitFor([&] { return t.h->host->Guests().size() == 1; }, 2000));
+	{
+		WebGateway::Callbacks cb;
+		{
+			std::lock_guard<std::mutex> lock(t.web->mutex);
+			cb = t.web->callbacks;
+		}
+		cb.on_answers_changed();
+	}
+	CHECK(WaitFor([&] { return visit(note).size() == 1; }, 4000));
+
+	// Somebody without the invite leaves a note: nothing happens
+	WebOffer stranger = SampleOffer();
+	stranger.peer_id = 99;
+	std::string stranger_note;
+	CHECK(SealWebOffer(GenerateSecret(), stranger, stranger_note));
+	HttpRequest request;
+	request.url = "https://meet.test/psrpt_meet.php";
+	request.body = MeetRequestBody(room, stranger.peer_id, MeetRole::Guest, stranger_note);
+	HttpResponse response;
+	post(request, response, nullptr);
+	SleepMs(300);
+	{
+		std::lock_guard<std::mutex> lock(t.web->mutex);
+		CHECK(t.web->offers.size() == 1);
+	}
+}
+
+TEST(net_browser_guest_is_a_guest_like_any_other)
+{
+	WebTestHost t;
+	Host &host = *t.h->host;
+	const uint64_t peer = 7001;
+
+	t.Join(peer, "Pixel");
+	CHECK(WaitFor([&] { return host.Guests().size() == 1; }, 2000));
+	std::vector<GuestInfo> guests = host.Guests();
+	CHECK(guests.size() == 1);
+	if(guests.size() != 1)
+		return;
+	CHECK(guests[0].name == "Pixel" && guests[0].slot == 1 && guests[0].web);
+	CHECK(guests[0].address == "203.0.113.7:54321" && guests[0].controller == ControllerKind::Xbox);
+	CHECK(t.h->keyframe_requests >= 1); // it wants video and needs a place to start
+
+	// Welcome first, then it is kept informed like everybody else
+	auto welcomes = t.Sent(peer, PacketType::Welcome);
+	CHECK(welcomes.size() == 1);
+	if(welcomes.size() == 1)
+	{
+		WelcomePayload w;
+		ByteReader r(welcomes[0].data() + 1, welcomes[0].size() - 1);
+		CHECK(ReadWelcome(r, w) && w.slot == 1 && w.host_name == "Host" && w.conn_id != 0 && w.stream.width == 1280);
+	}
+	CHECK(WaitFor([&] { return t.Count(peer, PacketType::State) >= 2; }, 2000));
+	{
+		auto states = t.Sent(peer, PacketType::State);
+		SessionState s;
+		ByteReader r(states.back().data() + 1, states.back().size() - 1);
+		CHECK(ReadSessionState(r, s) && s.your_slot == 1 && s.participants.size() == 2);
+	}
+	// a Hello that comes again (its Welcome got lost) is answered again, without a second guest
+	t.FromBrowser(peer, t.HelloFrame("Pixel"));
+	CHECK(t.Count(peer, PacketType::Welcome) == 2 && host.Guests().size() == 1);
+
+	// its controller reaches the console
+	PadState pad;
+	pad.buttons = kButtonCross | kButtonR1;
+	pad.left_x = 12000;
+	std::vector<uint8_t> input{ static_cast<uint8_t>(PacketType::Input) };
+	ByteWriter iw(input);
+	iw.U32(1);
+	WritePadState(iw, pad);
+	t.FromBrowser(peer, input);
+	CHECK(WaitFor([&] { return host.MixedInput().buttons == (kButtonCross | kButtonR1); }, 2000));
+	CHECK(host.MixedInput().left_x == 12000);
+
+	// a ping is answered
+	std::vector<uint8_t> ping{ static_cast<uint8_t>(PacketType::Ping) };
+	ByteWriter pw(ping);
+	pw.U32(5);
+	pw.U64(123456);
+	pw.U8(kWantVideo | kWantAudio);
+	pw.U16(17);
+	pw.U8(static_cast<uint8_t>(ControllerKind::DualSense));
+	pw.U8(0);
+	pw.U8(80);
+	t.FromBrowser(peer, ping);
+	auto pongs = t.Sent(peer, PacketType::Pong);
+	CHECK(pongs.size() == 1);
+	if(pongs.size() == 1)
+	{
+		ByteReader r(pongs[0].data() + 1, pongs[0].size() - 1);
+		CHECK(r.U32() == 5 && r.U64() == 123456);
+	}
+	CHECK(WaitFor([&] {
+		auto g = host.Guests();
+		return g.size() == 1 && g[0].controller == ControllerKind::DualSense && g[0].battery == 80 && g[0].rtt_ms == 17;
+	}, 2000));
+
+	// the console's picture and sound go out to it, without header and seal
+	std::vector<uint8_t> sps = { 0, 0, 0, 1, 0x67, 0x64, 0x00, 0x20, 0, 0, 0, 1, 0x68, 0xee };
+	host.PushVideo(sps.data(), sps.size(), 0, false);
+	std::vector<uint8_t> key(3000, 0x55);
+	key[0] = 0;
+	key[1] = 0;
+	key[2] = 1;
+	key[3] = 0x65; // IDR
+	host.PushVideo(key.data(), key.size(), 0, false);
+	CHECK(t.Count(peer, PacketType::VideoConfig) >= 1);
+	auto video = t.Sent(peer, PacketType::Video);
+	CHECK(video.size() == VideoFragmentCount(key.size()));
+	if(!video.empty())
+	{
+		VideoFragmentHeader vh;
+		ByteReader r(video[0].data() + 1, video[0].size() - 1);
+		CHECK(ReadVideoFragmentHeader(r, vh) && vh.total_size == key.size() && (vh.flags & kVideoKey));
+		CHECK(r.remaining() == kVideoFragmentSize);
+	}
+	uint8_t opus[40] = { 1, 2, 3 };
+	host.PushAudio(opus, sizeof(opus));
+	CHECK(t.Count(peer, PacketType::Audio) == 1);
+
+	// it writes in the chat, and reads what the host writes
+	ChatMessage up;
+	up.seq = 1;
+	up.text = "hello from a browser";
+	std::vector<uint8_t> chat{ static_cast<uint8_t>(PacketType::ChatUp) };
+	ByteWriter cw(chat);
+	WriteChatMessage(cw, up);
+	t.FromBrowser(peer, chat);
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(t.h->mutex);
+		return t.h->chats.size() == 1;
+	}, 2000));
+	{
+		std::lock_guard<std::mutex> lock(t.h->mutex);
+		CHECK(t.h->chats.size() == 1 && t.h->chats[0].text == "hello from a browser" && t.h->chats[0].name == "Pixel");
+	}
+	CHECK(t.Count(peer, PacketType::ChatUpAck) == 1 && t.Count(peer, PacketType::Chat) >= 1);
+	host.SendChat("welcome", ChatEmbed(), {});
+	CHECK(WaitFor([&] { return t.Count(peer, PacketType::Chat) >= 2; }, 2000));
+
+	// a second browser, and one too many
+	t.Join(7002, "Second");
+	CHECK(WaitFor([&] { return host.Guests().size() == 2; }, 2000));
+	CHECK(host.Guests()[1].slot == 2);
+
+	// the host removes the first one: it is told, and its connection is closed a moment later
+	host.KickGuest(1);
+	auto byes = t.Sent(peer, PacketType::Bye);
+	CHECK(byes.size() == 2 && byes[0].size() == 2 && byes[0][1] == static_cast<uint8_t>(ByeReason::Kicked));
+	CHECK(host.Guests().size() == 1);
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(t.web->mutex);
+		return std::find(t.web->closed.begin(), t.web->closed.end(), peer) != t.web->closed.end();
+	}, 3000));
+
+	// the second one's connection breaks: it is gone at once
+	WebGateway::Callbacks cb;
+	{
+		std::lock_guard<std::mutex> lock(t.web->mutex);
+		cb = t.web->callbacks;
+	}
+	cb.on_closed(7002);
+	CHECK(host.Guests().empty());
+}
+
+TEST(net_browser_guests_version_places_and_goodbye)
+{
+	WebTestHost t(2);
+	Host &host = *t.h->host;
+
+	// a page that speaks another version is told so
+	t.FromBrowser(1, t.HelloFrame("Old", kProtocolVersion + 1));
+	auto rejects = t.Sent(1, PacketType::Reject);
+	CHECK(rejects.size() == 1 && host.Guests().empty());
+	if(rejects.size() == 1)
+	{
+		CHECK(rejects[0].size() == 2 + kHandshakeNonceSize);
+		CHECK(rejects[0].back() == static_cast<uint8_t>(RejectReason::Version));
+	}
+
+	// garbage is ignored
+	t.FromBrowser(2, { static_cast<uint8_t>(PacketType::Hello) });
+	t.FromBrowser(2, { static_cast<uint8_t>(PacketType::Hello), kProtocolVersion, 1, 2, 3 });
+	t.FromBrowser(2, { static_cast<uint8_t>(PacketType::Input), 0, 0, 0, 1 }); // not from a guest
+	CHECK(host.Guests().empty());
+
+	// two places, a third browser finds the session full
+	t.Join(10, "One", 111);
+	t.Join(11, "Two", 222);
+	CHECK(WaitFor([&] { return host.Guests().size() == 2; }, 2000));
+	t.Join(12, "Three", 333);
+	auto full = t.Sent(12, PacketType::Reject);
+	CHECK(full.size() == 1 && host.Guests().size() == 2);
+	if(full.size() == 1)
+		CHECK(full[0].back() == static_cast<uint8_t>(RejectReason::Full));
+
+	// the first one's connection broke and it comes back over a new one: same place, no ghost
+	t.Join(13, "One", 111);
+	CHECK(WaitFor([&] {
+		auto g = host.Guests();
+		return g.size() == 2 && g[0].slot == 1 && g[0].name == "One";
+	}, 2000));
+	CHECK(t.Count(13, PacketType::Welcome) == 1);
+
+	// it leaves on its own
+	t.FromBrowser(13, { static_cast<uint8_t>(PacketType::Bye), static_cast<uint8_t>(ByeReason::Quit) });
+	CHECK(WaitFor([&] { return host.Guests().size() == 1; }, 2000));
+
+	// the host stops sharing: whoever is left is told
+	t.h->host->Stop();
+	auto byes = t.Sent(11, PacketType::Bye);
+	CHECK(byes.size() == 2);
+	if(!byes.empty())
+		CHECK(byes[0][1] == static_cast<uint8_t>(ByeReason::HostEnded));
+}
+
+TEST(net_browser_that_cannot_keep_up_gets_no_more_video_until_it_can)
+{
+	WebTestHost t;
+	Host &host = *t.h->host;
+	const uint64_t peer = 5;
+	t.Join(peer, "Slow");
+	CHECK(WaitFor([&] { return host.Guests().size() == 1; }, 2000));
+
+	std::vector<uint8_t> sps = { 0, 0, 0, 1, 0x67, 0x64, 0x00, 0x20, 0, 0, 0, 1, 0x68, 0xee };
+	host.PushVideo(sps.data(), sps.size(), 0, false);
+	std::vector<uint8_t> key(2000, 0x11);
+	key[0] = 0, key[1] = 0, key[2] = 1, key[3] = 0x65;
+	std::vector<uint8_t> delta(1500, 0x22);
+	delta[0] = 0, delta[1] = 0, delta[2] = 1, delta[3] = 0x41;
+	host.PushVideo(key.data(), key.size(), 0, false);
+	host.PushVideo(delta.data(), delta.size(), 0, false);
+	size_t before = t.Count(peer, PacketType::Video);
+	CHECK(before == VideoFragmentCount(key.size()) + VideoFragmentCount(delta.size()));
+
+	// packets pile up in front of its connection, for longer than a moment
+	{
+		std::lock_guard<std::mutex> lock(t.web->mutex);
+		t.web->buffered[peer] = 50000;
+	}
+	host.PushVideo(delta.data(), delta.size(), 0, false); // the pile is noticed here
+	SleepMs(350);
+	size_t sent_until_held = t.Count(peer, PacketType::Video);
+	host.PushVideo(delta.data(), delta.size(), 0, false);
+	host.PushVideo(delta.data(), delta.size(), 0, false);
+	CHECK(t.Count(peer, PacketType::Video) == sent_until_held); // held back
+	uint8_t opus[20] = { 9 };
+	host.PushAudio(opus, sizeof(opus));
+	CHECK(t.Count(peer, PacketType::Audio) == 1); // sound still goes out: it is small
+
+	// the pile is gone: a key frame is asked for, and the picture starts over with it
+	int requests = t.h->keyframe_requests;
+	{
+		std::lock_guard<std::mutex> lock(t.web->mutex);
+		t.web->buffered[peer] = 0;
+	}
+	CHECK(WaitFor([&] { return t.h->keyframe_requests > requests; }, 3000));
+	host.PushVideo(delta.data(), delta.size(), 0, false);
+	CHECK(t.Count(peer, PacketType::Video) == sent_until_held); // nothing decodes without the key frame
+	host.PushVideo(key.data(), key.size(), 0, false);
+	CHECK(t.Count(peer, PacketType::Video) == sent_until_held + VideoFragmentCount(key.size()));
+	host.PushVideo(delta.data(), delta.size(), 0, false);
+	CHECK(t.Count(peer, PacketType::Video) == sent_until_held + VideoFragmentCount(key.size()) + VideoFragmentCount(delta.size()));
 }
 
 int main(int argc, char **argv)

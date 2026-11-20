@@ -289,8 +289,10 @@ std::vector<MeetCandidate> GatherCandidates(const StunProbe &stun, const UdpSock
 
 // ------------------------------------------------------------------ MeetWorker
 
-MeetWorker::MeetWorker(const MeetConfig &config, const Secret &secret, MeetRole role, OnNotes on_notes)
-	: config(config), secret(secret), role(role), on_notes(std::move(on_notes)), room(MeetRoomId(secret))
+MeetWorker::MeetWorker(const MeetConfig &config, const Secret &secret, MeetRole role, OnNotes on_notes,
+		OnOtherNotes on_other_notes)
+	: config(config), secret(secret), role(role), on_notes(std::move(on_notes)),
+	on_other_notes(std::move(on_other_notes)), room(MeetRoomId(secret))
 {
 	RandomBytes(reinterpret_cast<uint8_t *>(&sender_id), sizeof(sender_id));
 	thread = std::thread(&MeetWorker::Run, this);
@@ -324,6 +326,18 @@ void MeetWorker::SetNote(const MeetNote &note)
 	changed.notify_all();
 }
 
+void MeetWorker::SetExtraNote(const std::string &text)
+{
+	if(text.size() > kMeetMaxNoteText)
+		return;
+	std::lock_guard<std::mutex> lock(mutex);
+	if(text == extra_text)
+		return;
+	extra_text = text;
+	extra_new = true;
+	changed.notify_all();
+}
+
 MeetState MeetWorker::State()
 {
 	std::lock_guard<std::mutex> lock(mutex);
@@ -350,7 +364,7 @@ void MeetWorker::Run()
 		uint64_t now = NowMs();
 		// A changed note goes out at once, but not while the meeting point is failing:
 		// then only the growing pauses decide
-		bool due = have_note && (now >= next_ms || (note_new && failures == 0));
+		bool due = have_note && (now >= next_ms || ((note_new || extra_new) && failures == 0));
 		if(!due)
 		{
 			uint64_t wait = have_note && next_ms > now ? next_ms - now : 1000;
@@ -362,6 +376,13 @@ void MeetWorker::Run()
 		request.url = config.url;
 		request.body = MeetRequestBody(room, sender_id, role, note_text);
 		request.cancel = &stop;
+		// The second note goes under an id of its own, as if it were a second host. It is
+		// posted for as long as it is set (a note expires), and once more to take it away.
+		const bool extra_due = !extra_text.empty() || extra_there;
+		const std::string extra = extra_text;
+		extra_new = false;
+		HttpRequest extra_request = request;
+		extra_request.body = MeetRequestBody(room, sender_id + 1, role, extra);
 		lock.unlock();
 
 		HttpResponse response;
@@ -376,21 +397,39 @@ void MeetWorker::Run()
 		MeetReply reply;
 		if(ok && !ParseMeetReply(response.body, reply, &problem))
 			ok = false;
+		bool extra_ok = false;
+		if(ok && extra_due && !stop)
+		{
+			HttpResponse extra_response;
+			requests++;
+			extra_ok = config.post(extra_request, extra_response, nullptr) && extra_response.status == 200;
+		}
 		std::vector<MeetNote> notes;
+		std::vector<std::string> other;
 		if(ok)
 		{
 			for(const std::string &text : reply.notes)
 			{
 				MeetNote note;
-				if(OpenMeetNote(secret, text, note) && note.role != role)
-					notes.push_back(std::move(note));
+				if(OpenMeetNote(secret, text, note))
+				{
+					if(note.role != role)
+						notes.push_back(std::move(note));
+				}
+				else
+					other.push_back(text);
 			}
 		}
 		if(ok && !stop && on_notes && !notes.empty())
 			on_notes(notes);
+		if(ok && !stop && on_other_notes && !other.empty())
+			on_other_notes(other);
 
 		lock.lock();
 		now = NowMs();
+		// One that did not get through is simply sent again in the next round
+		if(extra_due && extra_ok)
+			extra_there = !extra.empty();
 		if(ok)
 		{
 			failures = 0;

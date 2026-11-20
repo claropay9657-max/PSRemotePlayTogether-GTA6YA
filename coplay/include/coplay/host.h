@@ -21,6 +21,7 @@
 #include "protocol.h"
 #include "socket.h"
 #include "video.h"
+#include "web.h"
 
 namespace coplay {
 
@@ -45,6 +46,10 @@ struct HostConfig
 	InputMixer::Config mixer;
 	/** Lets friends in without a forwarded port (meet.h). Off unless a URL and a way to ask it are given. */
 	MeetConfig meet;
+	/** Lets friends in who join from a web browser (web.h). Needs the meeting point. */
+	WebConfig web;
+	/** Makes the WebRTC side instead of CreateWebGateway(). For tests. */
+	WebGatewayFactory web_factory;
 };
 
 /** How friends elsewhere can reach this host, as far as the host can tell. */
@@ -88,6 +93,8 @@ struct GuestInfo
 	uint8_t media = 0;
 	/** 0..100, kBatteryWired or kBatteryUnknown. */
 	uint8_t battery = kBatteryUnknown;
+	/** Joined from a web browser. */
+	bool web = false;
 };
 
 /**
@@ -204,6 +211,8 @@ class Host
 
 		/** How friends elsewhere can reach this host; see HostCallbacks::on_reach_changed. */
 		HostReach Reach();
+		/** Whether friends can join from a web browser right now. */
+		bool WebGuestsOn() const { return web_on; }
 
 		/** Outgoing packet loss for tests and the simulator. */
 		void SetSimulatedLoss(double probability, uint32_t seed = 1) { socket.SetSimulatedLoss(probability, seed); }
@@ -250,6 +259,14 @@ class Host
 			};
 			std::map<uint32_t, PendingChat> chat_pending; // by seq
 			std::deque<uint32_t> chat_up_seen; // its own numbers of what it wrote lately
+			/** Not 0: a guest in a web browser, reached through the WebRTC gateway under this id. */
+			uint64_t web_peer = 0;
+			/** Where the browser is, for Guests(). */
+			std::string web_address;
+			/** Since when packets for it have been piling up; 0 = they are not. */
+			uint64_t web_backlog_ms = 0;
+			/** Its connection cannot keep up: video is held back until the pile is gone. */
+			bool web_starved = false;
 		};
 
 		/** Things to do once the lock is released. */
@@ -270,7 +287,24 @@ class Host
 		void ThreadMain();
 		void HandlePacket(const uint8_t *data, size_t size, const Address &from, uint64_t now_ms, Deferred &d);
 		void HandleHello(const uint8_t *data, size_t size, const PacketHeader &header, const Address &from, uint64_t now_ms, Deferred &d);
-		void HandleNack(Guest &g, const std::vector<uint8_t> &payload);
+		/** A packet of a guest that is known to come from it. @return false if the guest is gone afterwards */
+		bool HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, size_t size, uint64_t now_ms, Deferred &d);
+		/** The guest is in: it counts from now on. */
+		void ConfirmGuest(Guest &g, uint64_t now_ms, Deferred &d);
+		/** The lowest free place, or the one asked for if it is free; 0 if there is none. */
+		uint8_t FreeSlot(uint8_t preferred);
+		void HandleNack(Guest &g, const uint8_t *payload, size_t size);
+		// Guests in a web browser. The three On... are called on the gateway's thread.
+		void OnWebMessage(uint64_t peer_id, const uint8_t *data, size_t size);
+		void OnWebClosed(uint64_t peer_id);
+		void OnWebAnswers();
+		void HandleWebHello(uint64_t peer_id, const uint8_t *payload, size_t size, uint64_t now_ms, Deferred &d);
+		/** On the meeting point's thread: notes that are not the app's own. */
+		void OnOtherNotes(const std::vector<std::string> &texts);
+		Guest *FindByWebPeer(uint64_t peer_id);
+		/** Whether video should be held back from this browser guest right now. */
+		bool WebHoldVideo(Guest &g, uint64_t now_ms);
+		void TickWeb(uint64_t now_ms, Deferred &d);
 		void Tick(uint64_t now_ms, Deferred &d);
 		void Fire(Deferred &d);
 
@@ -371,6 +405,15 @@ class Host
 		std::map<uint64_t, uint32_t> punched; // guest's id -> the counter of its note that was acted on
 		HostReach reach;
 		uint64_t reach_checked_ms = 0;
+
+		// Guests in a web browser. web is set before the network thread starts and
+		// lives until it has ended; the rest is with the mutex.
+		std::unique_ptr<WebGateway> web;
+		std::atomic<bool> web_on{false};
+		/** Connections that are closed a moment after the last packet for them went out. */
+		std::vector<std::pair<uint64_t, uint64_t>> web_closing; // peer, when
+		/** Browsers whose note has been acted on: a note stays at the meeting point for a while. */
+		std::deque<uint64_t> web_seen;
 };
 
 } // namespace coplay

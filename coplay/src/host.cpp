@@ -32,6 +32,11 @@ static const size_t kChatLogSize = 100;
 /** Link preview pictures kept for the guests to fetch. */
 static const size_t kMaxChatImages = 24;
 static const size_t kChatUpSeenSize = 64;
+/** Packets for a guest in a browser that have been waiting this long mean its connection cannot keep up. */
+static const uint32_t kWebBacklogMs = 250;
+/** A connection to a browser stays open this long after the last packet for it (a Bye) went out. */
+static const uint32_t kWebCloseDelayMs = 400;
+static const size_t kMaxWebSeen = 256;
 
 static uint64_t WallClockMs()
 {
@@ -97,9 +102,21 @@ bool Host::Start(std::string *error)
 			if(!config.meet.stun_servers.empty())
 				stun_resolver.Start(config.meet.stun_servers);
 		}
+		// Friends in a web browser find the host through the meeting point as well
+		if(config.web.enabled)
+		{
+			WebGateway::Callbacks wc;
+			wc.on_message = [this](uint64_t peer, const uint8_t *data, size_t size) { OnWebMessage(peer, data, size); };
+			wc.on_closed = [this](uint64_t peer) { OnWebClosed(peer); };
+			wc.on_answers_changed = [this]() { OnWebAnswers(); };
+			wc.on_log = callbacks.on_log;
+			web = config.web_factory ? config.web_factory(config.web, wc) : CreateWebGateway(config.web, wc);
+			web_on = web != nullptr;
+		}
 		// Before the network thread, which hands it the note; it asks nobody until it has one
 		meet_worker = std::make_unique<MeetWorker>(config.meet, config.secret, MeetRole::Host,
-			[this](const std::vector<MeetNote> &notes) { OnMeetNotes(notes); });
+			[this](const std::vector<MeetNote> &notes) { OnMeetNotes(notes); },
+			[this](const std::vector<std::string> &texts) { OnOtherNotes(texts); });
 	}
 	thread = std::thread(&Host::ThreadMain, this);
 	return true;
@@ -122,6 +139,7 @@ void Host::StopWith(ByeReason reason)
 	// First, and without the lock: what it finds is handed over under the lock
 	if(meet_worker)
 		meet_worker->Stop();
+	bool browsers = false;
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 		for(auto &entry : guests)
@@ -130,12 +148,27 @@ void Host::StopWith(ByeReason reason)
 			{
 				SendBye(*entry.second, reason);
 				SendBye(*entry.second, reason);
+				browsers = browsers || entry.second->web_peer != 0;
 			}
 		}
 	}
 	stop_requested = true;
 	if(thread.joinable())
 		thread.join();
+	if(web)
+	{
+		// The goodbye has to be on its way before the connections are cut
+		if(browsers)
+			std::this_thread::sleep_for(std::chrono::milliseconds(150));
+		// Whoever still pushes picture or sound finds no gateway any more from here on
+		std::unique_ptr<WebGateway> gateway;
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			web_on = false;
+			gateway = std::move(web);
+		}
+		gateway.reset(); // its thread has ended when this returns: nothing calls back any more
+	}
 	socket.Close();
 	meet_worker.reset();
 	meet_on = false;
@@ -145,6 +178,8 @@ void Host::StopWith(ByeReason reason)
 			mixer.RemoveSource(entry.second->slot);
 		guests.clear();
 		punches.clear();
+		web_closing.clear();
+		web_seen.clear();
 		reach = HostReach();
 	}
 	running = false;
@@ -219,6 +254,17 @@ void Host::Fire(Deferred &d)
 
 bool Host::SendToGuest(Guest &g, PacketType type, const std::vector<uint8_t> &payload)
 {
+	if(g.web_peer)
+	{
+		// A browser gets the packet without header and seal: its connection provides both
+		if(!web || payload.size() > kMaxPayload)
+			return false;
+		uint8_t frame[1 + kMaxPayload];
+		frame[0] = static_cast<uint8_t>(type);
+		if(!payload.empty())
+			std::memcpy(frame + 1, payload.data(), payload.size());
+		return web->Send(g.web_peer, frame, 1 + payload.size());
+	}
 	std::vector<uint8_t> packet;
 	if(!SealPacket(g.keys.host_to_guest, type, g.conn_id, ++g.send_counter, payload.data(), payload.size(), packet))
 		return false;
@@ -277,6 +323,8 @@ void Host::RemoveGuest(uint32_t conn_id, Deferred &d, const std::string &why)
 		d.logs.push_back(g.name + " " + why);
 	mixer.RemoveSource(g.slot);
 	BlobRef avatar = g.avatar;
+	if(g.web_peer)
+		web_closing.emplace_back(g.web_peer, NowMs() + kWebCloseDelayMs);
 	guests.erase(it);
 	if(avatar.Valid() && avatar != own_avatar)
 	{
@@ -364,13 +412,7 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	}
 
 	auto g = std::make_unique<Guest>();
-	if(previous_slot && !FindBySlot(previous_slot))
-		g->slot = previous_slot;
-	for(uint8_t slot = 1; !g->slot && slot <= config.max_guests; slot++)
-	{
-		if(!FindBySlot(slot))
-			g->slot = slot;
-	}
+	g->slot = FreeSlot(previous_slot);
 	if(g->slot == 0)
 		return;
 	do
@@ -439,6 +481,8 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 	if(it == guests.end())
 		return;
 	Guest &g = *it->second;
+	if(g.web_peer)
+		return; // a guest in a browser is not reached over this socket
 
 	std::vector<uint8_t> payload;
 	if(!OpenPacket(g.keys.guest_to_host, data, size, payload))
@@ -451,29 +495,51 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 	g.last_rx_ms = now_ms;
 
 	if(!g.confirmed)
-	{
-		g.confirmed = true;
-		g.awaiting_key = true;
-		mixer.SetSource(g.slot, PadState(), now_ms);
-		mixer.SetMask(g.slot, g.can_control ? InputMask::All() : InputMask::None());
-		d.guests_changed = true;
-		d.logs.push_back(g.name + " joined from " + g.addr.ToString());
-		blobs.Want(g.avatar);
-		if(g.want & kWantVideo)
-		{
-			SendVideoConfig(g);
-			RequestKeyframe(now_ms, d);
-		}
-		state_seq++;
-		BroadcastState(now_ms);
-		// What was said lately, so that the newcomer knows what the others are talking about
-		size_t skip = chat_log.size() > kChatHistorySize ? chat_log.size() - kChatHistorySize : 0;
-		for(size_t i = skip; i < chat_log.size(); i++)
-			SendChatTo(g, chat_log[i].seq, now_ms, true);
-	}
+		ConfirmGuest(g, now_ms, d);
+	HandleGuestPacket(g, header.type, payload.data(), payload.size(), now_ms, d);
+}
 
-	ByteReader r(payload.data(), payload.size());
-	switch(header.type)
+uint8_t Host::FreeSlot(uint8_t preferred)
+{
+	if(preferred && preferred <= config.max_guests && !FindBySlot(preferred))
+		return preferred;
+	for(uint8_t slot = 1; slot <= config.max_guests; slot++)
+	{
+		if(!FindBySlot(slot))
+			return slot;
+	}
+	return 0;
+}
+
+void Host::ConfirmGuest(Guest &g, uint64_t now_ms, Deferred &d)
+{
+	g.confirmed = true;
+	g.awaiting_key = true;
+	mixer.SetSource(g.slot, PadState(), now_ms);
+	mixer.SetMask(g.slot, g.can_control ? InputMask::All() : InputMask::None());
+	d.guests_changed = true;
+	if(g.web_peer)
+		d.logs.push_back(g.name + " joined from a web browser" + (g.web_address.empty() ? std::string() : " at " + g.web_address));
+	else
+		d.logs.push_back(g.name + " joined from " + g.addr.ToString());
+	blobs.Want(g.avatar);
+	if(g.want & kWantVideo)
+	{
+		SendVideoConfig(g);
+		RequestKeyframe(now_ms, d);
+	}
+	state_seq++;
+	BroadcastState(now_ms);
+	// What was said lately, so that the newcomer knows what the others are talking about
+	size_t skip = chat_log.size() > kChatHistorySize ? chat_log.size() - kChatHistorySize : 0;
+	for(size_t i = skip; i < chat_log.size(); i++)
+		SendChatTo(g, chat_log[i].seq, now_ms, true);
+}
+
+bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, size_t size, uint64_t now_ms, Deferred &d)
+{
+	ByteReader r(payload, size);
+	switch(type)
 	{
 		case PacketType::Input: {
 			uint32_t seq = r.U32();
@@ -557,9 +623,9 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 			if(!ReadCamFragmentHeader(r, h))
 				break;
 			std::vector<uint8_t> out;
-			out.reserve(1 + payload.size());
+			out.reserve(1 + size);
 			out.push_back(g.slot);
-			out.insert(out.end(), payload.begin(), payload.end());
+			out.insert(out.end(), payload, payload + size);
 			for(auto &entry : guests)
 			{
 				Guest &other = *entry.second;
@@ -571,7 +637,7 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 			break;
 		}
 		case PacketType::Nack:
-			HandleNack(g, payload);
+			HandleNack(g, payload, size);
 			break;
 		case PacketType::ChatUp:
 			HandleChatUp(g, r, now_ms, d);
@@ -628,19 +694,20 @@ void Host::HandlePacket(const uint8_t *data, size_t size, const Address &from, u
 			break;
 		}
 		case PacketType::Bye:
-			RemoveGuest(header.conn_id, d, "left");
-			return; // g is gone
+			RemoveGuest(g.conn_id, d, "left");
+			return false; // g is gone
 		default:
 			break;
 	}
+	return true;
 }
 
-void Host::HandleNack(Guest &g, const std::vector<uint8_t> &payload)
+void Host::HandleNack(Guest &g, const uint8_t *payload, size_t size)
 {
 	if(!(g.want & kWantVideo))
 		return;
 	std::vector<NackEntry> entries;
-	ByteReader r(payload.data(), payload.size());
+	ByteReader r(payload, size);
 	if(!ReadNack(r, entries))
 		return;
 	size_t budget = kMaxRetransmitFragmentsPerNack;
@@ -751,6 +818,8 @@ void Host::Tick(uint64_t now_ms, Deferred &d)
 
 	if(meet_on)
 		TickMeet(now_ms, d);
+	if(web)
+		TickWeb(now_ms, d);
 }
 
 // ------------------------------------------------------------------ joining without a forwarded port
@@ -1056,6 +1125,8 @@ void Host::PushVideo(const uint8_t *data, size_t size, int32_t frames_lost, bool
 		Guest &g = *entry.second;
 		if(!g.confirmed || !(g.want & kWantVideo))
 			continue;
+		if(g.web_peer && WebHoldVideo(g, NowMs()))
+			continue; // more would only make the pile in front of its connection higher
 		if(kind == FrameKind::Key)
 		{
 			// Costs a few bytes and makes sure the guest can always start decoding here
@@ -1361,7 +1432,8 @@ std::vector<GuestInfo> Host::Guests()
 		GuestInfo info;
 		info.slot = g.slot;
 		info.name = g.name;
-		info.address = g.addr.ToString();
+		info.address = g.web_peer ? g.web_address : g.addr.ToString();
+		info.web = g.web_peer != 0;
 		info.want = g.want;
 		info.controller = g.controller;
 		info.battery = g.battery;
@@ -1458,6 +1530,228 @@ void Host::PollBlobs(uint64_t now_ms)
 				break;
 			}
 		}
+	}
+}
+
+// ------------------------------------------------------------------ guests in a web browser
+
+Host::Guest *Host::FindByWebPeer(uint64_t peer_id)
+{
+	for(auto &entry : guests)
+	{
+		if(entry.second->web_peer == peer_id)
+			return entry.second.get();
+	}
+	return nullptr;
+}
+
+void Host::OnOtherNotes(const std::vector<std::string> &texts)
+{
+	if(!web)
+		return;
+	for(const std::string &text : texts)
+	{
+		WebOffer offer;
+		if(!OpenWebOffer(config.secret, text, offer))
+			continue;
+		{
+			// A note stays at the meeting point for half a minute and is seen again and again
+			std::lock_guard<std::mutex> lock(mutex);
+			if(std::find(web_seen.begin(), web_seen.end(), offer.peer_id) != web_seen.end())
+				continue;
+			web_seen.push_back(offer.peer_id);
+			if(web_seen.size() > kMaxWebSeen)
+				web_seen.pop_front();
+		}
+		if(callbacks.on_log)
+			callbacks.on_log("A friend is on the way in from a web browser");
+		web->Offer(offer);
+	}
+}
+
+void Host::OnWebAnswers()
+{
+	// On the gateway's own thread, which outlives this call: the gateway does too
+	WebGateway *gateway;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		gateway = web.get();
+	}
+	if(!gateway || !meet_worker)
+		return;
+	WebAnswers answers = gateway->Answers();
+	std::string text;
+	// As many as fit into one note; the others' turn comes when these are in
+	while(!answers.answers.empty() && !SealWebAnswers(config.secret, answers, text))
+		answers.answers.pop_back();
+	if(answers.answers.empty())
+		text.clear();
+	meet_worker->SetExtraNote(text);
+}
+
+void Host::OnWebMessage(uint64_t peer_id, const uint8_t *data, size_t size)
+{
+	if(!size)
+		return;
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		if(stop_requested || !running || !web)
+			return;
+		uint64_t now = NowMs();
+		PacketType type = static_cast<PacketType>(data[0]);
+		if(type == PacketType::Hello)
+			HandleWebHello(peer_id, data + 1, size - 1, now, d);
+		else if(Guest *g = FindByWebPeer(peer_id))
+		{
+			g->last_rx_ms = now;
+			HandleGuestPacket(*g, type, data + 1, size - 1, now, d);
+		}
+	}
+	Fire(d);
+}
+
+void Host::OnWebClosed(uint64_t peer_id)
+{
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		if(Guest *g = FindByWebPeer(peer_id))
+			RemoveGuest(g->conn_id, d, "left (the browser's connection ended)");
+	}
+	Fire(d);
+}
+
+void Host::HandleWebHello(uint64_t peer_id, const uint8_t *payload, size_t size, uint64_t now_ms, Deferred &d)
+{
+	auto reject = [&](RejectReason reason) {
+		uint8_t frame[2 + kHandshakeNonceSize] = { 0 };
+		frame[0] = static_cast<uint8_t>(PacketType::Reject);
+		frame[1 + kHandshakeNonceSize] = static_cast<uint8_t>(reason);
+		web->Send(peer_id, frame, sizeof(frame));
+		web_closing.emplace_back(peer_id, now_ms + kWebCloseDelayMs);
+	};
+
+	ByteReader r(payload, size);
+	uint8_t version = r.U8();
+	if(!r.ok())
+		return;
+	if(version != kProtocolVersion)
+	{
+		reject(RejectReason::Version);
+		return;
+	}
+	HelloPayload hello;
+	if(!ReadHello(r, hello))
+		return;
+
+	// The page repeats its Hello until it hears a Welcome
+	if(Guest *known = FindByWebPeer(peer_id))
+	{
+		web->Send(peer_id, known->welcome_packet.data(), known->welcome_packet.size());
+		return;
+	}
+
+	// The same player joining again takes its old place over, as in HandleHello()
+	uint8_t previous_slot = 0;
+	if(hello.player_id)
+	{
+		for(auto &entry : guests)
+		{
+			if(entry.second->player_id == hello.player_id)
+			{
+				previous_slot = entry.second->slot;
+				RemoveGuest(entry.first, d, "is joining again");
+				break;
+			}
+		}
+	}
+	if(guests.size() >= config.max_guests)
+	{
+		reject(RejectReason::Full);
+		return;
+	}
+
+	auto g = std::make_unique<Guest>();
+	g->slot = FreeSlot(previous_slot);
+	if(g->slot == 0)
+	{
+		reject(RejectReason::Full);
+		return;
+	}
+	do
+	{
+		RandomBytes(reinterpret_cast<uint8_t *>(&g->conn_id), sizeof(g->conn_id));
+	} while(g->conn_id == 0 || guests.count(g->conn_id));
+	g->web_peer = peer_id;
+	g->web_address = web->PeerAddress(peer_id);
+	g->name = CleanName(hello.name, g->slot);
+	g->created_ms = now_ms;
+	g->last_rx_ms = now_ms;
+	g->want = hello.want;
+	g->controller = hello.controller;
+	g->battery = hello.battery;
+	g->player_id = hello.player_id;
+	g->avatar = hello.avatar;
+	g->media = hello.media & kMediaOwnMask;
+
+	WelcomePayload welcome;
+	welcome.conn_id = g->conn_id;
+	welcome.slot = g->slot;
+	welcome.host_name = config.name;
+	welcome.stream = stream;
+	welcome.audio = audio;
+	g->welcome_packet.push_back(static_cast<uint8_t>(PacketType::Welcome));
+	ByteWriter w(g->welcome_packet);
+	WriteWelcome(w, welcome);
+	web->Send(peer_id, g->welcome_packet.data(), g->welcome_packet.size());
+
+	Guest &added = *g;
+	guests[added.conn_id] = std::move(g);
+	// Nobody but a holder of the invite gets this far, so the guest counts at once
+	ConfirmGuest(added, now_ms, d);
+}
+
+bool Host::WebHoldVideo(Guest &g, uint64_t now_ms)
+{
+	if(!web)
+		return true; // sharing is ending
+	if(!web->Buffered(g.web_peer))
+		g.web_backlog_ms = 0;
+	else if(!g.web_backlog_ms)
+		g.web_backlog_ms = now_ms;
+	if(!g.web_starved && g.web_backlog_ms && ElapsedMs(now_ms, g.web_backlog_ms) > kWebBacklogMs)
+	{
+		// Nothing more until what waits has gone out; then the stream starts over with a key frame
+		g.web_starved = true;
+		g.awaiting_key = true;
+	}
+	return g.web_starved;
+}
+
+void Host::TickWeb(uint64_t now_ms, Deferred &d)
+{
+	for(auto &entry : guests)
+	{
+		Guest &g = *entry.second;
+		if(!g.web_peer || !g.web_starved || web->Buffered(g.web_peer))
+			continue;
+		g.web_starved = false;
+		g.web_backlog_ms = 0;
+		if(g.want & kWantVideo)
+			RequestKeyframe(now_ms, d);
+	}
+	for(auto it = web_closing.begin(); it != web_closing.end();)
+	{
+		if(now_ms < it->second)
+		{
+			++it;
+			continue;
+		}
+		// Not if a player has come back under the same connection in the meantime
+		if(!FindByWebPeer(it->first))
+			web->Close(it->first);
+		it = web_closing.erase(it);
 	}
 }
 

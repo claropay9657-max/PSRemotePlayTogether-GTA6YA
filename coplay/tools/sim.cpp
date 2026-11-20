@@ -13,6 +13,7 @@
 #include <coplay/meet.h>
 #include <coplay/socket.h>
 #include <coplay/stun.h>
+#include <coplay/web.h>
 
 #ifdef COPLAY_SIM_OPUS
 #include <opus/opus.h>
@@ -76,6 +77,9 @@ static void Usage()
 		"                          meeting point (see server/meeting-point). Needs curl.\n"
 		"      --stun HOST[:PORT]  ask this STUN server for the session's address on the internet\n"
 		"                          (with --meet; default: the servers the app asks; \"off\": nobody)\n"
+		"      --web PAGE|default  let friends in who join from a web browser, and print the link\n"
+		"                          for them (with --meet). PAGE is where the page of web/ is served.\n"
+		"      --web-port N        all browsers on this UDP port instead of one of their own each\n"
 		"      --closed            behave as if behind a router without a forwarded port: what\n"
 		"                          comes from an address that was not sent to first is dropped\n"
 		"      --no-address        print an invite without an address (psrpt://-/...)\n"
@@ -122,6 +126,9 @@ struct Options
 	bool chat = false;
 	std::string cam;
 	std::string meet, stun;
+	/** The page for guests in a web browser; empty: no such guests. */
+	std::string web;
+	int web_port = 0;
 	bool closed = false;
 	bool no_address = false;
 };
@@ -153,6 +160,8 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--cam") { if(!value(o.cam)) return false; }
 		else if(a == "--meet") { if(!value(o.meet)) return false; }
 		else if(a == "--stun") { if(!value(o.stun)) return false; }
+		else if(a == "--web") { if(!value(o.web)) return false; }
+		else if(a == "--web-port") { if(!value(v)) return false; o.web_port = std::atoi(v.c_str()); }
 		else if(a == "--closed") o.closed = true;
 		else if(a == "--no-address") o.no_address = true;
 		else if(a == "--voice") o.voice = true;
@@ -512,6 +521,24 @@ static int RunHost(const Options &o)
 	};
 	if(!MeetOptions(o, config.meet))
 		return 2;
+	std::string web_page;
+	if(!o.web.empty())
+	{
+		web_page = WebUrlFromText(o.web == "default" ? std::string() : o.web);
+		if(web_page.empty() || !config.meet.Enabled())
+		{
+			std::fprintf(stderr, "--web needs the address of the page (or \"default\") and a meeting point (--meet)\n");
+			return 2;
+		}
+		if(!WebGuestsSupported())
+		{
+			std::fprintf(stderr, "--web: this build cannot take guests from a web browser (built without COPLAY_ENABLE_WEB)\n");
+			return 2;
+		}
+		config.web.enabled = true;
+		config.web.stun_servers = config.meet.stun_servers;
+		config.web.port = static_cast<uint16_t>(o.web_port);
+	}
 	Host *host_for_reach = nullptr;
 	cb.on_reach_changed = [&] {
 		HostReach r = host_for_reach->Reach();
@@ -557,6 +584,14 @@ static int RunHost(const Options &o)
 	invite.secret = config.secret;
 	invite.meet = MeetUrlToInvite(config.meet.url);
 	std::printf("Sharing on UDP port %u. Invite:\n\n    %s\n\n", host.Port(), EncodeInvite(invite).c_str());
+	if(host.WebGuestsOn())
+	{
+		// A meeting point that is not on HTTPS (a test on this machine) is named in full
+		std::string meet = invite.meet;
+		if(meet.empty() && config.meet.url != kDefaultMeetUrl)
+			meet = config.meet.url;
+		std::printf("For a web browser:\n\n    %s\n\n", WebInviteLink(web_page, config.secret, meet).c_str());
+	}
 	std::fflush(stdout);
 
 	// The host's own webcam and voice
