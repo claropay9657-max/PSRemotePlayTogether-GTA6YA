@@ -3,6 +3,16 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.1.3
+
+- **Join without a forwarded port.** With most routers the host no longer has to open a port. Host and guest find each other through a small meeting point on the internet and then connect directly ("hole punching"). Picture, sound and controllers never pass through a server. A forwarded port keeps working as before, and it is used by itself when it is there.
+- **The host is told what to expect.** While you share, the stream menu says whether friends can get in without a forwarded port, or that your router is of the kind that still needs one (symmetric NAT).
+- **Clearer messages when joining fails.** A guest is told whether the host was not found at all, or was found but the two routers did not let the connection through.
+- **Invites survive a new address.** An Internet invite whose address is out of date, because the host's connection got a new one over night, still leads to the host through the meeting point.
+- **Your own meeting point.** It is one small PHP file (`server/meeting-point` in the source code). Play Together has a field for its address, and "off" switches the meeting point off altogether.
+- **IPv6.** A session now sends from the same IPv6 address that the IPv6 invite names, so a firewall rule made for that address also fits the answers.
+- **Good to know:** hole punching does not get through every router. Mobile networks and some fibre connections still need the forwarded port or a mesh VPN.
+
 ## 0.1.2
 
 - **Update check.** The app asks GitHub at start whether a newer version exists and tells you, with a link to the download. Nothing is downloaded by itself, and it can be switched off under Settings → General.
