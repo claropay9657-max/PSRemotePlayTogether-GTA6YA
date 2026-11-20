@@ -286,7 +286,9 @@ export function answerSdp(mid, fingerprint, answer) {
  * Reads what stands behind the "#" of the page's address, or what a friend
  * pasted: the key alone, "KEY?meet=example.org/meet.php", or a whole invite
  * of the app ("psrpt://203.0.113.7:9410/KEY?meet=...").
- * @returns {{secret: Uint8Array, meetUrl: string}|null}
+ * The host can also say whom the browser may ask for its address on the
+ * internet: "&stun=stun.example.org:3478", or "&stun=off" for nobody.
+ * @returns {{secret: Uint8Array, meetUrl: string, stun: string}|null}
  */
 export function parseInvite(text, pageIsLocal = false) {
   let s = (text || '').trim();
@@ -304,13 +306,17 @@ export function parseInvite(text, pageIsLocal = false) {
     s = rest.slice(slash + 1);
   }
   let meet = '';
+  let stun = '';
   const query = s.indexOf('?');
   if (query >= 0) {
     for (const part of s.slice(query + 1).split('&')) {
       if (part.startsWith('meet=')) meet = part.slice(5);
+      else if (part.startsWith('stun=')) stun = part.slice(5);
     }
     s = s.slice(0, query);
   }
+  // A name or address with or without a port, nothing else
+  if (stun !== 'off' && !/^[A-Za-z0-9.\-\[\]:]{1,200}$/.test(stun)) stun = '';
   const secret = base64UrlDecode(s);
   if (!secret || secret.length !== 16) return null;
 
@@ -322,5 +328,5 @@ export function parseInvite(text, pageIsLocal = false) {
     else if (/^[A-Za-z0-9._~\/:%\[\]-]+$/.test(meet) && !meet.includes('//')) meetUrl = 'https://' + meet;
     else meetUrl = '';
   }
-  return meetUrl ? { secret, meetUrl } : null;
+  return meetUrl ? { secret, meetUrl, stun } : null;
 }

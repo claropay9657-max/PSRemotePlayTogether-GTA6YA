@@ -1,17 +1,33 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 //
 // The page: reads the invite, lets the player join, and puts picture, sound,
-// controller, players and chat together while a session runs.
+// controller, players, webcams and chat together while a session runs. What
+// lies on the game picture is the app's, piece by piece: the display (hud.js),
+// the stream menu (menu.js), the chat and the options (options.js).
 
 import { Sound } from './audio.js';
+import { base64UrlDecode, base64UrlEncode } from './bytes.js';
+import { CAMERA_SIZES, Camera, makeAvatar } from './camera.js';
+import { button, el } from './dom.js';
+import { DualSense } from './dualsense.js';
+import { Hud } from './hud.js';
 import { parseInvite } from './meet.js';
+import { StreamMenu } from './menu.js';
+import { OverlayOptions } from './options.js';
 import { KEYBOARD_MAP, Pad, controllerName } from './pad.js';
+import { HUD_KEYS, HUD_PRESETS, PresetSettings } from './presets.js';
 import * as P from './proto.js';
 import { JoinError, Session } from './session.js';
+import { TouchControls } from './touch.js';
 import { VideoPlayer } from './video.js';
 
 const $ = (id) => document.getElementById(id);
 const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+/** What opens the stream menu, as the app names it. */
+const MENU_KEY = MAC ? '⌘O' : 'Ctrl+O';
+/** The same buttons as in the app, held together. */
+const MENU_COMBO = P.BTN.L1 | P.BTN.R1 | P.BTN.L3 | P.BTN.R3;
 /** After a lost connection the page keeps trying to get back in for this long. */
 const REJOIN_MS = 60000;
 
@@ -24,38 +40,77 @@ const ui = {
   stage: $('stage'),
   screen: $('screen'),
   note: $('stage-note'),
-  players: $('players'),
-  toasts: $('toasts'),
+  notices: $('notices'),
+  banner: $('banner'),
+  handle: $('menu-handle'),
   stats: $('stats'),
-  cams: $('cams'),
+  touch: $('touch'),
   chat: $('chat'),
   chatList: $('chat-list'),
   chatInput: $('chat-input'),
-  chatBadge: $('chat-badge'),
+  emoji: $('emoji'),
 };
+
+/** The same :shortcodes: and faces the app turns into emoji. */
+const SHORTCODES = {
+  ':smile:': '😄', ':joy:': '😂', ':wink:': '😉', ':heart:': '❤️', ':fire:': '🔥', ':thumbsup:': '👍', ':+1:': '👍',
+  ':thumbsdown:': '👎', ':clap:': '👏', ':gg:': '🎮', ':skull:': '💀', ':eyes:': '👀', ':cry:': '😢', ':rage:': '😡',
+  ':party:': '🥳', ':trophy:': '🏆', ':100:': '💯', ':rocket:': '🚀', ':ok:': '👌', ':wave:': '👋',
+  ':thinking:': '🤔', ':sweat:': '😅', ':cool:': '😎', ':pray:': '🙏',
+};
+const FACES = [
+  [/(^|\s):-?\)(?=\s|$)/g, '$1🙂'], [/(^|\s):-?D(?=\s|$)/g, '$1😄'], [/(^|\s);-?\)(?=\s|$)/g, '$1😉'],
+  [/(^|\s):-?\((?=\s|$)/g, '$1🙁'], [/(^|\s):-?[pP](?=\s|$)/g, '$1😛'], [/(^|\s)<3(?=\s|$)/g, '$1❤️'],
+  [/(^|\s)[xX]D(?=\s|$)/g, '$1😆'],
+];
+/** The app's emoji, in its groups. */
+const EMOJI_GROUPS = [
+  ['😀', '😀 😃 😄 😁 😆 😅 😂 🤣 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😋 😛 😜 🤪 🤗 🤭 🤫 🤔 🤐 🤨 😐 😑 😶 😏 😒 🙄 😬 😌 😔 😪 😴 😷 🤒 🥵 🥶 🥴 😵 🤯 🤠 🥳 😎 🤓 🧐 😕 😟 🙁 😮 😯 😲 😳 🥺 😦 😨 😰 😥 😢 😭 😱 😖 😣 😞 😓 😩 😫 🥱 😤 😡 😠 🤬 😈 💀 ☠️ 💩 🤡 👻 👽 🤖'],
+  ['👍', '👍 👎 👌 🤌 🤏 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ 👋 🤚 🖐️ ✋ 👏 🙌 👐 🤲 🙏 ✍️ 💪 🦾 🫡 🤝 👀 🧠 🫶'],
+  ['❤️', '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❤️‍🔥 💕 💞 💓 💗 💖 💘 💝 💯 💢 💥 💫 💦 💨 💤 ✨ ⭐ 🌟 🔥 ⚡ 🌈'],
+  ['🎮', '🎮 🕹️ 👾 🏆 🥇 🥈 🥉 🏅 🎯 🎲 ♟️ 🧩 🎉 🎊 🎁 🎈 🍕 🍔 🍟 🌮 🍿 🍩 🍪 🍺 🍻 🥤 ☕ 🚗 🏎️ 🚀 ✈️ 🛸 ⚔️ 🛡️ 🏹 🔫 💣 🗡️ 🪓 💰 💎 🔑 🗺️'],
+  ['✅', '✅ ❌ ❓ ❗ ‼️ ⁉️ ⚠️ 🚫 ⛔ 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ ⬆️ ⬇️ ⬅️ ➡️ 🔄 ⏸️ ▶️ ⏩ ⏪ 🆗 🆒 🆕 🆙 🔝 💬 💭 🗯️ 📢 🔔 🎵 🎶 ⏰ ⌛'],
+];
+/** One colour per place in the session, so that names are told apart at a glance. */
+const SLOT_COLORS = ['#b18cff', '#00f2ff', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#fb923c', '#a3e635', '#e879f9'];
 
 let invite = null;
 let session = null;
 let player = null;
 let pad = null;
+let touch = null;
+let hud = null;
+let menu = null;
+let options = null;
+const hudSettings = new PresetSettings('hud', HUD_KEYS, HUD_PRESETS);
+const dualsense = new DualSense();
 const sound = new Sound();
-let wantVoice = false;
+const camera = new Camera();
+let avatar = null; // {ref, data}
+let voiceOn = false;
 let micMuted = false;
 let deafened = false;
+let controllerOnly = false;
 let lastState = null;
-let known = new Map(); // slot -> name, to tell who came and went
-let rumble = { seq: 0, left: 0, right: 0 };
+let feedback = { rumble: 0, trigger: 0, led: 0, player: 0 };
 let padTimer = 0;
 let slowTimer = 0;
+let talkTimer = 0;
 let idleTimer = 0;
 let wakeLock = null;
 let leaving = false;
+let reconnecting = '';
 let unread = 0;
+let comboHeld = false;
+let lastChat = null; // the newest message, to tell a run by the same player
+let playersKey = ''; // who was drawn last, see showPlayers()
 const mySent = new Set();
-const avatarUrls = new Map(); // picture name -> object URL
-const cams = new Map(); // slot -> {seq, data, got, count, url, el, img}
-let statsLast = { at: 0, bytes: 0, shown: 0 };
-let statsText = { mbit: '0.0', fps: 0 };
+const blobUrls = new Map(); // picture name -> object URL
+const cams = new Map(); // slot -> what is collected of that player's webcam
+const camShown = new Map(); // slot -> the pictures on screen, to give their memory back
+let statsLast = { at: 0, bytes: 0, shown: 0, fragments: 0, nacks: 0 };
+let numbers = { mbps: '0.0', fps: 0, loss: 0 };
+const prefs = { volume: 100, voiceVolume: 100, haptics: 1, camSize: 1, mode: 'fit', zoom: 0, stats: false };
 
 // ------------------------------------------------------------------ small helpers
 
@@ -65,12 +120,12 @@ function show(card) {
   ui.stage.hidden = true;
 }
 
-function toast(text) {
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.textContent = text;
-  ui.toasts.append(el);
-  setTimeout(() => el.remove(), 4200);
+/** Something the player has to know, at the top of the picture for a few seconds. */
+function notice(text) {
+  const n = el('div', 'notice', text);
+  ui.notices.append(n);
+  while (ui.notices.children.length > 3) ui.notices.firstElementChild.remove();
+  setTimeout(() => n.remove(), 7700);
 }
 
 function message(title, text, retryLabel = 'Try again') {
@@ -80,9 +135,42 @@ function message(title, text, retryLabel = 'Try again') {
   show(ui.message);
 }
 
+/** Something on the page has the keys and the controller right now, as the stream menu has in the app. */
+function grabbed() {
+  return !!(menu && (menu.open || menu.closing)) || !!(hud && hud.editing);
+}
+
+/** The keyboard is not the game's: somebody writes, or a window of the page is open. */
 function typing() {
-  const el = document.activeElement;
-  return !!(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) || $('keys').open;
+  const a = document.activeElement;
+  const field = !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT')
+    && a.type !== 'checkbox' && a.type !== 'range');
+  return field || $('keys').open || grabbed() || !ui.chat.hidden || !!(options && options.isOpen);
+}
+
+function remember(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch (e) {
+    // not kept, then
+  }
+}
+
+function recall(key, fallback = '') {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function forget(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    // was not there
+  }
 }
 
 function playerId() {
@@ -103,22 +191,6 @@ function playerId() {
     // private mode: a new one after every reload, which only costs the old place
   }
   return id;
-}
-
-function remember(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch (e) {
-    // not kept, then
-  }
-}
-
-function recall(key) {
-  try {
-    return localStorage.getItem(key) || '';
-  } catch (e) {
-    return '';
-  }
 }
 
 // ------------------------------------------------------------------ the invite
@@ -147,9 +219,49 @@ function readInvite() {
   return text ? parseInvite(text, LOCAL) : null;
 }
 
+// ------------------------------------------------------------------ the player's picture
+
+async function setAvatar(data, store) {
+  if (!data || !data.length || data.length > P.MAX_AVATAR_SIZE) {
+    avatar = null;
+    if (store) forget('psrpt.avatar');
+  } else {
+    // A picture goes by the first bytes of its SHA-256, as everywhere in the protocol
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+    avatar = { ref: { hash: digest.slice(0, 8), size: data.length, valid: true }, data };
+    if (store) remember('psrpt.avatar', base64UrlEncode(data));
+  }
+  showAvatar();
+}
+
+function showAvatar() {
+  const b = $('join-avatar');
+  const old = b.dataset.url;
+  if (old) URL.revokeObjectURL(old);
+  if (avatar) {
+    const url = URL.createObjectURL(new Blob([avatar.data], { type: 'image/jpeg' }));
+    b.dataset.url = url;
+    b.style.backgroundImage = `url("${url}")`;
+    b.textContent = '';
+  } else {
+    b.dataset.url = '';
+    b.style.backgroundImage = '';
+    b.textContent = ($('join-name').value.trim()[0] || '+').toUpperCase();
+  }
+  $('join-avatar-remove').hidden = !avatar;
+}
+
+// ------------------------------------------------------------------ before joining
+
 function showJoin() {
+  if (!invite) {
+    show(ui.landing);
+    return;
+  }
   $('join-name').value = recall('psrpt.name');
   $('join-voice').checked = recall('psrpt.voice') === '1';
+  $('join-muted').checked = recall('psrpt.muted') === '1';
+  $('join-controller-only').checked = recall('psrpt.controllerOnly') === '1';
   const warning = $('join-warning');
   const problems = [];
   if (typeof RTCPeerConnection !== 'function') {
@@ -165,22 +277,58 @@ function showJoin() {
   }
   warning.hidden = problems.length === 0;
   warning.textContent = problems.join(' ');
-  $('join-voice').disabled = !Sound.canSpeak();
+  syncJoinOptions();
+  showAvatar();
   show(ui.join);
   $('join-name').focus();
 }
 
+function syncJoinOptions() {
+  $('join-voice').disabled = !Sound.supported();
+  $('join-muted').closest('label').hidden = !$('join-voice').checked || $('join-voice').disabled;
+}
+
 // ------------------------------------------------------------------ joining
+
+/** Whether this browser shows the console's picture in this session. */
+function hasPicture() {
+  return !controllerOnly && VideoPlayer.supported();
+}
+
+/** What the host is asked to send. */
+function wantFlags() {
+  let want = P.WANT_CAMS;
+  // Controller only: no picture and no sound, but still rumble, voices and webcams, as in the app
+  if (hasPicture()) {
+    want |= P.WANT_VIDEO;
+    if (Sound.supported()) want |= P.WANT_AUDIO;
+  }
+  if (voiceOn && Sound.supported()) want |= P.WANT_VOICE;
+  if (prefs.haptics > 0) want |= P.WANT_HAPTICS;
+  // A guest only gets the others' inputs when it asks for them
+  if (hud && hud.wantPads) want |= P.WANT_INPUTS;
+  return want;
+}
+
+function mediaFlags() {
+  let media = camera.on ? P.MEDIA_CAMERA : 0;
+  if (voiceOn) media |= P.MEDIA_VOICE | (micMuted || !sound.micOn ? P.MEDIA_MUTED : 0);
+  return media;
+}
+
+function applyWant() {
+  if (session) session.setWant(wantFlags());
+}
 
 function makeSession() {
   const s = new Session({
     secret: invite.secret,
     meetUrl: invite.meetUrl,
+    stun: invite.stun,
     name: $('join-name').value.trim() || 'Guest',
     playerId: playerId(),
-    want: VideoPlayer.supported()
-      ? P.WANT_VIDEO | (Sound.supported() ? P.WANT_AUDIO | P.WANT_VOICE : 0) | P.WANT_CAMS
-      : 0,
+    avatar,
+    want: wantFlags(),
   }, {
     onStatus: (text) => {
       $('connecting-text').textContent = text;
@@ -194,35 +342,53 @@ function makeSession() {
     },
     onAudio: (opus) => sound.pushGame(opus),
     onVoice: (slot, opus) => sound.pushVoice(slot, opus),
+    onHaptics: (pcm) => {
+      if (pad) pad.haptics(pcm);
+    },
+    onInputs,
     onChat,
-    onBlob: onAvatar,
+    onBlob,
     onCamFragment,
     onClosed,
   });
   s.setMedia(mediaFlags());
   if (pad) {
     pad.read();
-    s.setController(pad.kind);
+    s.setController(pad.shownKind, pad.battery);
   }
   return s;
 }
 
-function mediaFlags() {
-  return sound.micOn ? P.MEDIA_VOICE | (micMuted ? P.MEDIA_MUTED : 0) : 0;
+/** The microphone, for a player who is in the voice chat. */
+async function openMic() {
+  const problem = await sound.startMic();
+  if (problem) notice(`Voice chat: ${problem} You can listen but not talk.`);
+  sound.setMicMuted(micMuted);
 }
 
 async function join() {
+  if (!invite) {
+    // Nothing to join with: back to where a link can be pasted
+    show(ui.landing);
+    return;
+  }
   remember('psrpt.name', $('join-name').value.trim());
-  wantVoice = $('join-voice').checked && !$('join-voice').disabled;
-  remember('psrpt.voice', wantVoice ? '1' : '0');
+  controllerOnly = $('join-controller-only').checked;
+  voiceOn = $('join-voice').checked && !$('join-voice').disabled;
+  micMuted = voiceOn && $('join-muted').checked;
+  remember('psrpt.voice', $('join-voice').checked ? '1' : '0');
+  remember('psrpt.muted', $('join-muted').checked ? '1' : '0');
+  remember('psrpt.controllerOnly', controllerOnly ? '1' : '0');
   leaving = false;
+  reconnecting = '';
   $('connecting-text').textContent = 'Getting ready…';
+  $('connecting-hint').textContent = `Press ${pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY} to open stream menu`;
   show(ui.connecting);
 
   // Now, while this is still the click on "Join": browsers start sound only then
   const soundOk = await sound.start();
-  let micProblem = '';
-  if (wantVoice && soundOk) micProblem = await sound.startMic();
+  if (voiceOn && soundOk) await openMic();
+  else if (voiceOn) voiceOn = false;
 
   session = makeSession();
   const mine = session;
@@ -241,44 +407,49 @@ async function join() {
     return;
   }
   enterStage();
-  if (!soundOk && sound.problem) toast(sound.problem);
-  if (micProblem) toast(micProblem);
+  if (hasPicture() && !soundOk && sound.problem) notice(sound.problem);
 }
 
 function enterStage() {
   ui.front.hidden = true;
   ui.stage.hidden = false;
-  ui.note.hidden = true;
+  ui.banner.hidden = true;
+  reconnecting = '';
   lastState = null;
-  known = new Map();
-  rumble = { seq: 0, left: 0, right: 0 };
-  unread = 0;
-  updateBadge();
-  statsLast = { at: performance.now(), bytes: 0, shown: 0 };
+  playersKey = '';
+  feedback = { rumble: 0, trigger: 0, led: 0, player: 0 };
+  statsLast = { at: performance.now(), bytes: 0, shown: 0, fragments: 0, nacks: 0 };
 
-  if (!player) {
+  if (hasPicture() && !player) {
     player = new VideoPlayer(ui.screen, {
       onNeedKeyframe: () => {
         if (session) session.requestKeyframe();
       },
-      onSize: () => {},
-      onError: (text) => showNote(text),
+      onSize: () => applyPicture(),
+      onError: (text) => notice(text),
     });
   }
-  player.setCodec(session.welcome.stream.codec);
+  if (player) player.setCodec(session.welcome.stream.codec);
   sound.setGameFormat(session.welcome.audio);
   sound.onVoiceFrame = (opus) => {
     if (session) session.sendVoice(opus);
   };
-  if (!VideoPlayer.supported()) {
-    showNote('Controller only: this browser cannot show the picture. Your controller plays along.');
-  }
+  camera.onFrame = (jpeg) => {
+    if (session) session.sendCamFrame(jpeg);
+    // What the others get of this player is what this player sees of themselves
+    if (lastState) showCamFrame(lastState.yourSlot, jpeg);
+  };
+  showStageNote();
 
   clearInterval(padTimer);
   padTimer = setInterval(padTick, 4);
   clearInterval(slowTimer);
   slowTimer = setInterval(slowTick, 250);
-  updateTools();
+  clearInterval(talkTimer);
+  talkTimer = setInterval(updateTalking, 100);
+  hud.layout();
+  applyPicture();
+  syncMenu();
   wake();
   if (navigator.wakeLock) {
     navigator.wakeLock.request('screen').then((lock) => {
@@ -287,26 +458,47 @@ function enterStage() {
   }
 }
 
+/** Without the console's picture: what the app writes there. */
+function showStageNote() {
+  const off = !hasPicture();
+  ui.note.hidden = !off;
+  if (!off) return;
+  $('stage-note-title').textContent = 'Controller only';
+  const why = controllerOnly ? 'You joined without picture and sound. Your controller plays along.'
+    : 'This browser cannot show the picture. Your controller plays along.';
+  $('stage-note-text').textContent = `${why}\nPress ${pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY} for the stream menu.`;
+}
+
 function leaveStage() {
   clearInterval(padTimer);
   clearInterval(slowTimer);
+  clearInterval(talkTimer);
   clearTimeout(idleTimer);
-  if (pad) pad.rumble(0, 0);
+  if (pad) pad.stopFeedback();
+  dualsense.release();
   if (player) {
     player.close();
     player = null;
   }
   sound.reset();
   sound.stopMic();
-  for (const slot of Array.from(cams.keys())) removeCam(slot);
+  stopCamera();
+  forgetCams();
+  playersKey = '';
+  hud.clear();
+  menu.close();
+  options.close();
+  if (touch) touch.releaseAll();
   if (wakeLock) wakeLock.release().catch(() => {});
   wakeLock = null;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   ui.chat.hidden = true;
-  ui.stage.classList.remove('chat-open');
-  ui.stats.hidden = true;
-  ui.players.replaceChildren();
+  ui.emoji.hidden = true;
+  ui.banner.hidden = true;
   ui.chatList.replaceChildren();
+  ui.notices.replaceChildren();
+  lastChat = null;
+  unread = 0;
 }
 
 function leave() {
@@ -315,11 +507,6 @@ function leave() {
   session = null;
   leaveStage();
   showJoin();
-}
-
-function showNote(text) {
-  ui.note.textContent = text;
-  ui.note.hidden = !text;
 }
 
 /** The connection ended without the player wanting it. */
@@ -335,13 +522,16 @@ function onClosed(reason) {
   }
   // The connection broke, or the host is getting its console back: try to return
   rejoin(reason === 'reconnecting'
-    ? 'The host is reconnecting to the console. You are back in as soon as the game is.'
-    : 'The connection was lost. Joining again…');
+    ? 'The host lost its console — waiting for it to come back…'
+    : 'Connection to the host lost — reconnecting…');
 }
 
 async function rejoin(text) {
-  showNote(text);
-  if (pad) pad.rumble(0, 0);
+  reconnecting = text;
+  $('banner-text').textContent = text;
+  ui.banner.hidden = false;
+  syncMenu();
+  if (pad) pad.stopFeedback();
   sound.reset();
   const deadline = performance.now() + REJOIN_MS;
   let lastProblem = '';
@@ -368,8 +558,8 @@ async function rejoin(text) {
       player.close();
       player = null;
     }
+    forgetCams();
     enterStage();
-    toast('Back in the session');
     return;
   }
   if (leaving) return;
@@ -383,146 +573,200 @@ async function rejoin(text) {
 function padTick() {
   if (!session || !pad) return;
   const state = pad.read();
-  session.setController(pad.kind || (pad.keyboardUsed ? P.CONTROLLER_OTHER : P.CONTROLLER_NONE));
-  session.setPad(state);
+  session.setController(pad.shownKind, pad.battery);
+  // The same buttons as in the app open and close the stream menu
+  const combo = (state.buttons & MENU_COMBO) === MENU_COMBO;
+  if (combo && !comboHeld) menu.toggle();
+  comboHeld = combo;
+  // While the menu is open or the display is arranged, nothing goes to the game
+  session.setPad(grabbed() ? P.emptyPad() : state);
 }
 
 function slowTick() {
   if (!session) return;
-  if (pad && (rumble.left || rumble.right)) pad.rumble(rumble.left, rumble.right);
-  updateTalking();
+  if (pad) pad.tick();
   updateStats();
+  // A controller that was plugged in after joining makes the controls on the screen unnecessary
+  if (touch && touch.visible && touch.auto && pad && pad.kind) setTouch(false, true);
+}
+
+function applyFeedback(f, force) {
+  if (force || f.rumbleSeq !== feedback.rumble) {
+    feedback.rumble = f.rumbleSeq;
+    if (pad) pad.rumble(f.rumbleLeft, f.rumbleRight);
+  }
+  if (!dualsense.connected) return;
+  if (force || f.triggerSeq !== feedback.trigger) {
+    feedback.trigger = f.triggerSeq;
+    if (f.triggerSeq) dualsense.setTriggers(f.triggerTypeLeft, f.triggerLeft, f.triggerTypeRight, f.triggerRight);
+  }
+  if (force || f.ledSeq !== feedback.led) {
+    feedback.led = f.ledSeq;
+    if (f.ledSeq) dualsense.setLed(f.led[0], f.led[1], f.led[2]);
+  }
+  if (force || f.playerIndexSeq !== feedback.player) {
+    feedback.player = f.playerIndexSeq;
+    if (f.playerIndexSeq) dualsense.setPlayerIndex(f.playerIndex);
+  }
+}
+
+/** Everybody in the session, the way the display and the menu want them. */
+function playersNow() {
+  const s = lastState;
+  if (!s) return [];
+  return s.participants.map((p) => ({
+    slot: p.slot,
+    name: p.name,
+    you: p.slot === s.yourSlot,
+    host: p.host,
+    canControl: p.canControl,
+    inControl: p.inControl,
+    voice: (p.media & P.MEDIA_VOICE) !== 0,
+    muted: (p.media & P.MEDIA_MUTED) !== 0,
+    silenced: (p.media & P.MEDIA_SILENCED) !== 0,
+    mutedHere: sound.muted.has(p.slot),
+    camera: (p.media & P.MEDIA_CAMERA) !== 0,
+    battery: p.battery,
+    avatarUrl: p.avatar.valid ? (blobUrls.get(P.hashKey(p.avatar.hash)) || '') : '',
+  }));
+}
+
+function showPlayers() {
+  if (!lastState) return;
+  const players = playersNow();
+  // "In control" only says something when not everybody is
+  const exclusive = lastState.mixMode !== P.MIX_TOGETHER;
+  // The host says who is here several times a second; only what has changed is drawn again
+  const key = JSON.stringify([players, exclusive]);
+  if (key === playersKey) return;
+  playersKey = key;
+  hud.setPlayers(players, exclusive);
+  menu.setPlayers(players);
+  $('chat-sub').textContent = players.length > 1 ? `${players.length} players in this session`
+    : 'Everybody who joins can read along';
 }
 
 function onState(s) {
-  const first = !lastState;
+  const before = lastState;
   lastState = s;
   if (player) player.setCodec(s.stream.codec);
   sound.setGameFormat(s.audio);
+  applyFeedback(s.feedback, false);
 
-  // Controller feedback from the game
-  if (s.feedback.rumbleSeq !== rumble.seq) {
-    rumble = { seq: s.feedback.rumbleSeq, left: s.feedback.rumbleLeft, right: s.feedback.rumbleRight };
-    if (pad) pad.rumble(rumble.left, rumble.right);
-  }
-
-  // Who came and who went
-  const now = new Map(s.participants.map((p) => [p.slot, p.name]));
-  if (!first) {
-    for (const [slot, name] of now) {
-      if (!known.has(slot) && slot !== s.yourSlot) toast(`${name} joined`);
-    }
-    for (const [slot, name] of known) {
-      if (!now.has(slot)) {
-        toast(`${name} left`);
-        sound.forgetVoice(slot);
-        removeCam(slot);
-      }
+  const here = new Set(s.participants.map((p) => p.slot));
+  if (before) {
+    for (const p of before.participants) {
+      if (here.has(p.slot)) continue;
+      sound.forgetVoice(p.slot);
+      forgetCam(p.slot);
     }
   }
-  known = now;
   for (const p of s.participants) {
-    if (!(p.media & P.MEDIA_CAMERA)) removeCam(p.slot);
+    if (!(p.media & P.MEDIA_CAMERA)) forgetCam(p.slot);
   }
-  renderPlayers();
-}
-
-function renderPlayers() {
-  const s = lastState;
-  if (!s) return;
-  const nodes = [];
-  for (const p of s.participants) {
-    const you = p.slot === s.yourSlot;
-    const el = document.createElement('div');
-    el.className = 'player' + (p.inControl ? ' control' : '');
-    el.dataset.slot = String(p.slot);
-    const face = document.createElement('div');
-    face.className = 'face';
-    const url = p.avatar.valid ? avatarUrls.get(P.hashKey(p.avatar.hash)) : '';
-    if (url) face.style.backgroundImage = `url("${url}")`;
-    else face.textContent = (p.name.trim()[0] || '?').toUpperCase();
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = p.name + (you ? ' (you)' : '');
-    el.append(face, name);
-    const tag = (text, cls) => {
-      const t = document.createElement('span');
-      t.className = 'tag ' + cls;
-      t.textContent = text;
-      el.append(t);
-    };
-    if (p.host) tag('HOST', 'host');
-    if ((p.media & P.MEDIA_VOICE) && (p.media & (P.MEDIA_MUTED | P.MEDIA_SILENCED))) tag('MUTED', 'muted');
-    if (!p.host && !p.canControl) tag('WATCHING', '');
-    if (!you && (p.media & P.MEDIA_VOICE)) {
-      el.title = sound.muted.has(p.slot) ? 'Click to hear them again' : 'Click to mute them for you';
-      el.style.cursor = 'pointer';
-      el.style.opacity = sound.muted.has(p.slot) ? '0.5' : '';
-      el.addEventListener('click', () => {
-        sound.setPlayerMuted(p.slot, !sound.muted.has(p.slot));
-        renderPlayers();
-      });
-    }
-    nodes.push(el);
-  }
-  ui.players.replaceChildren(...nodes);
-  updateTalking();
+  showPlayers();
+  if (!before) syncMenu();
 }
 
 function updateTalking() {
   if (!lastState) return;
   const talking = sound.talkingNow(sound.micOn && !micMuted ? lastState.yourSlot : undefined);
-  for (const el of ui.players.children) {
-    el.classList.toggle('talking', talking.has(Number(el.dataset.slot)));
+  hud.setTalking(talking);
+  if (menu.open) menu.setTalking(talking);
+}
+
+/** A picture has arrived: a player's, or the one of a link in the chat. */
+function onBlob(ref, data) {
+  const key = P.hashKey(ref.hash);
+  if (!blobUrls.has(key)) blobUrls.set(key, URL.createObjectURL(new Blob([data])));
+  showPlayers();
+  for (const img of ui.chatList.querySelectorAll(`[data-blob="${key}"]`)) {
+    if (img.tagName === 'IMG') {
+      img.src = blobUrls.get(key);
+      img.hidden = false;
+    } else img.style.backgroundImage = `url("${blobUrls.get(key)}")`;
   }
 }
 
-function onAvatar(ref, data) {
-  const key = P.hashKey(ref.hash);
-  if (!avatarUrls.has(key)) avatarUrls.set(key, URL.createObjectURL(new Blob([data])));
-  renderPlayers();
+// ------------------------------------------------------------------ the numbers of the connection
+
+function buildStats() {
+  const row = (cls, label) => {
+    const r = el('div', 'stat ' + cls);
+    const value = el('b');
+    r.append(value, el('span', '', label));
+    ui.stats.append(r);
+    return value;
+  };
+  return {
+    rate: row('rate', 'Mbps'),
+    fps: row('blue', 'frames per second'),
+    rtt: row('blue', 'to the host and back'),
+    loss: row('red', 'packet loss'),
+    dropped: row('red', 'dropped frames'),
+    lost: row('red', 'lost frames'),
+  };
 }
+
+let statRows = null;
 
 function updateStats() {
   const now = performance.now();
   if (now - statsLast.at < 1000) return;
   const seconds = (now - statsLast.at) / 1000;
   const shown = player ? player.stats.shown : 0;
-  statsText = {
-    mbit: (((session.stats.bytes - statsLast.bytes) * 8) / seconds / 1e6).toFixed(1),
-    fps: Math.round((shown - statsLast.shown) / seconds),
-  };
-  statsLast = { at: now, bytes: session.stats.bytes, shown };
-  if (ui.stats.hidden) return;
   const a = session.assembler.stats;
-  const stream = lastState ? lastState.stream : session.welcome.stream;
-  ui.stats.textContent = [
-    `Picture     ${ui.screen.width}×${ui.screen.height}, ${statsText.fps} of ${stream.fps} per second`,
-    `Format      ${player && player.codecName ? player.codecName : 'none'}`,
-    `Arriving    ${statsText.mbit} Mbit/s`,
-    `To the host ${Math.round(session.rttMs)} ms there and back`,
-    `Frames      ${a.delivered} shown, ${a.dropped} lost, ${a.nackFragments} pieces asked for again`,
-    `Controller  ${pad && pad.kind ? controllerName(pad.kind) : pad && pad.keyboardUsed ? 'Keyboard' : 'none'}`,
-  ].join('\n');
+  const fragments = a.fragments - statsLast.fragments;
+  const nacks = a.nackFragments - statsLast.nacks;
+  numbers = {
+    mbps: (((session.stats.bytes - statsLast.bytes) * 8) / seconds / 1e6).toFixed(1),
+    fps: Math.round((shown - statsLast.shown) / seconds),
+    loss: fragments + nacks > 0 ? (nacks / (fragments + nacks)) * 100 : 0,
+  };
+  statsLast = { at: now, bytes: session.stats.bytes, shown, fragments: a.fragments, nacks: a.nackFragments };
+  if (menu.open) syncConnection();
+  if (ui.stats.hidden) return;
+  if (!statRows) statRows = buildStats();
+  statRows.rate.textContent = numbers.mbps;
+  statRows.fps.textContent = String(numbers.fps);
+  statRows.rtt.textContent = `${Math.round(session.rttMs)} ms`;
+  statRows.loss.textContent = `${numbers.loss.toFixed(1)}%`;
+  statRows.dropped.textContent = String(player ? player.stats.skipped : 0);
+  statRows.lost.textContent = String(a.dropped);
 }
 
-// ------------------------------------------------------------------ webcams of the others
+/** Like in the app: not while the menu is in front, and not without a picture. */
+function showStats() {
+  ui.stats.hidden = !prefs.stats || !hasPicture() || menu.open || menu.closing;
+  statsLast.at = 0;
+  if (session && !ui.stats.hidden) updateStats();
+}
+
+// ------------------------------------------------------------------ webcams
+
+/** Puts a webcam picture on screen and gives the one before the last back. */
+function showCamFrame(slot, jpeg) {
+  const url = URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }));
+  let shown = camShown.get(slot);
+  if (!shown) {
+    shown = [];
+    camShown.set(slot, shown);
+  }
+  shown.push(url);
+  // The picture before this one may still be on its way onto the screen
+  while (shown.length > 2) URL.revokeObjectURL(shown.shift());
+  hud.setCamFrame(slot, url);
+  menu.setCamFrame(slot, url);
+}
 
 function onCamFragment(c) {
   let cam = cams.get(c.slot);
   if (!cam) {
-    const el = document.createElement('div');
-    el.className = 'cam';
-    const img = document.createElement('img');
-    img.alt = '';
-    const label = document.createElement('span');
-    el.append(img, label);
-    ui.cams.append(el);
-    cam = { seq: -1, data: null, got: null, count: 0, url: '', el, img, label, done: -1 };
+    cam = { seq: -1, data: null, got: null, count: 0, done: 0, started: false };
     cams.set(c.slot, cam);
   }
   // Only the newest picture is collected
-  if (cam.done >= 0 && ((c.frameSeq - cam.done) | 0) <= 0) return;
+  if (cam.started && ((c.frameSeq - cam.done) | 0) <= 0) return;
   if (c.frameSeq !== cam.seq) {
     if (cam.seq >= 0 && ((c.frameSeq - cam.seq) | 0) < 0) return;
     cam.seq = c.frameSeq;
@@ -535,56 +779,161 @@ function onCamFragment(c) {
   cam.got[c.fragIndex] = 1;
   if (++cam.count !== cam.got.length) return;
   cam.done = cam.seq;
-  const url = URL.createObjectURL(new Blob([cam.data], { type: 'image/jpeg' }));
-  const old = cam.url;
-  cam.url = url;
-  cam.img.onload = () => {
-    if (old) URL.revokeObjectURL(old);
-  };
-  cam.img.src = url;
-  const who = lastState ? lastState.participants.find((p) => p.slot === c.slot) : null;
-  cam.label.textContent = who ? who.name : '';
+  cam.started = true;
+  showCamFrame(c.slot, cam.data);
 }
 
-function removeCam(slot) {
-  const cam = cams.get(slot);
-  if (!cam) return;
-  cam.el.remove();
-  if (cam.url) URL.revokeObjectURL(cam.url);
+function forgetCam(slot) {
+  // One's own webcam is not the host's to end
+  if (lastState && slot === lastState.yourSlot && camera.on) return;
   cams.delete(slot);
+  const shown = camShown.get(slot);
+  if (shown) for (const url of shown) URL.revokeObjectURL(url);
+  camShown.delete(slot);
+  hud.setCamFrame(slot, '');
+  menu.setCamFrame(slot, '');
+}
+
+function forgetCams() {
+  for (const slot of new Set([...cams.keys(), ...camShown.keys()])) {
+    cams.delete(slot);
+    for (const url of camShown.get(slot) || []) URL.revokeObjectURL(url);
+    camShown.delete(slot);
+    hud.setCamFrame(slot, '');
+    menu.setCamFrame(slot, '');
+  }
+}
+
+async function startCamera(source) {
+  const problem = await camera.start(prefs.camSize, source);
+  if (problem) notice(`Webcam: ${problem}`);
+  syncVoice();
+}
+
+function stopCamera() {
+  const was = camera.on;
+  camera.stop();
+  if (was && lastState) {
+    const mine = lastState.yourSlot;
+    for (const url of camShown.get(mine) || []) URL.revokeObjectURL(url);
+    camShown.delete(mine);
+    hud.setCamFrame(mine, '');
+    menu.setCamFrame(mine, '');
+  }
+  syncVoice();
+}
+
+// ------------------------------------------------------------------ everybody's controller
+
+function onInputs(inputs) {
+  const states = { combined: inputs.combined };
+  for (const p of inputs.players) states[String(p.slot)] = p;
+  hud.setPadStates(states);
 }
 
 // ------------------------------------------------------------------ chat
 
-function updateBadge() {
-  ui.chatBadge.hidden = unread === 0;
-  ui.chatBadge.textContent = String(unread);
+function withEmoji(text) {
+  let out = text;
+  for (const [code, emoji] of Object.entries(SHORTCODES)) out = out.split(code).join(emoji);
+  for (const [pattern, emoji] of FACES) out = out.replace(pattern, emoji);
+  return out;
+}
+
+function chatEmpty() {
+  const empty = el('div', 'chat-empty');
+  empty.append(el('div', 'chat-empty-icon', '💬'), el('b', '', 'No messages yet'),
+    el('span', '', 'Say hi! Links get a preview, and :fire: or :) turn into emoji.'));
+  return empty;
 }
 
 function onChat(m) {
-  const mine = lastState && m.slot === lastState.yourSlot && mySent.has(m.upId);
-  const el = document.createElement('div');
-  el.className = 'msg' + (mine ? ' mine' : '') + (m.history ? ' old' : '');
-  const who = document.createElement('div');
-  who.className = 'who';
-  who.textContent = m.name;
-  const time = document.createElement('time');
-  time.textContent = new Date(m.timeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  who.append(time);
-  const text = document.createElement('div');
-  text.className = 'text';
-  appendWithLinks(text, m.text);
-  el.append(who, text);
+  const s = lastState;
+  const mine = !!s && m.slot === s.yourSlot && mySent.has(m.upId);
+  const who = s ? s.participants.find((p) => p.slot === m.slot) : null;
+  const name = m.name || `Player ${m.slot + 1}`;
+  // A run of messages by the same player shows the name once
+  const continued = !!lastChat && lastChat.slot === m.slot && lastChat.name === m.name && m.timeMs - lastChat.timeMs < 120000;
+  lastChat = { slot: m.slot, name: m.name, timeMs: m.timeMs };
+
+  const entry = el('div', 'cmsg' + (continued ? ' continued' : ''));
+  const side = el('div', 'cmsg-avatar');
+  const body = el('div', 'cmsg-body');
+  if (!continued) {
+    const face = el('div', 'hud-avatar');
+    face.style.width = '34px';
+    face.style.height = '34px';
+    const inner = el('div', 'hud-avatar-face');
+    inner.style.inset = '0';
+    inner.style.fontSize = '16px';
+    const key = who && who.avatar.valid ? P.hashKey(who.avatar.hash) : '';
+    const url = key ? blobUrls.get(key) : '';
+    if (key) inner.dataset.blob = key;
+    if (url) {
+      inner.style.backgroundImage = `url("${url}")`;
+      inner.classList.add('picture');
+    } else inner.textContent = (name.trim().charAt(0) || '?').toUpperCase();
+    face.append(inner);
+    side.append(face);
+    const head = el('div', 'cmsg-head');
+    const label = el('span', 'cmsg-name', name);
+    label.style.color = SLOT_COLORS[m.slot % SLOT_COLORS.length];
+    head.append(label);
+    if (who ? who.host : m.slot === 0) head.append(el('span', 'cmsg-host', 'HOST'));
+    head.append(el('span', 'cmsg-time', new Date(m.timeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })));
+    body.append(head);
+  }
+  if (m.text) {
+    const text = el('div', 'cmsg-text');
+    appendWithLinks(text, m.text);
+    body.append(text);
+  }
+  if (m.embed && /^https?:\/\//i.test(m.embed.url)) body.append(embedCard(m.embed));
+  entry.append(side, body);
+
   const empty = ui.chatList.querySelector('.chat-empty');
   if (empty) empty.remove();
   const atEnd = ui.chatList.scrollHeight - ui.chatList.scrollTop - ui.chatList.clientHeight < 60;
-  ui.chatList.append(el);
+  ui.chatList.append(entry);
   if (atEnd || mine) ui.chatList.scrollTop = ui.chatList.scrollHeight;
-  if (ui.chat.hidden && !m.history && !mine) {
+  if (m.history) return;
+  // For a few seconds on the game picture, unless the chat is open anyway
+  hud.chatMessage({ slot: m.slot, name, text: m.text, embed: m.embed && m.embed.url ? m.embed : null });
+  if (ui.chat.hidden && !mine) {
     unread++;
-    updateBadge();
-    toast(`${m.name}: ${m.text.length > 80 ? m.text.slice(0, 80) + '…' : m.text}`);
+    menu.setUnread(unread);
   }
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname;
+  } catch (e) {
+    return '';
+  }
+}
+
+/** The preview of a link, as its sender made it. */
+function embedCard(embed) {
+  const a = el('a', 'cembed');
+  a.href = embed.url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  const site = embed.site || hostOf(embed.url);
+  if (site) a.append(el('div', 'cembed-site', site));
+  a.append(el('div', 'cembed-title', embed.title || embed.url));
+  if (embed.description) a.append(el('div', 'cembed-text', embed.description));
+  if (embed.image.valid) {
+    const key = P.hashKey(embed.image.hash);
+    const img = el('img');
+    img.alt = '';
+    img.dataset.blob = key;
+    const url = blobUrls.get(key);
+    if (url) img.src = url;
+    else img.hidden = true; // shows when the picture has arrived
+    a.append(img);
+  }
+  return a;
 }
 
 /** The text as it is; only addresses that start with http(s) become links. */
@@ -593,9 +942,8 @@ function appendWithLinks(parent, text) {
   let last = 0;
   for (const match of text.matchAll(pattern)) {
     if (match.index > last) parent.append(text.slice(last, match.index));
-    const a = document.createElement('a');
+    const a = el('a', '', match[0]);
     a.href = match[0];
-    a.textContent = match[0];
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     parent.append(a);
@@ -606,47 +954,188 @@ function appendWithLinks(parent, text) {
 
 function openChat(open) {
   ui.chat.hidden = !open;
-  ui.stage.classList.toggle('chat-open', open);
+  hud.chatOpen = open;
   if (open) {
     unread = 0;
-    updateBadge();
-    if (!ui.chatList.children.length) {
-      const empty = document.createElement('div');
-      empty.className = 'chat-empty';
-      empty.textContent = 'Nothing written yet.';
-      ui.chatList.append(empty);
-    }
+    menu.setUnread(0);
+    if (!ui.chatList.children.length) ui.chatList.append(chatEmpty());
     ui.chatList.scrollTop = ui.chatList.scrollHeight;
     ui.chatInput.focus();
-  } else ui.chatInput.blur();
+  } else {
+    ui.chatInput.blur();
+    ui.emoji.hidden = true;
+  }
   wake();
 }
 
-// ------------------------------------------------------------------ the bar
-
-function updateTools() {
-  const mic = $('btn-mic');
-  mic.hidden = !Sound.canSpeak();
-  mic.classList.toggle('off', sound.micOn && micMuted);
-  $('btn-mic-text').textContent = !sound.micOn ? 'Join voice' : micMuted ? 'Mic muted' : 'Mic on';
-  const voices = $('btn-voices');
-  voices.hidden = !Sound.supported();
-  voices.classList.toggle('off', deafened);
-  $('btn-voices-text').textContent = deafened ? 'Voices off' : 'Voices on';
-  if (session) session.setMedia(mediaFlags());
+function buildEmoji() {
+  const tabs = el('div', 'chat-picker-tabs');
+  const grid = el('div', 'chat-picker-grid');
+  const showGroup = (index) => {
+    for (const [i, tab] of Array.from(tabs.children).entries()) tab.classList.toggle('selected', i === index);
+    grid.replaceChildren(...EMOJI_GROUPS[index][1].split(' ').map((emoji) => button('', emoji, () => {
+      const input = ui.chatInput;
+      const at = input.selectionStart === null ? input.value.length : input.selectionStart;
+      input.value = input.value.slice(0, at) + emoji + input.value.slice(input.selectionEnd === null ? at : input.selectionEnd);
+      input.focus();
+      input.selectionStart = input.selectionEnd = at + emoji.length;
+      $('chat-send').disabled = false;
+    })));
+    grid.scrollTop = 0;
+  };
+  EMOJI_GROUPS.forEach(([icon], index) => tabs.append(button('', icon, () => showGroup(index))));
+  ui.emoji.append(tabs, grid);
+  showGroup(0);
 }
 
-/** Shows the bar and the mouse pointer for a moment. */
+// ------------------------------------------------------------------ the stream menu
+
+/** The connection line of the menu. */
+function syncConnection() {
+  const host = lastState ? lastState.participants.find((p) => p.host) : null;
+  menu.setConnection({
+    connected: !!session && session.connected && !reconnecting,
+    reconnecting,
+    where: host && host.name ? host.name : 'the host',
+    mbps: numbers.mbps,
+    loss: numbers.loss,
+    dropped: player ? player.stats.skipped : 0,
+  });
+}
+
+/** One's own switches, here and for the others. */
+function syncVoice() {
+  if (session) {
+    session.setMedia(mediaFlags());
+    applyWant();
+  }
+  if (!menu) return;
+  menu.setVoice({
+    voice: Sound.supported(),
+    voiceOn,
+    micMuted: voiceOn && (micMuted || !sound.micOn),
+    deafened,
+    cam: Camera.supported(),
+    camOn: camera.on,
+    camSize: prefs.camSize,
+    pictureOff: !hasPicture(),
+  });
+}
+
+function controllerNote() {
+  if (dualsense.connected) {
+    return dualsense.live ? 'DualSense: touchpad, motion sensors, adaptive triggers and the light bar are in use.'
+      : 'DualSense opened. Waiting for the controller to answer…';
+  }
+  if (pad && pad.kind) return `${controllerName(pad.kind)} connected.${pad.canRumble() ? '' : ' This browser cannot make it rumble.'}`;
+  return 'No controller seen yet: press a button on it. The keyboard and the controls on the screen work without one.';
+}
+
+function syncController() {
+  menu.setController({
+    touch: !!(touch && touch.visible),
+    haptics: prefs.haptics,
+    dualsense: DualSense.supported(),
+    dualsenseOn: dualsense.connected,
+    note: controllerNote(),
+  });
+}
+
+function syncMenu() {
+  if (!menu) return;
+  syncConnection();
+  syncVoice();
+  menu.setSound(prefs.volume, prefs.voiceVolume, Sound.supported());
+  menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+  syncController();
+  menu.setPresets(hudSettings.presets, hudSettings.active);
+  menu.setUnread(unread);
+}
+
+async function setVoice(on) {
+  voiceOn = on && Sound.supported();
+  if (voiceOn) {
+    micMuted = false;
+    if (await sound.start()) await openMic();
+    else {
+      voiceOn = false;
+      if (sound.problem) notice(sound.problem);
+    }
+  } else sound.stopMic();
+  syncVoice();
+}
+
+function setVolume(volume) {
+  prefs.volume = Math.max(0, Math.min(100, Math.round(volume)));
+  sound.setGameVolume(prefs.volume / 100);
+  remember('psrpt.volume', prefs.volume);
+  menu.setSound(prefs.volume, prefs.voiceVolume, Sound.supported());
+}
+
+function setVoiceVolume(volume) {
+  prefs.voiceVolume = Math.max(0, Math.min(100, Math.round(volume)));
+  sound.setVoiceVolume(prefs.voiceVolume / 100);
+  remember('psrpt.voiceVolume', prefs.voiceVolume);
+  menu.setSound(prefs.volume, prefs.voiceVolume, Sound.supported());
+}
+
+/** Fit, zoom or stretch, like the app's renderer does it. */
+function applyPicture() {
+  const c = ui.screen;
+  let fit = 'contain';
+  let scale = 1;
+  if (prefs.mode === 'stretch') fit = 'fill';
+  else if (prefs.mode === 'zoom') {
+    if (prefs.zoom >= 0) scale = 1 + prefs.zoom;
+    else {
+      // Towards -1 the black bars go: the picture grows until it covers everything
+      const W = ui.stage.clientWidth || 1;
+      const H = ui.stage.clientHeight || 1;
+      const sx = W / c.width;
+      const sy = H / c.height;
+      scale = 1 + (Math.max(sx, sy) / Math.min(sx, sy) - 1) * -prefs.zoom;
+    }
+  }
+  c.style.objectFit = fit;
+  c.style.transform = scale === 1 ? '' : `scale(${scale})`;
+}
+
+function setPicture(mode, zoom) {
+  prefs.mode = mode;
+  prefs.zoom = Math.max(-1, Math.min(4, Math.round(zoom * 100) / 100));
+  remember('psrpt.pictureMode', prefs.mode);
+  remember('psrpt.zoom', prefs.zoom);
+  applyPicture();
+  menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+}
+
+function setTouch(on, auto) {
+  if (!touch) return;
+  touch.auto = !!auto;
+  touch.show(on);
+  ui.stage.classList.toggle('touch-on', on);
+  if (menu) syncController();
+}
+
+/** Shows the mouse pointer and the way into the menu for a moment. */
 function wake() {
   ui.stage.classList.remove('idle');
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
-    if (!ui.chat.hidden || typing() || ui.stage.querySelector('.bar:hover')) {
+    if (typing() || ui.handle.matches(':hover')) {
       wake();
       return;
     }
     ui.stage.classList.add('idle');
   }, 3200);
+}
+
+/** What is in front decides what else shows: as in the app, the display and the numbers make way for the menu. */
+function syncFront() {
+  const menuUp = menu.open || menu.closing;
+  $('hud').classList.toggle('away', menuUp);
+  ui.handle.hidden = menuUp || hud.editing || !ui.chat.hidden || options.isOpen;
+  showStats();
 }
 
 function keyLabel(code) {
@@ -658,7 +1147,135 @@ function keyLabel(code) {
 
 function start() {
   pad = new Pad(typing);
+  touch = new TouchControls(ui.touch, ui.screen);
+  pad.touch = touch;
+  pad.dualsense = dualsense;
+  dualsense.onChange = () => {
+    if (menu) syncController();
+    // What the game last asked of the triggers and lights goes to the controller that has just come
+    if (dualsense.connected && lastState) applyFeedback(lastState.feedback, true);
+  };
+  dualsense.reconnect();
 
+  // What the player set the last time
+  prefs.volume = Number(recall('psrpt.volume', '100'));
+  prefs.voiceVolume = Number(recall('psrpt.voiceVolume', '100'));
+  prefs.haptics = Number(recall('psrpt.haptics', '1'));
+  prefs.camSize = Number(recall('psrpt.camSize', '1'));
+  prefs.mode = ['fit', 'zoom', 'stretch'].includes(recall('psrpt.pictureMode')) ? recall('psrpt.pictureMode') : 'fit';
+  prefs.zoom = Number(recall('psrpt.zoom', '0')) || 0;
+  prefs.stats = recall('psrpt.stats') === '1';
+  sound.setGameVolume(prefs.volume / 100);
+  sound.setVoiceVolume(prefs.voiceVolume / 100);
+  pad.hapticsScale = prefs.haptics;
+  const stored = recall('psrpt.avatar');
+  if (stored) setAvatar(base64UrlDecode(stored), false);
+
+  // ------------------------------------------------ the display, the menu, the options
+  hud = new Hud($('hud'), hudSettings);
+  hud.onWantChange = applyWant;
+  hud.onEditingChange = () => syncFront();
+  options = new OverlayOptions($('options'), hudSettings, {
+    onArrange: () => hud.setEditing(true),
+    onClose: () => syncFront(),
+  });
+  menu = new StreamMenu($('menu'), {
+    onLeave: leave,
+    onChat: () => {
+      menu.close();
+      openChat(true);
+    },
+    onVoice: setVoice,
+    onMic: () => {
+      micMuted = !micMuted;
+      sound.setMicMuted(micMuted);
+      syncVoice();
+    },
+    onVoices: () => {
+      deafened = !deafened;
+      sound.setDeafened(deafened);
+      syncVoice();
+    },
+    onCam: () => (camera.on ? stopCamera() : startCamera()),
+    onCamSize: (index) => {
+      prefs.camSize = index;
+      remember('psrpt.camSize', index);
+      if (camera.on) startCamera();
+    },
+    onMutePlayer: (slot, muted) => {
+      sound.setPlayerMuted(slot, muted);
+      showPlayers();
+    },
+    onVolume: setVolume,
+    onVoiceVolume: setVoiceVolume,
+    onPictureMode: (mode) => setPicture(mode, prefs.zoom),
+    onZoom: (zoom) => setPicture('zoom', zoom),
+    onFullscreen: () => {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      else if (ui.stage.requestFullscreen) ui.stage.requestFullscreen().catch(() => {});
+    },
+    onStats: () => {
+      prefs.stats = !prefs.stats;
+      remember('psrpt.stats', prefs.stats ? '1' : '0');
+      menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+      showStats();
+    },
+    onTouch: () => setTouch(!touch.visible, false),
+    onHaptics: (value) => {
+      prefs.haptics = value;
+      pad.hapticsScale = value;
+      remember('psrpt.haptics', value);
+      applyWant();
+    },
+    onDualSense: async () => {
+      if (dualsense.connected) dualsense.detach();
+      else {
+        const problem = await dualsense.request();
+        if (problem) notice(problem);
+      }
+      syncController();
+    },
+    onKeys: () => {
+      menu.close();
+      const keys = $('keys');
+      if (keys.showModal) keys.showModal();
+      else keys.setAttribute('open', '');
+    },
+    onPreset: (index) => hudSettings.setActive(index),
+    onArrange: () => {
+      menu.close();
+      hud.setEditing(true);
+    },
+    onOptions: () => {
+      menu.close();
+      options.show();
+      syncFront();
+    },
+  });
+  menu.onOpenChange = (open) => {
+    if (open) {
+      // Nothing held keeps being held while the menu has the keys
+      pad.keys.clear();
+      if (touch) touch.releaseAll();
+      syncMenu();
+      updateTalking();
+    }
+    syncFront();
+    wake();
+  };
+  hudSettings.onChange = () => {
+    hud.settingsChanged();
+    if (options.isOpen) options.sync();
+  };
+  hudSettings.onPresetsChange = () => {
+    menu.setPresets(hudSettings.presets, hudSettings.active);
+    if (options.isOpen) options.sync();
+    hud.settingsChanged();
+  };
+  $('menu-handle-key').textContent = MENU_KEY;
+  ui.handle.addEventListener('click', () => menu.show());
+
+  // ------------------------------------------------ before the game
   $('landing-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const parsed = parseInvite($('landing-invite').value, LOCAL);
@@ -682,6 +1299,27 @@ function start() {
     e.preventDefault();
     join();
   });
+  $('join-voice').addEventListener('change', syncJoinOptions);
+  $('join-name').addEventListener('input', () => {
+    if (!avatar) showAvatar();
+  });
+  const pickAvatar = () => $('join-avatar-file').click();
+  $('join-avatar').addEventListener('click', pickAvatar);
+  $('join-avatar-choose').addEventListener('click', pickAvatar);
+  $('join-avatar-remove').addEventListener('click', () => setAvatar(null, true));
+  $('join-avatar-file').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const data = await makeAvatar(file, P.MAX_AVATAR_SIZE);
+    const warning = $('join-warning');
+    if (!data) {
+      warning.textContent = 'That file is not a picture this browser can read.';
+      warning.hidden = false;
+      return;
+    }
+    await setAvatar(data, true);
+  });
   $('connecting-cancel').addEventListener('click', () => {
     const s = session;
     session = null;
@@ -691,80 +1329,89 @@ function start() {
   });
   $('message-retry').addEventListener('click', () => (invite ? showJoin() : show(ui.landing)));
 
-  // The controller the browser sees, before joining
+  // The controller the browser sees, before joining and in the menu
   setInterval(() => {
+    if (menu.open) syncController();
     if (ui.join.hidden) return;
     pad.read();
     const line = $('pad-status');
     line.classList.toggle('ok', !!pad.kind);
     $('pad-status-text').textContent = pad.kind
       ? `${controllerName(pad.kind)} connected.`
-      : 'Press any button on your controller so that the browser sees it. No controller? The keyboard works too.';
+      : TouchControls.likely()
+        ? 'No controller? You get one on the screen. Or pair one and press a button on it.'
+        : 'Press any button on your controller so that the browser sees it. No controller? The keyboard works too.';
   }, 400);
 
-  $('btn-leave').addEventListener('click', leave);
-  $('btn-full').addEventListener('click', () => {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    else if (ui.stage.requestFullscreen) ui.stage.requestFullscreen().catch(() => {});
+  // ------------------------------------------------ the chat
+  $('chat-close').addEventListener('click', () => {
+    openChat(false);
+    syncFront();
   });
-  $('btn-stats').addEventListener('click', () => {
-    ui.stats.hidden = !ui.stats.hidden;
-    statsLast.at = 0;
-    if (session) updateStats();
-  });
-  $('btn-chat').addEventListener('click', () => openChat(ui.chat.hidden));
-  $('chat-close').addEventListener('click', () => openChat(false));
   $('chat-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const text = ui.chatInput.value.trim();
+    const text = withEmoji(ui.chatInput.value.trim());
     if (!text || !session) return;
     const id = session.sendChat(text);
     if (id) {
       mySent.add(id);
       ui.chatInput.value = '';
+      $('chat-send').disabled = true;
     }
   });
-  ui.chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') openChat(false);
+  ui.chatInput.addEventListener('input', () => {
+    $('chat-send').disabled = ui.chatInput.value.trim().length === 0;
+  });
+  buildEmoji();
+  $('chat-emoji').addEventListener('click', () => {
+    ui.emoji.hidden = !ui.emoji.hidden;
+    if (ui.emoji.hidden) ui.chatInput.focus();
   });
 
-  $('btn-mic').addEventListener('click', async () => {
-    if (!sound.micOn) {
-      const problem = await sound.startMic();
-      if (problem) toast(problem);
-      micMuted = false;
-    } else micMuted = !micMuted;
-    sound.setMicMuted(micMuted);
-    updateTools();
-  });
-  $('btn-voices').addEventListener('click', () => {
-    deafened = !deafened;
-    sound.setDeafened(deafened);
-    updateTools();
-  });
-  const volume = $('volume');
-  volume.value = recall('psrpt.volume') || '100';
-  sound.setGameVolume(Number(volume.value) / 100);
-  volume.addEventListener('input', () => {
-    sound.setGameVolume(Number(volume.value) / 100);
-    remember('psrpt.volume', volume.value);
-  });
+  $('banner-leave').addEventListener('click', leave);
+  camera.onEnded = () => {
+    stopCamera();
+    notice('Webcam: the camera went away.');
+  };
 
   const keys = $('keys');
   $('keys-list').replaceChildren(...KEYBOARD_MAP.map(([code, what]) => {
-    const row = document.createElement('div');
-    const kbd = document.createElement('kbd');
-    kbd.textContent = keyLabel(code);
-    const label = document.createElement('span');
-    label.textContent = what;
-    row.append(kbd, label);
+    const row = el('div');
+    row.append(el('kbd', '', keyLabel(code)), el('span', '', what));
     return row;
   }));
-  const openKeys = () => (keys.showModal ? keys.showModal() : keys.setAttribute('open', ''));
-  $('join-keys').addEventListener('click', openKeys);
-  $('btn-keys').addEventListener('click', openKeys);
+  $('join-keys').addEventListener('click', () => (keys.showModal ? keys.showModal() : keys.setAttribute('open', '')));
   $('keys-close').addEventListener('click', () => keys.close());
 
+  // ------------------------------------------------ keys and the mouse
+  window.addEventListener('keydown', (e) => {
+    if (ui.stage.hidden) return;
+    // The stream menu: the app's own shortcut
+    if (e.code === 'KeyO' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      if (hud.editing) hud.setEditing(false);
+      menu.toggle();
+      return;
+    }
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    // Escape closes what is in front; the menu, the options and arranging see to themselves
+    if (hud.editing || (e.target instanceof Element && e.target.closest('#menu, #options'))) return;
+    if (!ui.emoji.hidden) {
+      e.preventDefault();
+      ui.emoji.hidden = true;
+      ui.chatInput.focus();
+    } else if (!ui.chat.hidden) {
+      e.preventDefault();
+      openChat(false);
+      syncFront();
+    } else if (options.isOpen) {
+      e.preventDefault();
+      options.close();
+    } else if (menu.open && !hud.editing) {
+      e.preventDefault();
+      menu.close();
+    }
+  }, true);
   for (const type of ['mousemove', 'mousedown', 'touchstart', 'keydown']) {
     ui.stage.addEventListener(type, wake, { passive: true });
   }
@@ -772,16 +1419,24 @@ function start() {
   for (const type of ['pointerdown', 'keydown']) {
     window.addEventListener(type, () => sound.wake(), { passive: true });
   }
-  ui.screen.addEventListener('dblclick', () => $('btn-full').click());
+  ui.screen.addEventListener('dblclick', () => menu.h.onFullscreen());
+  document.addEventListener('fullscreenchange', () => {
+    if (menu.open) menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+  });
+  window.addEventListener('resize', applyPicture);
+  window.addEventListener('gamepadconnected', () => {
+    if (touch.visible && touch.auto) setTouch(false, true);
+  });
 
   // Leaving the page says goodbye, so that the others do not wait for a timeout
   window.addEventListener('pagehide', () => {
     if (session) session.close();
+    dualsense.close();
   });
   document.addEventListener('visibilitychange', () => {
     // Coming back to the tab: the picture starts over at once instead of catching up
     if (!document.hidden && session && session.connected) session.requestKeyframe();
-    if (!document.hidden && session && navigator.wakeLock && !wakeLock) {
+    if (!document.hidden && session && navigator.wakeLock) {
       navigator.wakeLock.request('screen').then((lock) => {
         wakeLock = lock;
       }).catch(() => {});
@@ -796,12 +1451,23 @@ function start() {
       get state() { return lastState; },
       sound,
       pad,
+      touch,
+      camera,
+      dualsense,
+      hud,
+      menu,
+      options,
+      hudSettings,
+      startCamera,
+      sizes: CAMERA_SIZES,
     };
   }
 
   invite = readInvite();
   if (invite) showJoin();
   else show(ui.landing);
+  // A phone or tablet without a controller gets one on the screen
+  if (TouchControls.likely() && !pad.gamepads().length) setTouch(true, true);
 }
 
 start();

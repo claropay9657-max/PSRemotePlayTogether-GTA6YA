@@ -96,6 +96,11 @@ export class Session {
     this.lastAudioSeq = 0;
     this.voiceIn = new Map();
     this.voiceSeq = 0;
+    this.camSeq = 0;
+    this.haveHaptics = false;
+    this.lastHapticsSeq = 0;
+    this.haveInputs = false;
+    this.lastInputsSeq = 0;
     this.chatSeen = [];
     this.chatOut = new Map();
     this.chatUpSeq = 0;
@@ -128,7 +133,11 @@ export class Session {
     const myId = hex(peerId);
 
     this.status('Getting ready…');
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVERS }] });
+    // Whom to ask for this browser's address on the internet: the host's choice if
+    // its link names one ("off": nobody), otherwise the servers the app asks too
+    const stun = this.options.stun || '';
+    const iceServers = stun === 'off' ? [] : stun ? [{ urls: 'stun:' + stun }] : [{ urls: STUN_SERVERS }];
+    const pc = new RTCPeerConnection({ iceServers });
     this.pc = pc;
     // Like UDP: no order, nothing sent again. The protocol repairs what it needs itself.
     const dc = pc.createDataChannel('psrpt', { ordered: false, maxRetransmits: 0 });
@@ -371,7 +380,7 @@ export class Session {
   setPad(pad) {
     if (!this.connected) return;
     if (P.padEquals(pad, this.pad) && this.inputSeq !== 0) return;
-    this.pad = { ...pad };
+    this.pad = P.copyPad(pad);
     this.inputBurst = INPUT_BURST - 1;
     this.sendInput();
   }
@@ -380,6 +389,13 @@ export class Session {
     this.inputSeq = (this.inputSeq + 1) >>> 0;
     this.lastInputMs = nowMs();
     this.send(P.inputFrame(this.inputSeq, this.pad));
+  }
+
+  /** One picture of the own webcam, as JPEG. */
+  sendCamFrame(jpeg) {
+    if (!this.connected) return;
+    this.camSeq = (this.camSeq + 1) >>> 0;
+    for (const packet of P.camUpFrames(this.camSeq, jpeg)) this.send(packet);
   }
 
   sendVoice(opus) {
@@ -464,6 +480,23 @@ export class Session {
         this.lastAudioSeq = seq;
         this.stats.audioFrames++;
         if (this.h.onAudio && (this.want & P.WANT_AUDIO)) this.h.onAudio(payload.subarray(4));
+        break;
+      }
+      case P.PT.Haptics: {
+        if (payload.length < 5 || !(this.want & P.WANT_HAPTICS)) break;
+        const seq = ((payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3]) >>> 0;
+        if (this.haveHaptics && ((seq - this.lastHapticsSeq) | 0) <= 0) break;
+        this.haveHaptics = true;
+        this.lastHapticsSeq = seq;
+        if (this.h.onHaptics) this.h.onHaptics(payload.subarray(4));
+        break;
+      }
+      case P.PT.Inputs: {
+        const inputs = P.readInputs(payload);
+        if (!inputs || (this.haveInputs && ((inputs.seq - this.lastInputsSeq) | 0) <= 0)) break;
+        this.haveInputs = true;
+        this.lastInputsSeq = inputs.seq;
+        if (this.h.onInputs) this.h.onInputs(inputs);
         break;
       }
       case P.PT.Voice: {

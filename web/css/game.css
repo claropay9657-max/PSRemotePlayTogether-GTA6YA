@@ -1,0 +1,2025 @@
+/* SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL */
+
+/*
+ * Everything that lies on top of the game picture while playing. It is made to
+ * look and behave like the app: the display (StreamHud.qml), the stream menu
+ * (StreamMenuContent.qml, PlayTogetherBar.qml), the chat (StreamChatPanel.qml)
+ * and the options (StreamDisplayPanel.qml, DisplayOptions.qml). Sizes and
+ * colours are the ones written there.
+ */
+
+.stage {
+  --g-accent: #8c52ff;
+  --g-pink: #f0469b;
+  --g-cyan: #00f2ff;
+  --g-green: #34d399;
+  --g-amber: #fbbf24;
+  --g-red: #f0466e;
+  --g-sheet: rgba(13, 11, 31, 0.97);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+/* ================================================================ the display */
+
+.hud {
+  --hud-accent: #8c52ff;
+  --hud-cyan: #00f2ff;
+  --hud-green: #34d399;
+  --hud-red: #f0466e;
+  --hud-glass: rgba(12, 10, 26, 0.72);
+  --hud-box: transparent;
+  --hud-line: 0 0 0 0 transparent;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  color: #fff;
+}
+
+.hud.glass {
+  --hud-box: var(--hud-glass);
+}
+
+.hud.solid {
+  --hud-box: #10101a;
+}
+
+/* Something else is in front: the stream menu */
+.hud.away {
+  visibility: hidden;
+}
+
+.hud-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+}
+
+.hud-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.hud-el {
+  position: absolute;
+}
+
+.hud-holder {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  transform-origin: 0 0;
+}
+
+/* Arrange mode: a frame to grab, and the element's own switches */
+.hud-frame {
+  display: none;
+  position: absolute;
+  inset: -6px;
+  border: 2px solid var(--hud-cyan);
+  border-radius: 10px;
+  background: rgba(140, 82, 255, 0.1);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.hud.editing .hud-frame {
+  display: block;
+}
+
+.hud-frame.grabbed {
+  background: rgba(140, 82, 255, 0.25);
+  cursor: grabbing;
+}
+
+.hud-tools {
+  position: absolute;
+  left: -2px;
+  top: -30px;
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.hud-tools.below {
+  top: calc(100% + 6px);
+}
+
+.hud-tools.from-right {
+  left: auto;
+  right: -2px;
+}
+
+.hud-tool-title {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--hud-cyan);
+  color: #04262a;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 24px;
+}
+
+.stage .hud-tool {
+  height: 24px;
+  min-width: 24px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 22px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.stage .hud-tool:hover {
+  background: var(--hud-accent);
+}
+
+/* ---------------------------------------------------------------- players */
+
+.hud-players {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.hud-players.vertical {
+  flex-direction: column;
+}
+
+.hud-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 14px 0 6px;
+  border-radius: 23px;
+  background: var(--hud-box);
+  white-space: nowrap;
+}
+
+.hud.glass .hud-chip,
+.hud.solid .hud-chip {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.hud.glass .hud-chip.control,
+.hud.solid .hud-chip.control {
+  box-shadow: inset 0 0 0 2px var(--hud-accent);
+}
+
+.hud-chip-end {
+  width: 4px;
+}
+
+.hud-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hud-chip-name {
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 17px;
+}
+
+/* Without a box behind it, an outline keeps it readable on any game picture */
+.hud.plain .hud-chip-name {
+  text-shadow: -1px 0 rgba(0, 0, 0, 0.85), 1px 0 rgba(0, 0, 0, 0.85), 0 -1px rgba(0, 0, 0, 0.85), 0 1px rgba(0, 0, 0, 0.85);
+}
+
+.hud-chip-name.control {
+  color: var(--hud-cyan);
+}
+
+.hud-chip-name.talking {
+  color: var(--hud-green);
+}
+
+.hud-chip-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: bold;
+  line-height: 11px;
+}
+
+.hud-chip-tags:empty {
+  display: none;
+}
+
+.hud-tag-host {
+  color: var(--hud-cyan);
+}
+
+.hud-tag-watching {
+  opacity: 0.6;
+}
+
+.hud-tag-muted {
+  color: var(--hud-red);
+}
+
+.hud-battery {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.hud-battery span {
+  opacity: 0.85;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 12px;
+}
+
+.hud-battery-cell {
+  position: relative;
+  width: 20px;
+  height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 2.5px;
+}
+
+.hud-battery-fill {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  height: 6px;
+  border-radius: 1px;
+}
+
+.hud-battery-nub {
+  position: absolute;
+  left: 19px;
+  top: 2px;
+  width: 2px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* A player's picture as a circle, or their initial; the ring lights up while talking */
+.hud-avatar {
+  position: relative;
+  flex: none;
+  border: 0 solid transparent;
+  border-radius: 50%;
+}
+
+.hud-avatar-face {
+  position: absolute;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, #8c52ff, #f0469b);
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.hud-avatar-face.picture {
+  background-color: #12121c;
+}
+
+/* ---------------------------------------------------------------- webcams */
+
+.hud-cams {
+  display: flex;
+  gap: 8px;
+}
+
+.hud-cam {
+  position: relative;
+  width: 176px;
+  height: 99px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  background: #12121c;
+  overflow: hidden;
+}
+
+.hud-cam.talking {
+  border-color: var(--hud-green);
+}
+
+.hud-cam img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hud-cam img:not([src]) {
+  visibility: hidden;
+}
+
+/* One's own webcam is shown the way a mirror would */
+.hud-cam.mirrored img {
+  transform: scaleX(-1);
+}
+
+.hud-cam-name {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  max-width: 164px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------- controllers */
+
+.hud-pads {
+  display: flex;
+  gap: 10px;
+}
+
+.hud-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hud-pad-name {
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.hud-pad-name.control {
+  background: var(--hud-accent);
+}
+
+.hud-pad-name.console {
+  background: rgba(0, 102, 115, 0.85);
+}
+
+.pad {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+}
+
+.pad-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 807px;
+  height: 651px;
+  transform-origin: 0 0;
+}
+
+.pad-group {
+  position: absolute;
+}
+
+.pad-sprite {
+  position: absolute;
+  background-repeat: no-repeat;
+}
+
+/* ---------------------------------------------------------------- notes */
+
+.hud-toasts {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 17px;
+  background: var(--hud-glass);
+  font-size: 14px;
+  font-weight: bold;
+  white-space: nowrap;
+  animation: hud-toast 4.4s linear forwards;
+}
+
+.hud-toast.joined {
+  border-color: var(--hud-green);
+}
+
+.hud-toast-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hud-red);
+}
+
+.hud-toast.joined .hud-toast-dot {
+  background: var(--hud-green);
+}
+
+/* In over 200 ms, there for 3800, out over 400 */
+@keyframes hud-toast {
+  0% {
+    opacity: 0;
+  }
+  4.5%,
+  91% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.hud-notes {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  width: min(460px, 45%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.hud-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 7px 14px 7px 10px;
+  border-radius: 14px;
+  background: var(--hud-box);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  font-size: 14px;
+  line-height: 17px;
+  animation: hud-note 7.7s linear forwards;
+}
+
+.hud.plain .hud-note {
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: none;
+}
+
+.hud-note-text {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.hud.plain .hud-note-text {
+  text-shadow: -1px 0 rgba(0, 0, 0, 0.6), 1px 0 rgba(0, 0, 0, 0.6), 0 -1px rgba(0, 0, 0, 0.6), 0 1px rgba(0, 0, 0, 0.6);
+}
+
+/* In over 200 ms, there for 7000, out over 500 */
+@keyframes hud-note {
+  0% {
+    opacity: 0;
+  }
+  2.6%,
+  93.5% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- arranging */
+
+.hud-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max-content;
+  max-width: calc(100% - 40px);
+  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--hud-accent);
+  border-radius: 16px;
+  background: rgba(13, 11, 31, 0.94);
+  pointer-events: auto;
+  text-align: center;
+}
+
+.hud-card-title {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.hud-card-text {
+  max-width: 460px;
+  opacity: 0.75;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.hud-card-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+/* ================================================================ controls */
+
+/* The browser's own looks off; each control below says what it looks like */
+:where(.stage) button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(.stage) button:disabled {
+  cursor: default;
+}
+
+:where(.stage) select,
+:where(.stage) input {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+
+/* A button of the app's forms: a pill, flat or filled with the accent colour */
+.gbtn {
+  flex: none;
+  height: 40px;
+  padding: 0 24px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.gbtn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.gbtn.flat {
+  padding: 0 12px;
+  background: none;
+}
+
+.gbtn.flat:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.gbtn.highlighted {
+  background: var(--g-accent);
+}
+
+.gbtn.highlighted:hover {
+  background: #9a66ff;
+}
+
+.gbtn:focus-visible {
+  outline: 2px solid var(--g-cyan);
+  outline-offset: 2px;
+}
+
+.gbtn:disabled {
+  opacity: 0.38;
+}
+
+.hud-card .gbtn {
+  font-size: 20px;
+  font-weight: 400;
+}
+
+/* A choice of several, with the app's outline and arrow */
+.gcombo,
+.mcombo {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  height: 56px;
+  padding: 0 40px 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 4px;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='5' viewBox='0 0 10 5'%3E%3Cpath d='M0 0h10L5 5z' fill='%23fff'/%3E%3C/svg%3E") no-repeat right 15px center;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.gcombo:hover,
+.mcombo:hover {
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
+.gcombo:focus-visible,
+.mcombo:focus-visible {
+  outline: none;
+  border-color: var(--g-cyan);
+  box-shadow: inset 0 0 0 1px var(--g-cyan);
+}
+
+.gcombo option,
+.mcombo option {
+  background: #1b1733;
+  color: #fff;
+}
+
+/* A line of text to fill in */
+.gfield {
+  min-width: 0;
+  height: 56px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 4px;
+  background: transparent;
+  font-size: 15px;
+  outline: none;
+}
+
+.gfield:hover {
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
+.gfield:focus {
+  border-color: var(--g-accent);
+  box-shadow: inset 0 0 0 1px var(--g-accent);
+}
+
+.gfield::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* On or off */
+.gswitch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.gswitch.disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.gswitch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gswitch-track {
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 32px;
+  margin-left: 8px;
+  border: 2px solid #938f99;
+  border-radius: 16px;
+  background: #1d1b26;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.gswitch-knob {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #b6b3bd;
+  transition: left 0.12s, top 0.12s, width 0.12s, height 0.12s, background 0.12s;
+}
+
+.gswitch input:checked + .gswitch-track {
+  border-color: #b79df7;
+  background: #b79df7;
+}
+
+.gswitch input:checked + .gswitch-track .gswitch-knob {
+  left: 22px;
+  top: 2px;
+  width: 24px;
+  height: 24px;
+  background: #2b1a66;
+}
+
+.gswitch input:focus-visible + .gswitch-track {
+  outline: 2px solid var(--g-cyan);
+  outline-offset: 2px;
+}
+
+/* A value on a line, with the app's forms */
+.gslider {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 60px;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+  --fill: 100%;
+}
+
+.gslider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(var(--g-accent), var(--g-accent)) 0 0 / var(--fill) 100% no-repeat, rgba(140, 82, 255, 0.3);
+}
+
+.gslider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(var(--g-accent), var(--g-accent)) 0 0 / var(--fill) 100% no-repeat, rgba(140, 82, 255, 0.3);
+}
+
+.gslider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--g-accent);
+}
+
+.gslider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--g-accent);
+}
+
+.gslider:focus-visible {
+  outline: 2px solid var(--g-cyan);
+  outline-offset: 4px;
+}
+
+/* ================================================================ the stream menu */
+
+.menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 16px 14px;
+  transform: translateY(100%);
+  transition: transform 0.25s linear;
+}
+
+.menu.open {
+  transform: none;
+}
+
+/* In a small window (a phone on its side) the menu does not fit: then it scrolls */
+.menu-sheet {
+  position: relative;
+  max-height: calc(100vh - 20px);
+  max-height: calc(100dvh - 20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 22px;
+  background: var(--g-sheet);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+/* A soft accent line along the top edge */
+.menu-line {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(140, 82, 255, 0.8) 30%, rgba(240, 70, 155, 0.8) 70%, transparent);
+}
+
+.menu-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px 16px;
+}
+
+.menu-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.menu-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--g-green);
+}
+
+.menu-dot.waiting {
+  background: var(--g-amber);
+  animation: menu-dot 1.2s linear infinite;
+}
+
+@keyframes menu-dot {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.menu-where {
+  max-width: 420px;
+  font-size: 16px;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-space {
+  flex: 1;
+}
+
+.mchip {
+  flex: none;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.mchip.cyan {
+  color: var(--g-cyan);
+}
+
+.mchip.red {
+  color: var(--g-red);
+}
+
+/* The menu's own button */
+.mbtn {
+  position: relative;
+  flex: none;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.mbtn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.mbtn:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.mbtn.selected {
+  border-color: #b78cff;
+  background: var(--g-accent);
+}
+
+.mbtn.tint-leave {
+  background: rgba(240, 69, 110, 0.55);
+}
+
+.mbtn:focus {
+  outline: none;
+  border: 2px solid var(--g-cyan);
+  padding: 0 13px;
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.mbtn.selected:focus {
+  background: var(--g-accent);
+}
+
+.mbtn.tint-leave:focus {
+  background: rgba(240, 69, 110, 0.55);
+}
+
+.mbadge {
+  position: absolute;
+  right: -7px;
+  top: -7px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--g-pink);
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* A card: a heading in small capitals, the controls below it */
+.mcard,
+.menu-together {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.mcard {
+  padding: 10px 14px 14px;
+}
+
+.mcard-title {
+  opacity: 0.55;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1.4px;
+  line-height: 13px;
+  white-space: pre;
+}
+
+.mcard-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  min-height: 40px;
+}
+
+.mcard-note {
+  max-width: 420px;
+  margin-top: 6px;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+.mcombo {
+  width: 190px;
+  height: 40px;
+  font-size: 14px;
+}
+
+.mcombo.wide {
+  width: 230px;
+}
+
+.mvalue {
+  flex: none;
+  width: 44px;
+  font-size: 14px;
+  font-weight: bold;
+  text-align: right;
+}
+
+.mvalue.wide {
+  width: 96px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.mlabel {
+  font-size: 14px;
+  font-weight: bold;
+  opacity: 0.8;
+}
+
+.mdivider {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* The app's own slider: a thin track that fills with the gradient */
+.mbar {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 110px;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+  --fill: 0%;
+}
+
+.mbar::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--g-accent), var(--g-pink)) 0 0 / var(--fill) 100% no-repeat, rgba(255, 255, 255, 0.14);
+}
+
+.mbar::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--g-accent), var(--g-pink)) 0 0 / var(--fill) 100% no-repeat, rgba(255, 255, 255, 0.14);
+}
+
+.mbar::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border: 2px solid var(--g-accent);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.mbar::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--g-accent);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.mbar:active::-webkit-slider-thumb {
+  border-width: 4px;
+}
+
+.menu-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* ---------------------------------------------------------------- Play Together */
+
+.menu-together {
+  height: 166px;
+  padding: 10px;
+}
+
+.menu-together > .mcard-title {
+  padding: 0 4px;
+}
+
+.ptb {
+  position: absolute;
+  inset: 32px 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.ptb-own {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 60%;
+}
+
+.ptb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ptb-label {
+  opacity: 0.8;
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.ptb-note {
+  max-width: 440px;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+/* The strip's own button, a little larger than the menu's */
+.bbtn {
+  flex: none;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+  font-size: 15px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.bbtn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.bbtn.tint-red {
+  background: rgba(240, 69, 110, 0.75);
+}
+
+.bbtn.tint-green {
+  background: rgba(51, 212, 153, 0.55);
+}
+
+.bbtn:focus {
+  outline: none;
+  border: 2px solid var(--g-cyan);
+  padding: 0 13px;
+}
+
+.ptb-players {
+  flex: 1;
+  align-self: stretch;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ptb-players::-webkit-scrollbar {
+  display: none;
+}
+
+/* A player: the webcam, or the picture, or the initial */
+.ptile {
+  position: relative;
+  flex: none;
+  height: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: #12121c;
+  overflow: hidden;
+  text-align: left;
+}
+
+.ptile:disabled {
+  cursor: default;
+}
+
+.ptile.control {
+  border: 2px solid var(--g-accent);
+}
+
+.ptile.talking {
+  border: 2px solid var(--g-green);
+}
+
+.ptile:focus-visible {
+  outline: 2px solid var(--g-cyan);
+  outline-offset: -2px;
+}
+
+.ptile-cam {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ptile-cam:not([src]) {
+  visibility: hidden;
+}
+
+.ptile-face {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  margin: -35px 0 0 -27px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, var(--g-accent), var(--g-pink));
+  background-size: cover;
+  background-position: center;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.ptile-tags {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.ptag {
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: bold;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.ptag.host {
+  background: rgba(140, 82, 255, 0.85);
+}
+
+.ptag.web {
+  background: rgba(51, 212, 153, 0.75);
+}
+
+.ptag.watching {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.ptag.muted {
+  flex: none;
+  background: var(--g-red);
+}
+
+.ptile-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 26px;
+  padding: 0 6px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.ptile-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ptile-voice {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.ptile-voice.on {
+  background: var(--g-green);
+}
+
+/* What a click on a player offers */
+.mpopup {
+  position: absolute;
+  z-index: 2;
+  min-width: 200px;
+  padding: 8px 0;
+  border-radius: 4px;
+  background: #211d3d;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+}
+
+.mpopup-item {
+  display: block;
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  font-size: 20px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mpopup-item:hover,
+.mpopup-item:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* The way into the menu for a mouse or a finger; the app has only keys for it */
+.menu-handle {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  height: 36px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  background: rgba(13, 11, 31, 0.82);
+  font-size: 14px;
+  font-weight: bold;
+  white-space: nowrap;
+  transition: opacity 0.25s;
+}
+
+.menu-handle:hover {
+  border-color: var(--g-accent);
+}
+
+.menu-handle small {
+  opacity: 0.55;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.stage.idle .menu-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ================================================================ panels in front of the picture */
+
+.gpanel {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: var(--g-sheet);
+  overflow: hidden;
+}
+
+.gpanel-close {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.gpanel-close:hover,
+.gpanel-close:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ---------------------------------------------------------------- the options */
+
+.options {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max(360px, min(100% - 60px, 1000px));
+  height: max(300px, min(100% - 60px, 780px));
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px solid var(--g-accent);
+}
+
+.gpanel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  margin: 10px 12px 0 22px;
+}
+
+.gpanel-title {
+  flex: 1;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.gpanel-note {
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+.gpanel-body {
+  flex: 1;
+  min-height: 0;
+  margin: 8px 18px 18px;
+  padding-right: 14px;
+  overflow-y: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.ocard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: rgba(16, 16, 24, 0.72);
+}
+
+.ocard-title {
+  align-self: flex-start;
+  background: linear-gradient(90deg, #c084fc, #7c86ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 21px;
+  font-weight: bold;
+}
+
+.ocard-sub {
+  opacity: 0.68;
+  font-size: 14px;
+}
+
+.ocaption {
+  margin-top: 8px;
+  opacity: 0.55;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.orow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+}
+
+.orow.buttons {
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.orow .grow {
+  flex: 1;
+}
+
+.orow .gbtn {
+  font-size: 14px;
+}
+
+.orow.buttons .gbtn {
+  font-size: 15px;
+}
+
+.olabel {
+  flex: none;
+  font-size: 15px;
+}
+
+.ovalue {
+  flex: none;
+  width: 46px;
+  font-size: 15px;
+  text-align: right;
+}
+
+.ogrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  column-gap: 10px;
+}
+
+@container options (min-width: 660px) {
+  .ogrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.gpanel-body {
+  container: options / inline-size;
+}
+
+/* ---------------------------------------------------------------- the chat */
+
+.chat {
+  right: 20px;
+  top: 40px;
+  width: min(400px, max(300px, 100% - 40px));
+  height: max(320px, 100% - 80px);
+  max-width: calc(100% - 8px);
+  max-height: calc(100% - 44px);
+  border: 1px solid rgba(140, 82, 255, 0.7);
+  background: rgba(13, 11, 31, 0.96);
+}
+
+.chat-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  margin: 8px 8px 0 18px;
+}
+
+.chat-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-title {
+  font-size: 20px;
+  font-weight: bold;
+  line-height: 24px;
+}
+
+.chat-sub {
+  opacity: 0.55;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-rule {
+  flex: none;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chat-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 6px;
+  overflow-y: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.chat-empty {
+  position: absolute;
+  left: 30px;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+
+.chat-empty-icon {
+  font-size: 40px;
+  line-height: 1.2;
+}
+
+.chat-empty b {
+  font-size: 15px;
+}
+
+.chat-empty span {
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+.cmsg {
+  display: flex;
+  gap: 10px;
+  margin: 0 8px 2px 0;
+  padding: 8px 8px 4px;
+  border-radius: 10px;
+}
+
+/* A run of messages by the same player shows the name once */
+.cmsg.continued {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.cmsg:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cmsg-avatar {
+  flex: none;
+  width: 34px;
+}
+
+.cmsg-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cmsg-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cmsg-name {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.cmsg-host {
+  height: 14px;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: rgba(140, 82, 255, 0.8);
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 14px;
+}
+
+.cmsg-time {
+  opacity: 0.45;
+  font-size: 11px;
+}
+
+.cmsg-text {
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.cmsg-text a {
+  color: var(--g-cyan);
+  text-decoration: underline;
+}
+
+/* The link preview the writer's app made */
+.cembed {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 300px;
+  margin-top: 2px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  text-decoration: none;
+}
+
+.cembed:hover {
+  background: rgba(255, 255, 255, 0.08);
+  text-decoration: none;
+}
+
+.cembed::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 1.5px;
+  background: var(--g-accent);
+}
+
+.cembed-site {
+  opacity: 0.6;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cembed-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--g-cyan);
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.cembed-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  opacity: 0.75;
+  font-size: 12px;
+}
+
+.cembed img {
+  display: block;
+  width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+}
+
+.chat-form {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px;
+}
+
+.chat-emoji-button {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  font-size: 20px;
+}
+
+.chat-emoji-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.chat-form .gfield {
+  width: 100%;
+  font-size: 14px;
+}
+
+/* The app's text field: while it is written into, its hint sits on the frame */
+.gfield-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.gfield-wrap:focus-within .gfield::placeholder {
+  color: transparent;
+}
+
+.gfield-wrap:focus-within::before,
+.gfield-wrap:has(.gfield:not(:placeholder-shown))::before {
+  content: attr(data-label);
+  position: absolute;
+  left: 12px;
+  top: -7px;
+  padding: 0 4px;
+  background: #0d0b1f;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.gfield-wrap:focus-within::before {
+  color: #b18cff;
+}
+
+.chat-send {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background: var(--g-accent);
+  font-size: 16px;
+}
+
+.chat-send:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.chat-picker {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 64px;
+  height: min(300px, 100% - 140px);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: #17132d;
+}
+
+.chat-picker-tabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.chat-picker-tabs button {
+  width: 44px;
+  height: 40px;
+  border-radius: 8px;
+  font-size: 18px;
+}
+
+.chat-picker-tabs button.selected {
+  background: rgba(140, 82, 255, 0.35);
+}
+
+.chat-picker-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  grid-auto-rows: 40px;
+  overflow-y: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.chat-picker-grid button {
+  border-radius: 8px;
+  font-size: 22px;
+}
+
+.chat-picker-tabs button:hover,
+.chat-picker-grid button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ================================================================ the rest on the picture */
+
+/* The connection was lost and the page is getting it back by itself */
+.banner {
+  position: absolute;
+  left: 50%;
+  top: 20px;
+  transform: translateX(-50%);
+  height: 44px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 22px;
+  background: rgba(10, 10, 20, 0.88);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.banner-spin {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+.banner-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.banner-leave {
+  flex: none;
+  height: 28px;
+  margin-left: 6px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.banner-leave:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* No picture here: a browser that cannot show it, or a player with the controller only */
+.stage-note {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 75%;
+  transform: translateY(-50%);
+  padding: 0 20px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.stage-note-title {
+  font-size: 24px;
+}
+
+.stage-note-text {
+  margin-top: 10px;
+  font-size: 20px;
+  white-space: pre-line;
+}
+
+/* Something the player has to know: the microphone could not be opened, the webcam went away */
+.notices {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.notice {
+  max-width: min(640px, 100% - 24px);
+  padding: 9px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 17px;
+  background: rgba(12, 10, 26, 0.9);
+  font-size: 14px;
+  text-align: center;
+  animation: hud-note 7.7s linear forwards;
+}
+
+/* The numbers of the connection, as the app shows them: along the right edge */
+.stats {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  pointer-events: none;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
+}
+
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 15px;
+}
+
+.stat b {
+  font-size: 18px;
+}
+
+.stat.rate {
+  font-size: 18px;
+}
+
+.stat.rate b {
+  color: var(--g-accent);
+  font-size: 28px;
+}
+
+.stat.blue b {
+  color: #90caf9;
+}
+
+.stat.red b {
+  color: #ef9a9a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    transition: none;
+  }
+}

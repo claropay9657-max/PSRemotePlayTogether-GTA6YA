@@ -18,6 +18,7 @@
 <meta name="description" content="Join a friend's shared PlayStation session from your browser: same picture, same sound, your own controller.">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/game.css">
 </head>
 <body>
 
@@ -52,13 +53,31 @@
     <h2>You are invited to play</h2>
     <p class="dim">You get your friend's game picture and sound, and your controller plays along on their console.</p>
     <form id="join-form">
-      <label class="field">
-        <span>Your name</span>
-        <input id="join-name" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" placeholder="Shown to the other players">
-      </label>
+      <div class="who">
+        <button id="join-avatar" class="avatar" type="button" title="Choose your picture" aria-label="Choose your picture"></button>
+        <div class="who-fields">
+          <label class="field">
+            <span>Your name</span>
+            <input id="join-name" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" placeholder="Shown to the other players">
+          </label>
+          <div class="row small">
+            <button id="join-avatar-choose" class="ghost small" type="button">Choose picture</button>
+            <button id="join-avatar-remove" class="ghost small" type="button" hidden>Remove</button>
+            <input id="join-avatar-file" type="file" accept="image/*" hidden>
+          </div>
+        </div>
+      </div>
       <label class="check">
         <input id="join-voice" type="checkbox">
         <span>Join the voice chat <small>(the browser asks for your microphone; use headphones)</small></span>
+      </label>
+      <label class="check sub">
+        <input id="join-muted" type="checkbox">
+        <span>Start with my microphone muted</span>
+      </label>
+      <label class="check">
+        <input id="join-controller-only" type="checkbox">
+        <span>Controller only <small>(no picture or sound: for when you sit in front of the same TV)</small></span>
       </label>
       <div id="pad-status" class="status-line">
         <span class="dot"></span>
@@ -77,6 +96,7 @@
     <div class="spinner" aria-hidden="true"></div>
     <h2 id="connecting-text">Looking for the host…</h2>
     <p class="dim">The connection goes straight from your browser to your friend's computer.</p>
+    <p id="connecting-hint" class="dim"></p>
     <button id="connecting-cancel" class="ghost" type="button">Cancel</button>
   </section>
 
@@ -99,64 +119,55 @@
 </main>
 
 <!-- ============================================================ playing -->
+<!--
+  What lies on the game picture is made to look and behave like the app: the
+  display (js/hud.js), the stream menu (js/menu.js), the chat and the options
+  (js/options.js). Most of it is built by those scripts.
+-->
 <div id="stage" class="stage" hidden>
   <canvas id="screen" width="1280" height="720"></canvas>
 
-  <div id="stage-note" class="stage-note" hidden></div>
-
-  <div id="bar" class="bar">
-    <div class="bar-left">
-      <img src="img/logo.svg" alt="" width="34" height="34">
-      <div id="players" class="players"></div>
-    </div>
-    <div class="bar-right">
-      <button id="btn-mic" class="tool" type="button" title="Microphone" hidden>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-2.1A7 7 0 0 0 19 12h-2Z"/></svg>
-        <span id="btn-mic-text">Mic on</span>
-      </button>
-      <button id="btn-voices" class="tool" type="button" title="The others' voices">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4ZM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6Z"/></svg>
-        <span id="btn-voices-text">Voices on</span>
-      </button>
-      <label class="tool volume" title="Game volume">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9v6h4l5 4V5L9 9H5Zm11.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z"/></svg>
-        <input id="volume" type="range" min="0" max="100" value="100" aria-label="Game volume">
-      </label>
-      <button id="btn-chat" class="tool" type="button" title="Chat">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4V5a1 1 0 0 1 1-1Z"/></svg>
-        <span>Chat</span>
-        <span id="chat-badge" class="badge" hidden>0</span>
-      </button>
-      <button id="btn-stats" class="tool icon" type="button" title="Connection details">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10h3v10H5Zm5.5 0V4h3v16h-3ZM16 20v-7h3v7h-3Z"/></svg>
-      </button>
-      <button id="btn-keys" class="tool icon" type="button" title="Keyboard controls">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm2 3v2h2V9H5Zm4 0v2h2V9H9Zm4 0v2h2V9h-2Zm4 0v2h2V9h-2ZM7 14v2h10v-2H7Z"/></svg>
-      </button>
-      <button id="btn-full" class="tool icon" type="button" title="Full screen">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v2H6v4H4V4Zm10 0h6v6h-2V6h-4V4ZM4 14h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4Z"/></svg>
-      </button>
-      <button id="btn-leave" class="tool danger" type="button" title="Leave the session">Leave</button>
-    </div>
+  <div id="stage-note" class="stage-note" hidden>
+    <div id="stage-note-title" class="stage-note-title"></div>
+    <div id="stage-note-text" class="stage-note-text"></div>
   </div>
 
+  <div id="touch" class="touch" hidden></div>
+  <div id="hud"></div>
   <div id="stats" class="stats" hidden></div>
-  <div id="cams" class="cams"></div>
-  <div id="toasts" class="toasts"></div>
+  <div id="notices" class="notices"></div>
 
-  <aside id="chat" class="chat" hidden>
-    <header>
-      <b>Chat</b>
-      <button id="chat-close" class="tool icon" type="button" title="Close">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
-      </button>
-    </header>
+  <div id="banner" class="banner" hidden>
+    <span class="banner-spin" aria-hidden="true"></span>
+    <span id="banner-text" class="banner-text"></span>
+    <button id="banner-leave" class="banner-leave" type="button">Leave</button>
+  </div>
+
+  <button id="menu-handle" class="menu-handle" type="button">Menu <small id="menu-handle-key"></small></button>
+  <div id="menu" class="menu"></div>
+
+  <aside id="chat" class="gpanel chat" hidden>
+    <div class="chat-head">
+      <div class="chat-head-text">
+        <div class="chat-title">Chat</div>
+        <div id="chat-sub" class="chat-sub"></div>
+      </div>
+      <button id="chat-close" class="gpanel-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="chat-rule"></div>
     <div id="chat-list" class="chat-list"></div>
+    <div class="chat-rule"></div>
     <form id="chat-form" class="chat-form">
-      <input id="chat-input" type="text" maxlength="400" autocomplete="off" placeholder="Write to everybody…" aria-label="Message">
-      <button class="primary" type="submit">Send</button>
+      <button id="chat-emoji" class="chat-emoji-button" type="button" aria-label="Emoji">😊</button>
+      <div class="gfield-wrap" data-label="Message everybody…">
+        <input id="chat-input" class="gfield" type="text" maxlength="400" autocomplete="off" placeholder="Message everybody…" aria-label="Message">
+      </div>
+      <button id="chat-send" class="chat-send" type="submit" aria-label="Send" disabled>➤</button>
     </form>
+    <div id="emoji" class="chat-picker" hidden></div>
   </aside>
+
+  <div id="options" class="gpanel options" hidden></div>
 </div>
 
 <!-- ============================================================ keyboard help -->

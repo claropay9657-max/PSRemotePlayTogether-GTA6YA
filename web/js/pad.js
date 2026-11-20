@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 //
 // The player's controller: what the browser's Gamepad API reports, turned into
-// the controller state the host expects. Without a controller the keyboard can
-// stand in.
+// the controller state the host expects. A DualSense can add its touchpad and
+// motion sensors (dualsense.js), the keyboard and the controls on the screen
+// (touch.js) can stand in for a controller. The other way round, what the game
+// sends back becomes rumble.
 
 import * as P from './proto.js';
 
@@ -56,6 +58,11 @@ const KEY_BUTTONS = {
   KeyM: P.BTN.Touchpad,
 };
 
+/** The console's haptics arrive as 10 ms of sound; this many are taken together for one rumble. */
+const HAPTICS_PER_RUMBLE = 3;
+/** Quieter than this is no rumble at all (of 65535). */
+const HAPTICS_MIN = 100;
+
 const stick = (v) => Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
 const trigger = (v) => Math.max(0, Math.min(255, Math.round(v * 255)));
 
@@ -89,7 +96,18 @@ export class Pad {
     this.keyboardUsed = false;
     this.kind = P.CONTROLLER_NONE;
     this.label = '';
-    this.lastRumble = { left: 0, right: 0, at: 0 };
+    this.battery = P.BATTERY_UNKNOWN;
+    /** @type {import('./touch.js').TouchControls|null} */
+    this.touch = null;
+    /** @type {import('./dualsense.js').DualSense|null} */
+    this.dualsense = null;
+    // What the game wants felt: its rumble (0..255 each), and its haptics boiled down to a strength (0..1)
+    this.gameRumble = { left: 0, right: 0 };
+    this.haptic = 0;
+    this.hapticQueue = [];
+    this.hapticAtMs = 0;
+    this.hapticsScale = 1;
+    this.applied = { strong: 0, weak: 0, at: 0 };
     this.onKeyDown = (e) => this.key(e, true);
     this.onKeyUp = (e) => this.key(e, false);
     this.onBlur = () => this.keys.clear();
@@ -117,11 +135,15 @@ export class Pad {
   gamepads() {
     if (!navigator.getGamepads) return [];
     const out = [];
-    for (const g of navigator.getGamepads()) if (g && g.connected) out.push(g);
+    try {
+      for (const g of navigator.getGamepads()) if (g && g.connected) out.push(g);
+    } catch (e) {
+      // a page that the browser does not let near controllers
+    }
     return out;
   }
 
-  /** The controller state right now, of all controllers and the keyboard together. */
+  /** The controller state right now, of all controllers, the keyboard and the screen together. */
   read() {
     const pad = P.emptyPad();
     const pads = this.gamepads();
@@ -154,8 +176,22 @@ export class Pad {
         pad.ry = ry;
       }
     }
+
+    // A DualSense that was opened directly adds what the Gamepad API leaves out
+    let battery = P.BATTERY_UNKNOWN;
+    const ds = this.dualsense;
+    if (ds && ds.live) {
+      if (!kind) kind = P.CONTROLLER_DUALSENSE;
+      if (ds.touches.some((t) => t.id >= 0)) {
+        pad.touches = ds.touches.map((t) => ({ id: t.id, x: t.x, y: t.y }));
+        pad.touchIdNext = ds.touchIdNext;
+      }
+      if (ds.motion) pad.motion = ds.motion;
+      battery = ds.battery;
+    }
     this.kind = kind;
     this.label = label;
+    this.battery = battery;
 
     if (this.keys.size) {
       for (const code of this.keys) {
@@ -178,25 +214,78 @@ export class Pad {
       if (this.keys.has('KeyZ')) pad.l2 = 255;
       if (this.keys.has('KeyC')) pad.r2 = 255;
     }
+
+    if (this.touch) this.touch.apply(pad);
     return pad;
   }
 
-  /** Makes the controllers rumble as the game asks (0..255 each); 0 and 0 stops it. */
+  /** What the player holds, for the others to see: a controller, the keyboard or the screen. */
+  get shownKind() {
+    if (this.kind) return this.kind;
+    if (this.keyboardUsed || (this.touch && this.touch.used)) return P.CONTROLLER_OTHER;
+    return P.CONTROLLER_NONE;
+  }
+
+  // ------------------------------------------------------------------ what the game sends back
+
+  /** The game's rumble (0..255 each); 0 and 0 stops it. */
   rumble(left, right) {
+    this.gameRumble = { left, right };
+    this.applyRumble();
+  }
+
+  /**
+   * 10 ms of the console's haptics: 3 kHz stereo sound, 16 bit. A browser
+   * cannot play it into a controller, so its loudness becomes rumble, the way
+   * the app does it for controllers without haptics.
+   * @param {Uint8Array} pcm
+   */
+  haptics(pcm) {
+    const samples = pcm.length >> 2;
+    if (!samples) return;
+    const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+    let left = 0;
+    let right = 0;
+    for (let i = 0; i < samples; i++) {
+      left += Math.abs(view.getInt16(i * 4, true)) * 2;
+      right += Math.abs(view.getInt16(i * 4 + 2, true)) * 2;
+    }
+    left /= samples;
+    right /= samples;
+    const strength = Math.max(left > HAPTICS_MIN ? left : 0, right > HAPTICS_MIN ? right : 0);
+    this.hapticQueue.push(Math.min(65535, strength));
+    if (this.hapticQueue.length < HAPTICS_PER_RUMBLE) return;
+    let sum = 0;
+    for (const s of this.hapticQueue) sum += s;
+    this.hapticQueue.length = 0;
+    this.haptic = Math.min(1, (sum / HAPTICS_PER_RUMBLE / 65535) * this.hapticsScale);
+    this.hapticAtMs = performance.now();
+    this.applyRumble();
+  }
+
+  /** Call regularly: keeps a lasting rumble going and ends one whose source went quiet. */
+  tick() {
+    if (this.haptic && performance.now() - this.hapticAtMs > 150) this.haptic = 0;
+    this.applyRumble();
+  }
+
+  applyRumble() {
+    const strong = Math.max(this.gameRumble.left / 255, this.haptic);
+    const weak = Math.max(this.gameRumble.right / 255, this.haptic);
     const now = performance.now();
-    const same = left === this.lastRumble.left && right === this.lastRumble.right;
+    const same = Math.abs(strong - this.applied.strong) < 0.02 && Math.abs(weak - this.applied.weak) < 0.02;
     // An effect ends by itself, so a lasting one is started again in time
-    if (same && (now - this.lastRumble.at < 700 || (!left && !right))) return;
-    this.lastRumble = { left, right, at: now };
+    if (same && (now - this.applied.at < 700 || (!strong && !weak))) return;
+    this.applied = { strong, weak, at: now };
     for (const g of this.gamepads()) {
       const actuator = g.vibrationActuator;
       if (!actuator) continue;
       try {
-        if (!left && !right) {
+        if (!strong && !weak) {
           if (actuator.reset) actuator.reset();
           else if (actuator.playEffect) actuator.playEffect('dual-rumble', { duration: 1, strongMagnitude: 0, weakMagnitude: 0 });
         } else if (actuator.playEffect) {
-          actuator.playEffect('dual-rumble', { duration: 1000, strongMagnitude: left / 255, weakMagnitude: right / 255 });
+          actuator.playEffect('dual-rumble', { duration: 1000, strongMagnitude: strong, weakMagnitude: weak });
         }
       } catch (e) {
         // this browser or controller does not rumble
@@ -204,8 +293,20 @@ export class Pad {
     }
   }
 
+  /** Whether any connected controller can rumble in this browser. */
+  canRumble() {
+    return this.gamepads().some((g) => g.vibrationActuator && (g.vibrationActuator.playEffect || g.vibrationActuator.reset));
+  }
+
+  stopFeedback() {
+    this.gameRumble = { left: 0, right: 0 };
+    this.haptic = 0;
+    this.hapticQueue.length = 0;
+    this.applyRumble();
+  }
+
   close() {
-    this.rumble(0, 0);
+    this.stopFeedback();
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);

@@ -243,21 +243,61 @@ export function readState(payload) {
   return r.ok ? s : null;
 }
 
-/** A controller state at rest. Sticks are -32768..32767, triggers 0..255. */
+/** The touchpad's size as the console counts it. */
+export const TOUCHPAD_WIDTH = 1920;
+export const TOUCHPAD_HEIGHT = 1079;
+
+/**
+ * A controller state at rest. Sticks are -32768..32767, triggers 0..255.
+ * touches: up to two fingers on the touchpad, each {id, x, y}, id -1 = none.
+ * motion: null, or {gyro: [x, y, z] in rad/s, accel: [x, y, z] in g, orient: [x, y, z, w]}.
+ */
 export function emptyPad() {
-  return { buttons: 0, l2: 0, r2: 0, lx: 0, ly: 0, rx: 0, ry: 0 };
+  return {
+    buttons: 0, l2: 0, r2: 0, lx: 0, ly: 0, rx: 0, ry: 0,
+    touchIdNext: 0,
+    touches: [{ id: -1, x: 0, y: 0 }, { id: -1, x: 0, y: 0 }],
+    motion: null,
+  };
+}
+
+function touchesEqual(a, b) {
+  for (let i = 0; i < 2; i++) {
+    const p = a[i];
+    const q = b[i];
+    if (p.id !== q.id || (p.id >= 0 && (p.x !== q.x || p.y !== q.y))) return false;
+  }
+  return true;
+}
+
+function motionEquals(a, b) {
+  if (!a || !b) return a === b;
+  for (let i = 0; i < 3; i++) if (a.gyro[i] !== b.gyro[i] || a.accel[i] !== b.accel[i]) return false;
+  for (let i = 0; i < 4; i++) if (a.orient[i] !== b.orient[i]) return false;
+  return true;
 }
 
 export function padEquals(a, b) {
   return a.buttons === b.buttons && a.l2 === b.l2 && a.r2 === b.r2 && a.lx === b.lx && a.ly === b.ly
-    && a.rx === b.rx && a.ry === b.ry;
+    && a.rx === b.rx && a.ry === b.ry && touchesEqual(a.touches, b.touches) && motionEquals(a.motion, b.motion);
+}
+
+export function copyPad(pad) {
+  return {
+    buttons: pad.buttons, l2: pad.l2, r2: pad.r2, lx: pad.lx, ly: pad.ly, rx: pad.rx, ry: pad.ry,
+    touchIdNext: pad.touchIdNext,
+    touches: pad.touches.map((t) => ({ id: t.id, x: t.x, y: t.y })),
+    motion: pad.motion
+      ? { gyro: pad.motion.gyro.slice(), accel: pad.motion.accel.slice(), orient: pad.motion.orient.slice() } : null,
+  };
 }
 
 export function inputFrame(seq, pad) {
-  const w = new Writer(32);
+  const w = new Writer(72);
   w.u8(PT.Input);
   w.u32(seq);
-  w.u8(0); // no motion data
+  // Motion data only when there is some: most controllers in a browser have none
+  w.u8(pad.motion ? 1 : 0);
   w.u32(pad.buttons);
   w.u8(pad.l2);
   w.u8(pad.r2);
@@ -265,13 +305,68 @@ export function inputFrame(seq, pad) {
   w.i16(pad.ly);
   w.i16(pad.rx);
   w.i16(pad.ry);
-  w.u8(0); // touch_id_next
+  w.u8(pad.touchIdNext & 0xff);
   for (let i = 0; i < 2; i++) {
-    w.u16(0);
-    w.u16(0);
-    w.i8(-1); // not touching
+    const t = pad.touches[i];
+    w.u16(t.id >= 0 ? t.x : 0);
+    w.u16(t.id >= 0 ? t.y : 0);
+    w.i8(t.id >= 0 ? t.id & 0x7f : -1);
+  }
+  if (pad.motion) {
+    for (let i = 0; i < 3; i++) w.f32(pad.motion.gyro[i]);
+    for (let i = 0; i < 3; i++) w.f32(pad.motion.accel[i]);
+    for (let i = 0; i < 4; i++) w.f32(pad.motion.orient[i]);
   }
   return w.done();
+}
+
+function readPlayerInput(r) {
+  return {
+    slot: r.u8(),
+    buttons: r.u32(),
+    l2: r.u8(),
+    r2: r.u8(),
+    lx: r.i16(),
+    ly: r.i16(),
+    rx: r.i16(),
+    ry: r.i16(),
+  };
+}
+
+/** What every player is pressing right now, and what the console gets out of it. */
+export function readInputs(payload) {
+  const r = new Reader(payload);
+  const seq = r.u32();
+  const count = r.u8();
+  if (!r.ok || count > MAX_GUESTS + 1) return null;
+  const players = [];
+  for (let i = 0; i < count; i++) players.push(readPlayerInput(r));
+  const combined = readPlayerInput(r);
+  return r.ok ? { seq, players, combined } : null;
+}
+
+/**
+ * The packets for one picture of the own webcam.
+ * @param {number} seq counts up with every picture
+ * @param {Uint8Array} jpeg at most MAX_CAM_FRAME bytes
+ * @returns {Uint8Array[]}
+ */
+export function camUpFrames(seq, jpeg) {
+  const out = [];
+  if (!jpeg.length || jpeg.length > MAX_CAM_FRAME) return out;
+  const count = Math.ceil(jpeg.length / CAM_FRAGMENT_SIZE);
+  for (let i = 0; i < count; i++) {
+    const part = jpeg.subarray(i * CAM_FRAGMENT_SIZE, Math.min(jpeg.length, (i + 1) * CAM_FRAGMENT_SIZE));
+    const w = new Writer(part.length + 16);
+    w.u8(PT.CamUp);
+    w.u32(seq);
+    w.u16(i);
+    w.u16(count);
+    w.u32(jpeg.length);
+    w.bytes(part);
+    out.push(w.done());
+  }
+  return out;
 }
 
 export function pingFrame({ id, sentUs, want, rtt, controller, media, battery }) {
