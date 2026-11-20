@@ -1,6 +1,15 @@
 # Contributor Guide
 
-This file is a quick orientation for new contributors working on `chiaki-ng`.
+PSRemotePlayTogether is built on [chiaki-ng](https://github.com/streetpea/chiaki-ng), and this guide is chiaki-ng's own orientation for its codebase: everything it says about `lib/`, `gui/` and the build still holds here.
+
+What this project adds on top:
+
+- [`coplay/`](./coplay): the sharing library (host relay, client, controller mixing, encrypted transport, voice and webcam frames), independent of the rest, with its own tests (`coplay-tests`) and a simulator (`coplay-sim`).
+- `gui/src/streamsession_coplay.cpp`, `gui/src/qmlbackend_coplay.cpp`, `gui/src/qmlbackend_display.cpp`, `gui/src/overlayserver.cpp`: where a Remote Play session is shared, the display on the game picture and the OBS overlay.
+- `gui/src/qml/PlayTogether*.qml`, `StreamHud*.qml`, `StreamChatPanel.qml`, `DisplayOptions.qml`: the Play Together screens.
+- [`.github/workflows/build.yml`](./.github/workflows/build.yml) and [`docs/releasing.md`](./docs/releasing.md): builds and releases.
+
+The rest of this file is a quick orientation for new contributors working on the chiaki-ng codebase.
 
 ## What This Repository Is
 
