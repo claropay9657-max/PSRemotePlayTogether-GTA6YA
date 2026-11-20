@@ -131,7 +131,7 @@ if (!is_string($version) || !is_string($room) || !is_string($id) || !is_string($
 }
 if ($version !== '1') {
     // 200: an app that is newer than this file has done nothing wrong
-    psrpt_meet_answer(200, ['error this meeting point does not know version ' . preg_replace('/[^0-9]/', '', substr($version, 0, 6)) . ' of the protocol']);
+    psrpt_meet_answer(200, ['error this meeting point only knows version 1 of the protocol']);
 }
 
 $ttl = (int) psrpt_meet_setting('PSRPT_MEET_TTL', PSRPT_MEET_TTL);
@@ -150,7 +150,7 @@ if (random_int(1, 50) === 1) {
 
 // The file is named after a hash of the room: nothing a client sends becomes part
 // of a path, and it works the same on file systems that ignore upper and lower case
-$path = $dir . DIRECTORY_SEPARATOR . hash('sha256', $room) . '.room';
+$path = $dir . DIRECTORY_SEPARATOR . basename(hash('sha256', $room) . '.room');
 $now = time();
 
 $handle = null;
