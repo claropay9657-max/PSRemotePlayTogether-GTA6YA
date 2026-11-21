@@ -30,7 +30,8 @@ Item {
     readonly property int camSerial: active ? session.coplayCamSerial : 0
 
     visible: !!session
-    implicitHeight: 120
+    // Grows with what the host has to answer (who knocks) and the room's own switches
+    implicitHeight: Math.max(120, ownColumn.implicitHeight)
 
     // The invites of the running session: one per way a friend can reach this computer
     readonly property string inviteLan: hosting ? (session.coplayInviteLan || session.coplayInvite || "") : ""
@@ -93,6 +94,7 @@ Item {
         // ------------------------------------------------ our own switches
 
         ColumnLayout {
+            id: ownColumn
             Layout.alignment: Qt.AlignVCenter
             spacing: 8
 
@@ -224,6 +226,89 @@ Item {
                 }
             }
 
+            // The room: public or not, closed to newcomers or not, and who gets in
+            RowLayout {
+                visible: bar.hosting
+                spacing: 8
+
+                BarButton {
+                    id: lockButton
+                    text: bar.active && bar.session.coplayLocked ? qsTr("Closed to newcomers") : qsTr("Open to newcomers")
+                    tint: bar.active && bar.session.coplayLocked ? Qt.rgba(0.94, 0.27, 0.43, 0.75) : "transparent"
+                    onClicked: bar.session.coplayLocked = !bar.session.coplayLocked
+                }
+
+                Label {
+                    visible: bar.active && bar.session.coplayPublic
+                    Layout.maximumWidth: 220
+                    elide: Text.ElideRight
+                    opacity: 0.8
+                    text: bar.active ? qsTr("Public: %1").arg(bar.session.coplayRoomTitle) : ""
+                }
+
+                ComboBox {
+                    visible: bar.active && bar.session.coplayPublic
+                    // The opened list is never cut off: as wide as its longest entry, and inside the window
+                    implicitContentWidthPolicy: ComboBox.WidestText
+                    popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                    popup.margins: 8
+                    Layout.preferredWidth: 250
+                    model: [qsTr("I let each in"), qsTr("They watch first"), qsTr("Everybody plays")]
+                    currentIndex: bar.active ? bar.session.coplayJoinPolicy : 0
+                    onActivated: (index) => bar.session.coplayJoinPolicy = index
+                    Keys.onEscapePressed: bar.closeRequested()
+                    KeyNavigation.down: bar.downItem
+                    KeyNavigation.up: bar.upItem
+                }
+            }
+
+            Label {
+                readonly property string problem: bar.hosting ? (bar.session.coplayRoomProblem || "") : ""
+                visible: problem.length > 0
+                Layout.maximumWidth: 440
+                wrapMode: Text.WordWrap
+                color: "#ffb74d"
+                font.pixelSize: 13
+                text: problem
+            }
+
+            // Who knocks on the room and waits for an answer
+            Repeater {
+                model: bar.hosting ? (bar.session.coplayPending || []) : []
+
+                RowLayout {
+                    id: knock
+                    required property var modelData
+                    spacing: 8
+
+                    Rectangle {
+                        Layout.preferredWidth: 10
+                        Layout.preferredHeight: 10
+                        radius: 5
+                        color: "#fbbf24"
+                    }
+
+                    Label {
+                        Layout.maximumWidth: 240
+                        elide: Text.ElideRight
+                        textFormat: Text.StyledText
+                        text: knock.modelData.web ? qsTr("<b>%1</b> wants to join, from a browser").arg(knock.modelData.name)
+                                                  : qsTr("<b>%1</b> wants to join").arg(knock.modelData.name)
+                    }
+
+                    BarButton {
+                        text: qsTr("Let in")
+                        tint: Qt.rgba(0.2, 0.83, 0.6, 0.55)
+                        onClicked: bar.session.coplayAdmit(knock.modelData.id, true)
+                    }
+
+                    BarButton {
+                        text: qsTr("No")
+                        onClicked: bar.session.coplayAdmit(knock.modelData.id, false)
+                    }
+                }
+            }
+
             // While sharing: whether friends elsewhere get in without a forwarded port
             Label {
                 readonly property string reach: bar.hosting ? (bar.session.coplayReachText || "") : ""
@@ -242,7 +327,7 @@ Item {
                 wrapMode: Text.WordWrap
                 opacity: 0.6
                 font.pixelSize: 13
-                text: !bar.active ? qsTr("Off in this session, so there is nobody to talk to. To play, talk and use the webcam with friends, switch on \"Let friends join my sessions\" under Play Together before you connect to the console.")
+                text: !bar.active ? qsTr("Nobody can join this session: you chose Play. To play, talk and use the webcam with friends, choose Host on the start page instead.")
                       : (!bar.session.coplayVideoEnabled ? qsTr("Controller only: no picture from the console")
                                                          : qsTr("Click a player for more"))
             }
@@ -462,6 +547,13 @@ Item {
                         height: visible ? implicitHeight : 0
                         text: qsTr("Remove from the session")
                         onTriggered: bar.session.coplayKick(tile.modelData.slot)
+                    }
+
+                    MenuItem {
+                        visible: bar.hosting
+                        height: visible ? implicitHeight : 0
+                        text: qsTr("Remove and block")
+                        onTriggered: bar.session.coplayBlock(tile.modelData.slot)
                     }
                 }
             }

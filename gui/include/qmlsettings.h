@@ -2,6 +2,8 @@
 
 #include "settings.h"
 
+#include <coplay/crypto.h>
+
 class QmlSettings : public QObject
 {
     Q_OBJECT
@@ -108,6 +110,19 @@ class QmlSettings : public QObject
     Q_PROPERTY(bool coplayWebSupported READ coplayWebSupported CONSTANT)
     Q_PROPERTY(bool coplayWebGuests READ coplayWebGuests WRITE setCoplayWebGuests NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayGuestsMaySleep READ coplayGuestsMaySleep WRITE setCoplayGuestsMaySleep NOTIFY coplayChanged)
+    Q_PROPERTY(int coplayMaxGuests READ coplayMaxGuests WRITE setCoplayMaxGuests NOTIFY coplayChanged)
+    // Hosting a public room, and the list of rooms
+    Q_PROPERTY(bool coplayHostPublic READ coplayHostPublic WRITE setCoplayHostPublic NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayRoomTitle READ coplayRoomTitle WRITE setCoplayRoomTitle NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayRoomLanguage READ coplayRoomLanguage WRITE setCoplayRoomLanguage NOTIFY coplayChanged)
+    Q_PROPERTY(int coplayJoinPolicy READ coplayJoinPolicy WRITE setCoplayJoinPolicy NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayRoomsServer READ coplayRoomsServer WRITE setCoplayRoomsServer NOTIFY coplayChanged)
+    Q_PROPERTY(QString coplayRoomsDefault READ coplayRoomsDefault CONSTANT)
+    Q_PROPERTY(bool coplayRoomsOn READ coplayRoomsOn NOTIFY coplayChanged)
+    Q_PROPERTY(QVariantList coplayLanguages READ coplayLanguages CONSTANT)
+    Q_PROPERTY(QVariantList coplayRooms READ coplayRooms NOTIFY coplayRoomsChanged)
+    Q_PROPERTY(int coplayRoomsState READ coplayRoomsState NOTIFY coplayRoomsChanged)
+    Q_PROPERTY(QString coplayRoomsError READ coplayRoomsError NOTIFY coplayRoomsChanged)
     Q_PROPERTY(QString coplayWebUrl READ coplayWebUrl WRITE setCoplayWebUrl NOTIFY coplayChanged)
     Q_PROPERTY(int coplayWebPort READ coplayWebPort WRITE setCoplayWebPort NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayWebDefault READ coplayWebDefault CONSTANT)
@@ -668,6 +683,28 @@ public:
     Q_INVOKABLE void coplayCopyInviteLan();
     Q_INVOKABLE void coplayCopyInvitePublic();
     Q_INVOKABLE void coplayCopyInviteIPv6();
+    bool coplayHostPublic() const;
+    void setCoplayHostPublic(bool on);
+    QString coplayRoomTitle() const;
+    void setCoplayRoomTitle(const QString &title);
+    QString coplayRoomLanguage() const;
+    void setCoplayRoomLanguage(const QString &lang);
+    int coplayJoinPolicy() const;
+    void setCoplayJoinPolicy(int policy);
+    QString coplayRoomsServer() const;
+    void setCoplayRoomsServer(const QString &server);
+    QString coplayRoomsDefault() const;
+    /** Whether there is a list of public rooms at all (the setting is not "off"). */
+    bool coplayRoomsOn() const;
+    QVariantList coplayLanguages() const;
+    QVariantList coplayRooms() const;
+    int coplayRoomsState() const;
+    QString coplayRoomsError() const;
+    /** Reads the list of public rooms again. */
+    Q_INVOKABLE void coplayRefreshRooms();
+    /** How many friends may join a session at the same time. */
+    int coplayMaxGuests() const;
+    void setCoplayMaxGuests(int n);
     /** Guests may put the console to sleep when they leave; otherwise only the host does. */
     bool coplayGuestsMaySleep() const;
     void setCoplayGuestsMaySleep(bool allowed);
@@ -877,6 +914,7 @@ signals:
     void mouseTouchEnabledChanged();
     void keyboardEnabledChanged();
     void coplayChanged();
+    void coplayRoomsChanged();
     void overlayChanged();
     void dpadTouchEnabledChanged();
     void dpadTouchIncrementChanged();
@@ -965,6 +1003,8 @@ signals:
 
 private:
     QString coplayInviteFor(const QString &host) const;
+    /** The key of the kind of session that is set up: the private one, or the public room's. */
+    coplay::Secret coplayHostSecret() const;
 
     Settings *settings = {};
     QStringList audio_in_devices;

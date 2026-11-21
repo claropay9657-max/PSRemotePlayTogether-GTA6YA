@@ -358,6 +358,15 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	this->coplay_stun_server = settings->GetCoPlayStunServer();
 	this->coplay_meet_server = settings->GetCoPlayMeetServer();
 	this->coplay_guests_may_sleep = settings->GetCoPlayGuestsMaySleep();
+	this->coplay_max_guests = settings->GetCoPlayMaxGuests();
+	this->coplay_public = this->coplay_host_enabled && settings->GetCoPlayPublic();
+	// A public room has a key of its own (QmlBackend::hostConsole makes sure there is one)
+	if(this->coplay_public)
+		this->coplay_secret = settings->GetCoPlayPublicSecret();
+	this->coplay_room_title = settings->GetCoPlayRoomTitle();
+	this->coplay_room_lang = settings->GetCoPlayRoomLanguage();
+	this->coplay_join_policy = settings->GetCoPlayJoinPolicy();
+	this->coplay_rooms_server = settings->GetCoPlayRoomsServer();
 	this->coplay_web_guests = settings->GetCoPlayWebGuests();
 	this->coplay_web_url = settings->GetCoPlayWebUrl();
 	this->coplay_web_port = settings->GetCoPlayWebPort();

@@ -94,6 +94,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(QVariantList hiddenHosts READ hiddenHosts NOTIFY hiddenHostsChanged)
     Q_PROPERTY(bool autoConnect READ autoConnect NOTIFY autoConnectChanged)
     Q_PROPERTY(bool coplayJoining READ coplayJoining NOTIFY coplayJoiningChanged)
+    /** Joining a public room whose host lets each newcomer in: the host has to answer. */
+    Q_PROPERTY(bool coplayJoinWaiting READ coplayJoinWaiting NOTIFY coplayJoiningChanged)
     Q_PROPERTY(bool reconnecting READ reconnecting NOTIFY reconnectingChanged)
     Q_PROPERTY(QString reconnectStatus READ reconnectStatus NOTIFY reconnectingChanged)
     Q_PROPERTY(QString chiakiVersion READ chiakiVersion CONSTANT)
@@ -200,12 +202,18 @@ public:
     Q_INVOKABLE void hideHost(const QString &mac_string, const QString &host_nickname);
     Q_INVOKABLE void unhideHost(const QString &mac_string);
     Q_INVOKABLE bool registerHost(const QString &host, const QString &psn_id, const QString &pin, const QString &cpin, bool broadcast, int target, const QJSValue &callback);
+    /** Play: a session of this computer's own, nobody joins. */
     Q_INVOKABLE void connectToHost(int index, QString nickname = QString());
+    /** Host: a session friends join, as set up on the Host page. */
+    Q_INVOKABLE void hostConsole(int index, QString nickname = QString());
     Q_INVOKABLE void stopSession(bool sleep);
     /** Version of the chiaki-ng this app is built on; the app's own is the application version. */
     QString chiakiVersion() const { return QStringLiteral(CHIAKI_VERSION); }
     // Play Together, see qmlbackend_coplay.cpp
     bool coplayJoining() const { return coplay_joining; }
+    bool coplayJoinWaiting() const { return coplay_join_waiting; }
+    /** Stops joining: no more waiting for the host. */
+    Q_INVOKABLE void coplayCancelJoin();
     /** Address of the stream overlay for OBS; empty while it is switched off. */
     QString overlayUrl() const;
     QString overlayError() const;
@@ -305,6 +313,8 @@ signals:
     void psnLoginAccountIdError(const QString &error);
 
 private:
+    /** Starts a session with this console; shared if the last start was Host (coplay/host_enabled). */
+    void startConsole(int index, QString nickname = QString());
     struct DisplayServer {
         bool valid = false;
 
@@ -399,6 +409,8 @@ private:
     QElapsedTimer console_reconnect_stable;
     QTimer *console_reconnect_timer = {};
     bool coplay_joining = false;
+    bool coplay_join_waiting = false;
+    std::weak_ptr<coplay::Client> coplay_join_client;
     /** Names this player to a host for as long as the app runs, see coplay::ClientConfig. */
     quint64 coplay_player_id = 0;
     class OverlayServer *overlay = {};

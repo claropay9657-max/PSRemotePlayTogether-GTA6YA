@@ -1,4 +1,5 @@
 #include "qmlsettings.h"
+#include "coplayrooms.h"
 #include "coplayaddress.h"
 #include "sessionlog.h"
 
@@ -68,6 +69,7 @@ QmlSettings::QmlSettings(Settings *settings, QObject *parent)
     connect(settings, &Settings::ProfilesUpdated, this, &QmlSettings::profilesChanged);
     // The invite for friends elsewhere changes when the address on the internet is found
     connect(CoPlayPublicAddress::Instance(), &CoPlayPublicAddress::Changed, this, &QmlSettings::coplayChanged);
+    connect(CoPlayRoomList::Instance(), &CoPlayRoomList::Changed, this, &QmlSettings::coplayRoomsChanged);
 }
 
 bool QmlSettings::remotePlayAsk() const

@@ -8,6 +8,7 @@
 #include "host.h"
 
 #include <QSettings>
+#include <QLocale>
 #include <QList>
 #include <QMap>
 #include <QRect>
@@ -276,6 +277,26 @@ class Settings : public QObject
 		void SetCoPlayMeetServer(const QString &s)	{ settings.setValue("coplay/meet_server", s); }
 		// Friends who join from a web browser, without the app (coplay/web.h). The page
 		// they open: empty is the built-in one.
+		// A public room: listed for everybody (coplayrooms.h). It has a key of its own, which
+		// is renewed after each public session, so that strangers cannot come back later.
+		bool GetCoPlayPublic() const			{ return settings.value("coplay/public", false).toBool(); }
+		void SetCoPlayPublic(bool on)			{ settings.setValue("coplay/public", on); }
+		QString GetCoPlayPublicSecret() const	{ return settings.value("coplay/public_secret").toString(); }
+		void SetCoPlayPublicSecret(const QString &s)	{ settings.setValue("coplay/public_secret", s); }
+		QString GetCoPlayRoomTitle() const		{ return settings.value("coplay/room_title").toString(); }
+		void SetCoPlayRoomTitle(const QString &t)	{ settings.setValue("coplay/room_title", t); }
+		/** Two letters, or empty for "any language". */
+		QString GetCoPlayRoomLanguage() const	{ return settings.value("coplay/room_lang", QLocale::system().name().left(2)).toString(); }
+		void SetCoPlayRoomLanguage(const QString &l)	{ settings.setValue("coplay/room_lang", l); }
+		/** Who gets into a public room: 0 the host lets each in, 1 everybody watches first, 2 everybody plays. */
+		int GetCoPlayJoinPolicy() const			{ return qBound(0, settings.value("coplay/join_policy", 0).toInt(), 2); }
+		void SetCoPlayJoinPolicy(int p)			{ settings.setValue("coplay/join_policy", qBound(0, p, 2)); }
+		/** The list of public rooms: empty is the built-in one, "off" none. */
+		QString GetCoPlayRoomsServer() const	{ return settings.value("coplay/rooms_server").toString(); }
+		void SetCoPlayRoomsServer(const QString &s)	{ settings.setValue("coplay/rooms_server", s); }
+		/** How many friends may join a session at the same time (1 to 8). */
+		int GetCoPlayMaxGuests() const			{ return qBound(1, settings.value("coplay/max_guests", 4).toInt(), 8); }
+		void SetCoPlayMaxGuests(int n)			{ settings.setValue("coplay/max_guests", qBound(1, n, 8)); }
 		/** Guests may put the console to sleep when they leave. Off: only the host decides that. */
 		bool GetCoPlayGuestsMaySleep() const		{ return settings.value("coplay/guests_may_sleep", false).toBool(); }
 		void SetCoPlayGuestsMaySleep(bool on)		{ settings.setValue("coplay/guests_may_sleep", on); }

@@ -668,6 +668,14 @@ Item {
         id: chatNotes
     }
 
+    // Somebody knocks on the public room: say so on the game picture, the answer is in the menu
+    Connections {
+        target: hud.session
+        function onCoplayKnock(name) {
+            toasts.append({ text: qsTr("%1 wants to join · open the menu to answer").arg(name), joined: true });
+        }
+    }
+
     Connections {
         target: hud.session
         function onCoplayChatMessage(message) {

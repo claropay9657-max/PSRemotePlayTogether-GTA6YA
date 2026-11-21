@@ -8,41 +8,17 @@ import org.streetpea.chiaking
 
 import "controls" as C
 
-// Play Together: your profile, how your console is shared, voice, webcam and overlays.
-// Joining a friend, switching sharing on and the invites are on the start page. This page
-// only has them too when the start page has no room for them (a narrow window), so that
-// each of them is in one place, never in two.
+// Play Together settings: your profile, the network, voice, webcam and overlays.
+// Hosting and joining have pages of their own (HostDialog, JoinDialog), started from the
+// start page; this page is only about what stays the same from one session to the next.
 DialogView {
     id: dialog
-    title: qsTr("Play Together")
-    /** 0 = profile and sharing, 1 = voice chat and webcam, 2 = overlays */
+    title: qsTr("Play Together settings")
+    /** 0 = profile and network, 1 = voice chat and webcam, 2 = overlays */
     property int page: 0
-    /**
-     * True when the start page shows no Play Together card (a narrow window): then joining,
-     * the switch for sharing, "I play on the TV" and the invites are here. Otherwise they
-     * are on the start page and this page is about the settings only.
-     */
-    property bool standalone: true
-    readonly property bool joinHere: standalone
-    buttonText: Chiaki.coplayJoining ? qsTr("Connecting…") : qsTr("Join")
-    buttonEnabled: !Chiaki.coplayJoining && inviteField.text.trim().length > 0
-    buttonVisible: page === 0 && joinHere
-    onAccepted: {
-        errorLabel.text = "";
-        Chiaki.joinCoPlay(inviteField.text, nameField.text, controllerOnlyCheck.checked);
-    }
+    buttonVisible: false
 
     Item {
-        Connections {
-            target: Chiaki
-
-            // On success the stream view replaces this dialog by itself
-            function onCoplayJoinFinished(ok, message) {
-                if (!ok)
-                    errorLabel.text = message;
-            }
-        }
-
         // Keyboard and controller: whatever gets the focus is scrolled into view
         Connections {
             target: dialog.Window.window
@@ -80,7 +56,7 @@ DialogView {
             spacing: 8
 
             Repeater {
-                model: [dialog.joinHere ? qsTr("Join & share") : qsTr("Profile & sharing"), qsTr("Voice & webcam"), qsTr("Overlays")]
+                model: [qsTr("Profile & network"), qsTr("Voice & webcam"), qsTr("Overlays")]
 
                 Rectangle {
                     id: tab
@@ -256,268 +232,41 @@ DialogView {
                         }
                     }
 
-                    // ---------------------------------------------------- join
-                    // Only where the start page does not have it already (dialog.joinHere)
+                    // ---------------------------------------------------- network
+                    // How friends reach this computer when you host. Hosting itself (who may join,
+                    // how many, who controls) is set up on the Host page, right before a session.
 
                     C.GradientText {
-                        visible: dialog.joinHere
-                        text: qsTr("Join a friend")
+                        text: qsTr("Network")
                         font.bold: true
                         font.pixelSize: 24
                         to: "#7c86ff"
                     }
 
                     Label {
-                        visible: dialog.joinHere
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         opacity: 0.7
-                        text: qsTr("Paste the invite your friend sent you. You get their picture and sound, and your controller plays along on their console.")
+                        text: qsTr("How friends reach this computer when you host. With most routers nothing here has to change: friends find you through the meeting point and connect to you directly.")
                     }
 
                     GridLayout {
-                        visible: dialog.joinHere
+                        id: network
                         Layout.fillWidth: true
                         columns: 2
                         rowSpacing: 12
                         columnSpacing: 20
 
-                        Label {
-                            Layout.alignment: Qt.AlignRight
-                            text: qsTr("Invite:")
-                        }
-
-                        C.TextField {
-                            id: inviteField
-                            Layout.fillWidth: true
-                            placeholderText: "psrpt://…"
-                            text: Chiaki.settings.coplayLastInvite
-                            echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                        }
-
-                        Item { }
-
-                        C.CheckBox {
-                            id: controllerOnlyCheck
-                            text: qsTr("Controller only (no picture or sound)")
-                            checked: Chiaki.settings.coplayControllerOnly
-                        }
-
-                        Item { visible: errorLabel.visible }
-
-                        Label {
-                            id: errorLabel
-                            Layout.fillWidth: true
-                            visible: text.length > 0
-                            wrapMode: Text.WordWrap
-                            color: Material.color(Material.Red, Material.Shade300)
-                        }
-                    }
-
-                    Rectangle {
-                        visible: dialog.joinHere
-                        Layout.fillWidth: true
-                        Layout.topMargin: 16
-                        Layout.bottomMargin: 6
-                        height: 1
-                        opacity: 0.45
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-                            GradientStop { position: 0.0; color: "#8c52ff" }
-                            GradientStop { position: 1.0; color: "transparent" }
-                        }
-                    }
-
-                    // ---------------------------------------------------- share
-
-                    C.GradientText {
-                        text: dialog.standalone ? qsTr("Share your console") : qsTr("Sharing your console")
-                        font.bold: true
-                        font.pixelSize: 24
-                        to: "#7c86ff"
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        opacity: 0.7
-                        text: dialog.standalone
-                              ? qsTr("While this is on, friends with your invite can join whenever you are connected to your console. The console sees everybody as one controller.")
-                              : (Chiaki.settings.coplayHostEnabled
-                                 ? qsTr("How your console is shared. Sharing is switched on and off on the start page, and your invite is copied there.")
-                                 : qsTr("How your console is shared. Sharing is off right now: switch on \"Share your console\" on the start page."))
-                    }
-
-                    // Only where the start page does not have them (dialog.standalone): the switch for
-                    // sharing, playing on the TV, and the invites
-                    C.CheckBox {
-                        id: hostEnabledCheck
-                        visible: dialog.standalone
-                        text: qsTr("Let friends join my sessions")
-                        checked: Chiaki.settings.coplayHostEnabled
-                        onToggled: Chiaki.settings.coplayHostEnabled = checked
-                    }
-
-                    // For a host who plays on the TV: the same setting as "Picture and sound"
-                    // under Settings, where the two can also be switched off one by one
-                    C.CheckBox {
-                        visible: dialog.standalone
-                        text: qsTr("Controller only: I play on the TV")
-                        checked: (Chiaki.settings.audioVideoDisabled & 0x02) !== 0
-                        onToggled: Chiaki.settings.audioVideoDisabled = checked ? 3 : 0
-                    }
-
-                    Label {
-                        visible: dialog.standalone
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 4
-                        wrapMode: Text.WordWrap
-                        opacity: 0.6
-                        font.pixelSize: 13
-                        text: qsTr("No picture or sound on this computer when you connect to your console. It sends your controller and feeds the overlays, for example the one in OBS. Friends who join still get picture and sound.")
-                    }
-
-                    // Without the invites on this page: how friends elsewhere get in, which the
-                    // invite for the internet says there
-                    Label {
-                        visible: !dialog.standalone && hostEnabledCheck.checked
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        color: invites.lookup === 3 ? "#ffb74d" : Material.foreground
-                        opacity: invites.lookup === 3 ? 1.0 : 0.7
-                        text: {
-                            const meet = !!Chiaki.settings.coplayMeetOn;
-                            if (invites.lookup === 1)
-                                return qsTr("Finding your address on the internet…");
-                            if (invites.lookup === 3) {
-                                return meet ? qsTr("Your address on the internet could not be found. Friends can still join through the meeting point.")
-                                            : qsTr("Your address on the internet could not be found. Check the internet connection, or enter your address below.");
-                            }
-                            return meet ? qsTr("Friends anywhere get in by themselves with most routers, through the meeting point. If a friend cannot connect, forward UDP port %1 to this computer in your router.").arg(invites.port)
-                                        : qsTr("For friends over the internet, UDP port %1 has to reach this computer: forward it in your router.").arg(invites.port);
-                        }
-                    }
-
-                    // The invites: one per way a friend can reach this computer
-                    ColumnLayout {
-                        id: invites
-                        visible: dialog.standalone
-                        Layout.fillWidth: true
-                        Layout.topMargin: 4
-                        Layout.bottomMargin: 8
-                        spacing: 8
-                        enabled: hostEnabledCheck.checked
-                        opacity: enabled ? 1.0 : 0.4
-
-                        readonly property int port: Chiaki.settings.coplayPort
                         /** 0 nothing asked yet, 1 looking, 2 found, 3 not found */
                         readonly property int lookup: Chiaki.settings.coplayPublicLookupState || 0
-                        readonly property string publicInvite: Chiaki.settings.coplayInvitePublic || ""
-                        readonly property string ipv6Invite: Chiaki.settings.coplayInviteIPv6 || ""
 
-                        // The public address is asked from a server on the internet, so only
-                        // for somebody who shares, and only while this page is looked at
+                        // The address on the internet is asked from a server out there: only once
+                        // somebody looks at it, and again when the server to ask changes
                         function lookUp() {
-                            if (hostEnabledCheck.checked && lookup === 0 && Chiaki.settings.coplayLookupPublicAddress)
+                            if (lookup === 0 && Chiaki.settings.coplayLookupPublicAddress)
                                 Chiaki.settings.coplayLookupPublicAddress();
                         }
                         Component.onCompleted: lookUp()
-                        Connections {
-                            target: hostEnabledCheck
-                            function onCheckedChanged() { invites.lookUp() }
-                        }
-
-                        C.InviteRow {
-                            title: qsTr("Same network")
-                            dot: "#00f2ff"
-                            secret: Chiaki.settings.streamerMode
-                            invite: hostEnabledCheck.checked ? (Chiaki.settings.coplayInviteLan || Chiaki.settings.coplayInvite) : ""
-                            note: qsTr("For friends in your home network or in the same VPN. Works right away.")
-                        }
-
-                        C.InviteRow {
-                            title: qsTr("Internet")
-                            secret: Chiaki.settings.streamerMode
-                            invite: hostEnabledCheck.checked ? invites.publicInvite : ""
-                            busy: hostEnabledCheck.checked && invites.lookup === 1
-                            actionText: hostEnabledCheck.checked && invites.lookup === 3 ? qsTr("Try again") : ""
-                            onAction: Chiaki.settings.coplayLookupPublicAddress()
-                            note: {
-                                if (!hostEnabledCheck.checked)
-                                    return "";
-                                // With a meeting point there is always an invite, even before the address is found
-                                const meet = !!Chiaki.settings.coplayMeetOn;
-                                if (meet && invites.lookup === 1)
-                                    return qsTr("Finding your public address…");
-                                if (meet && invites.publicInvite.length > 0) {
-                                    return qsTr("For friends anywhere. With most routers they get in by themselves, through the meeting point. If a friend cannot connect, forward UDP port %1 to this computer in your router.").arg(invites.port)
-                                        + (invites.lookup === 3 ? " " + qsTr("Your public address could not be found, so this invite works through the meeting point only.") : "");
-                                }
-                                if (invites.publicInvite.length > 0) {
-                                    const upnp = Chiaki.settings.coplayUpnpStatus || "";
-                                    return qsTr("For friends anywhere. UDP port %1 has to reach this computer: forward it in your router.").arg(invites.port)
-                                        + (upnp.length > 0 ? " " + upnp : "");
-                                }
-                                if (invites.lookup === 1)
-                                    return qsTr("Finding your public address…");
-                                if (invites.lookup === 3)
-                                    return qsTr("Your public address could not be found. Check the internet connection, or enter your address below.");
-                                return qsTr("For friends anywhere.");
-                            }
-                        }
-
-                        C.InviteRow {
-                            visible: invites.ipv6Invite.length > 0
-                            title: qsTr("Internet, IPv6")
-                            dot: "#f0469b"
-                            secret: Chiaki.settings.streamerMode
-                            invite: hostEnabledCheck.checked ? invites.ipv6Invite : ""
-                            note: qsTr("Try this one if the other internet invite does not work: many connections share their IPv4 address with others (DS-Lite) and can only be reached over IPv6. Your friend needs IPv6 too, and your router has to let UDP port %1 through to this computer.").arg(invites.port)
-                        }
-
-                        // For a friend without the app: a link that opens in a web browser
-                        C.InviteRow {
-                            visible: !!Chiaki.settings.coplayWebSupported
-                            title: qsTr("Web browser")
-                            dot: "#34d399"
-                            secret: Chiaki.settings.streamerMode
-                            secretText: "https://••••••••••••••••"
-                            invite: hostEnabledCheck.checked ? (Chiaki.settings.coplayInviteWeb || "") : ""
-                            note: {
-                                if (!hostEnabledCheck.checked)
-                                    return "";
-                                if (!Chiaki.settings.coplayWebGuests)
-                                    return qsTr("Friends without the app could join from a web browser; that is switched off below.");
-                                if (!Chiaki.settings.coplayMeetOn)
-                                    return qsTr("Friends without the app could join from a web browser, but the meeting point that leads a browser to you is switched off below.");
-                                return qsTr("For friends without the app. They open this link in Chrome, Edge, Firefox or Safari, plug in a controller and play along: same picture and sound, voice and text chat. Nothing to install. Whoever has the link can join, like with every invite.");
-                            }
-                        }
-                    }
-
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: 2
-                        rowSpacing: 12
-                        columnSpacing: 20
-                        enabled: hostEnabledCheck.checked
-                        opacity: enabled ? 1.0 : 0.4
-
-                        Label {
-                            Layout.alignment: Qt.AlignRight
-                            text: qsTr("Players control:")
-                        }
-
-                        C.ComboBox {
-                            Layout.preferredWidth: 420
-                            model: [
-                                qsTr("All at once"),
-                                qsTr("One at a time, passing the controller"),
-                                qsTr("Only me, guests watch"),
-                            ]
-                            currentIndex: Chiaki.settings.coplayMixMode
-                            onActivated: (index) => Chiaki.settings.coplayMixMode = index
-                        }
 
                         Label {
                             Layout.alignment: Qt.AlignRight
@@ -526,7 +275,8 @@ DialogView {
 
                         C.TextField {
                             Layout.fillWidth: true
-                            placeholderText: Chiaki.settings.coplayPublicAddress
+                            placeholderText: network.lookup === 1 ? qsTr("Looking…")
+                                : Chiaki.settings.coplayPublicAddress
                                 ? qsTr("%1 (found by itself)").arg(Chiaki.settings.coplayPublicAddress)
                                 : qsTr("Found by itself; or a name such as myhome.dyndns.org")
                             text: Chiaki.settings.coplayAddress
@@ -550,6 +300,15 @@ DialogView {
                             }
                         }
 
+                        Item { }
+
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            opacity: 0.7
+                            text: qsTr("Leave the address empty unless you have a name of your own for your connection (DynDNS), which stays valid when your provider gives you a new address. A forwarded UDP port is only needed when a friend cannot get in through the meeting point, or when the meeting point is switched off.")
+                        }
+
                         Label {
                             Layout.alignment: Qt.AlignRight
                             text: qsTr("STUN server:")
@@ -563,7 +322,7 @@ DialogView {
                             onEditingFinished: {
                                 Chiaki.settings.coplayStunServer = text;
                                 // What the other server said is forgotten: ask this one
-                                invites.lookUp();
+                                network.lookUp();
                             }
                         }
 
@@ -598,24 +357,17 @@ DialogView {
                             text: qsTr("Lets friends join without a forwarded port: your computer and theirs each leave a short sealed note with their addresses at the meeting point and then connect to each other directly. Picture, sound and controllers never go through it. Leave the field empty for the default, enter the address of your own, or write \"off\" to never ask one; with \"off\" you cannot join friends that way either.")
                         }
 
-                        Item { }
-
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            opacity: 0.7
-                            text: qsTr("Leave the address empty unless you have a name of your own for your connection (DynDNS), which stays valid when your provider gives you a new address. A forwarded UDP port is only needed when a friend cannot get in through the meeting point, or when the meeting point is switched off.")
-                        }
-
                         Label {
                             Layout.alignment: Qt.AlignRight
-                            text: qsTr("Console sleep:")
+                            text: qsTr("Public rooms:")
                         }
 
-                        C.CheckBox {
-                            text: qsTr("Guests may put the console to sleep when they leave")
-                            checked: !!Chiaki.settings.coplayGuestsMaySleep
-                            onToggled: Chiaki.settings.coplayGuestsMaySleep = checked
+                        C.TextField {
+                            Layout.fillWidth: true
+                            // Empty is the built-in list
+                            placeholderText: qsTr("%1 (default)").arg(Chiaki.settings.coplayRoomsDefault || "")
+                            text: Chiaki.settings.coplayRoomsServer || ""
+                            onEditingFinished: Chiaki.settings.coplayRoomsServer = text
                         }
 
                         Item { }
@@ -624,20 +376,7 @@ DialogView {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             opacity: 0.7
-                            text: qsTr("Off: only you decide that, and guests are not asked when they leave. On: a guest who leaves is asked, like you are, and \"Sleep\" ends the session for everybody. Waking the console is always yours: a session only exists once your app is connected to it. Applies from the next session you share.")
-                        }
-
-                        Label {
-                            visible: !!Chiaki.settings.coplayWebSupported
-                            Layout.alignment: Qt.AlignRight
-                            text: qsTr("Web browser:")
-                        }
-
-                        C.CheckBox {
-                            visible: !!Chiaki.settings.coplayWebSupported
-                            text: qsTr("Friends can join from a web browser")
-                            checked: !!Chiaki.settings.coplayWebGuests
-                            onToggled: Chiaki.settings.coplayWebGuests = checked
+                            text: qsTr("The list of public rooms, in Join and on the Host page. It only lists rooms: picture, sound and controllers go directly between the players, as always. Leave the field empty for the default, enter the address of your own, or write \"off\" for no public rooms at all.")
                         }
 
                         Label {
@@ -685,7 +424,7 @@ DialogView {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             opacity: 0.7
-                            text: qsTr("A browser connects to your computer directly, like the app does: the page only finds you through the meeting point, and picture, sound and controllers never pass a server. With most routers nothing has to be set up. If a friend's browser cannot connect, forward the UDP port for browsers to this computer as well; a browser cannot use the sharing port. A browser cannot do everything the app can: no haptics and adaptive triggers, no touchpad and motion, and a little more delay. The page is part of the project (folder \"web\"); leave its field empty for the built-in one or enter the address of your own copy.")
+                            text: qsTr("A browser connects to your computer directly, like the app does. If a friend's browser cannot connect, forward the UDP port for browsers to this computer as well; a browser cannot use the sharing port. The page is part of the project (folder \"web\"); leave its field empty for the built-in one or enter the address of your own copy.")
                         }
 
                         Item { }
@@ -697,7 +436,6 @@ DialogView {
                                 () => Chiaki.settings.coplayNewKey())
                         }
                     }
-
                 }
 
                 ColumnLayout {

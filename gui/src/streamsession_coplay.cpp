@@ -25,6 +25,7 @@
 #include <coplay/socket.h>
 
 #include "coplaymeet.h"
+#include "coplayrooms.h"
 
 #include <QClipboard>
 #include <QGuiApplication>
@@ -34,6 +35,8 @@
 #include <QMutexLocker>
 #include <QPointer>
 #include <QTimer>
+#include <QRegularExpression>
+#include <QSet>
 #include <QVariantMap>
 
 #include <atomic>
@@ -117,6 +120,14 @@ struct CoPlayState
 	std::string invite_meet;
 	/** The page friends in a web browser open; empty if this session takes none. */
 	std::string web_page;
+	// A public room (coplayrooms.h): on the list while it is shared, with its own key
+	bool is_public = false;
+	CoPlayRoomAnnouncer *room = nullptr; // a child of the session
+	CoPlayRoomAnnouncer::Room room_info;
+	QString room_problem;
+	bool locked = false;
+	int join_policy = 0; // as in the settings: 0 ask, 1 watch first, 2 open
+	QVariantList pending; // who knocks: id, name, web
 	coplay::PadState local_pad;       // our own controllers, before merging
 	coplay::InputsSnapshot guest_inputs;
 	bool have_guest_inputs = false;
@@ -285,6 +296,45 @@ static void FromPad(const coplay::PadState &p, ChiakiControllerState *s)
 	s->orient_w = p.orient[3];
 }
 
+/** The join policy of the settings (0 ask, 1 watch first, 2 open) in the library's words. */
+static coplay::JoinPolicy JoinPolicyFromSetting(int policy)
+{
+	switch(policy)
+	{
+		case 1: return coplay::JoinPolicy::WatchFirst;
+		case 2: return coplay::JoinPolicy::Open;
+		default: return coplay::JoinPolicy::Ask;
+	}
+}
+
+/** How the players control, in the words of the list of public rooms. */
+static QString ControlName(coplay::MixMode mode)
+{
+	switch(mode)
+	{
+		case coplay::MixMode::LastActive: return QStringLiteral("turns");
+		case coplay::MixMode::HostOnly: return QStringLiteral("host");
+		default: return QStringLiteral("all");
+	}
+}
+
+/** A title id as the console reports it ("PPSA01234"), or nothing for anything else. */
+static QString TitleIdOrEmpty(const QString &id)
+{
+	static const QRegularExpression pattern(QStringLiteral("^[A-Z]{4}[0-9]{5}$"));
+	return pattern.match(id).hasMatch() ? id : QString();
+}
+
+static QString JoinPolicyName(int policy)
+{
+	switch(policy)
+	{
+		case 1: return QStringLiteral("watch");
+		case 2: return QStringLiteral("open");
+		default: return QStringLiteral("ask");
+	}
+}
+
 void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 {
 	coplay = new CoPlayState;
@@ -331,6 +381,7 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	coplay->host_name = connect_info.coplay_name.trimmed().isEmpty() ? tr("Host") : connect_info.coplay_name.trimmed();
 	config.name = coplay->host_name.toStdString();
 	config.avatar = coplay->own_avatar;
+	config.max_guests = static_cast<size_t>(std::clamp(connect_info.coplay_max_guests, 1, static_cast<int>(coplay::kMaxGuests)));
 
 	coplay::HostCallbacks callbacks;
 	// These arrive on the sharing thread; the work happens on ours
@@ -368,6 +419,13 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	};
 	// A guest that leaves may send the console to sleep, if the host has said so
 	config.guests_may_sleep = connect_info.coplay_guests_may_sleep;
+	// Who gets in: everybody with the invite, unless the room is public
+	coplay->is_public = connect_info.coplay_public;
+	coplay->join_policy = std::clamp(connect_info.coplay_join_policy, 0, 2);
+	config.join_policy = coplay->is_public ? JoinPolicyFromSetting(coplay->join_policy) : coplay::JoinPolicy::Open;
+	callbacks.on_pending_changed = [this] {
+		QMetaObject::invokeMethod(this, [this] { CoPlayUpdatePending(); }, Qt::QueuedConnection);
+	};
 	callbacks.on_sleep_requested = [this](uint8_t, const std::string &name) {
 		QString who = QString::fromStdString(name);
 		QMetaObject::invokeMethod(this, [this, who] { emit CoPlaySleepRequested(who); }, Qt::QueuedConnection);
@@ -408,6 +466,171 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	coplay->invite = coplay->invite_address.isEmpty() ? coplay->invite_lan : CoPlayInviteFor(coplay->invite_address);
 	// The invite for friends elsewhere appears when the address on the internet is found
 	connect(CoPlayPublicAddress::Instance(), &CoPlayPublicAddress::Changed, this, &StreamSession::CoPlayChanged);
+
+	if(coplay->is_public)
+		CoPlayStartRoom(connect_info, config.max_guests);
+}
+
+/** A public room goes on the list. Its invite names no address: guests find it through the meeting point. */
+void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info, size_t max_guests)
+{
+	const QString url = CoPlayRooms::UrlFromSetting(connect_info.coplay_rooms_server);
+	if(url.isEmpty())
+	{
+		coplay->room_problem = tr("Public rooms are switched off (Play Together settings → Network), so this room is not listed.");
+		CHIAKI_LOGW(GetChiakiLog(), "Play Together: no list of public rooms, the room is not listed");
+		return;
+	}
+	if(!coplay->meet_on)
+	{
+		coplay->room_problem = tr("A public room needs the meeting point, which is switched off (Play Together settings → Network). The room is not listed.");
+		CHIAKI_LOGW(GetChiakiLog(), "Play Together: a public room needs the meeting point, the room is not listed");
+		return;
+	}
+	coplay->room = new CoPlayRoomAnnouncer(url, this);
+	connect(coplay->room, &CoPlayRoomAnnouncer::Changed, this, [this]() {
+		if(!coplay || !coplay->room)
+			return;
+		coplay->room_problem = coplay->room->Problem();
+		if(!coplay->room_problem.isEmpty())
+			CHIAKI_LOGW(GetChiakiLog(), "Play Together: the list of public rooms says: %s", qPrintable(coplay->room_problem));
+		emit CoPlayChanged();
+	});
+	CoPlayRoomAnnouncer::Room &room = coplay->room_info;
+	const QString title = connect_info.coplay_room_title.simplified();
+	room.title = title.isEmpty() ? tr("%1's room").arg(coplay->host_name) : title;
+	room.lang = connect_info.coplay_room_lang;
+	room.game = connect_info.coplay_room_game;
+	room.title_id = TitleIdOrEmpty(connect_info.coplay_room_title_id);
+	room.host = coplay->host_name;
+	room.policy = JoinPolicyName(coplay->join_policy);
+	room.control = ControlName(coplay->host->GetMixMode());
+	room.invite = CoPlayInviteFor(QString());
+	room.web = !coplay->web_page.empty();
+	room.players = 1;
+	room.max = static_cast<int>(max_guests) + 1;
+	room.proto = coplay::kProtocolVersion;
+	coplay->room->Update(room);
+	CHIAKI_LOGI(GetChiakiLog(), "Play Together: public room \"%s\" is on the list", qPrintable(room.title));
+}
+
+void StreamSession::CoPlayUpdateRoom()
+{
+	if(!coplay || !coplay->room)
+		return;
+	coplay->room->SetListed(!coplay->locked);
+	coplay->room->Update(coplay->room_info);
+}
+
+void StreamSession::SetCoPlayRoomGame(const QString &game, const QString &title_id)
+{
+	const QString id = TitleIdOrEmpty(title_id);
+	if(!coplay || !coplay->room || (coplay->room_info.game == game && coplay->room_info.title_id == id))
+		return;
+	coplay->room_info.game = game;
+	coplay->room_info.title_id = id;
+	CoPlayUpdateRoom();
+	emit CoPlayChanged();
+}
+
+bool StreamSession::GetCoPlayPublic() const
+{
+	return coplay && coplay->is_public && coplay->host;
+}
+
+QString StreamSession::GetCoPlayRoomTitle() const
+{
+	return coplay ? coplay->room_info.title : QString();
+}
+
+QString StreamSession::GetCoPlayRoomProblem() const
+{
+	return coplay ? coplay->room_problem : QString();
+}
+
+QString StreamSession::GetCoPlayRoomGame() const
+{
+	return coplay ? coplay->room_info.game : QString();
+}
+
+int StreamSession::GetCoPlayJoinPolicy() const
+{
+	return coplay ? coplay->join_policy : 0;
+}
+
+void StreamSession::SetCoPlayJoinPolicy(int policy)
+{
+	if(!coplay || !coplay->host || !coplay->is_public)
+		return;
+	policy = std::clamp(policy, 0, 2);
+	if(policy == coplay->join_policy)
+		return;
+	coplay->join_policy = policy;
+	coplay->host->SetJoinPolicy(JoinPolicyFromSetting(policy));
+	coplay->room_info.policy = JoinPolicyName(policy);
+	CoPlayUpdateRoom();
+	emit CoPlayChanged();
+}
+
+bool StreamSession::GetCoPlayLocked() const
+{
+	return coplay && coplay->locked;
+}
+
+void StreamSession::SetCoPlayLocked(bool locked)
+{
+	if(!coplay || !coplay->host || coplay->locked == locked)
+		return;
+	coplay->locked = locked;
+	coplay->host->SetLocked(locked);
+	// Closed rooms are not listed: nobody could get in
+	CoPlayUpdateRoom();
+	emit CoPlayChanged();
+}
+
+QVariantList StreamSession::GetCoPlayPending() const
+{
+	return coplay ? coplay->pending : QVariantList();
+}
+
+/** On our own thread: who knocks has changed. */
+void StreamSession::CoPlayUpdatePending()
+{
+	if(!coplay || !coplay->host)
+		return;
+	QSet<QString> before;
+	for(const QVariant &v : std::as_const(coplay->pending))
+		before.insert(v.toMap().value("id").toString());
+	QVariantList now;
+	for(const coplay::PendingGuest &p : coplay->host->Pending())
+	{
+		QVariantMap m;
+		m["id"] = QString::number(p.id);
+		m["name"] = QString::fromStdString(p.name);
+		m["web"] = p.web;
+		now.append(m);
+		if(!before.contains(m["id"].toString()))
+			emit coplayKnock(m["name"].toString());
+	}
+	coplay->pending = now;
+	emit CoPlayChanged();
+}
+
+void StreamSession::coplayAdmit(const QString &id, bool allow)
+{
+	if(!coplay || !coplay->host)
+		return;
+	bool ok = false;
+	const quint64 pending_id = id.toULongLong(&ok);
+	if(ok)
+		coplay->host->Admit(pending_id, allow);
+}
+
+void StreamSession::coplayBlock(int slot)
+{
+	if(!coplay || !coplay->host || slot < 1 || slot > 255)
+		return;
+	coplay->host->KickGuest(static_cast<uint8_t>(slot), true);
 }
 
 /**
@@ -451,6 +674,12 @@ void StreamSession::CoPlayStopHost()
 	if(!coplay)
 		return;
 	coplay->hosting = false;
+	if(coplay->room)
+	{
+		// Off the list: the request goes out after the session is gone
+		coplay->room->deleteLater();
+		coplay->room = nullptr;
+	}
 	if(!coplay->host)
 		return;
 	// Guests wait for a host that is getting its console back, and leave one that is done
@@ -758,6 +987,12 @@ void StreamSession::CoPlayUpdatePlayers()
 		coplay->mix_mode = static_cast<int>(coplay->host->GetMixMode());
 	}
 	CoPlaySyncPlayers(players);
+	if(coplay->room)
+	{
+		coplay->room_info.players = static_cast<int>(players.size());
+		coplay->room_info.control = ControlName(coplay->host->GetMixMode());
+		CoPlayUpdateRoom();
+	}
 	emit CoPlayChanged();
 }
 

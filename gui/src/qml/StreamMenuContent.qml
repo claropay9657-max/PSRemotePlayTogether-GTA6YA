@@ -346,7 +346,8 @@ FocusScope {
             Rectangle {
                 Layout.fillWidth: true
                 // Without Play Together in this session there is only a line of text in it
-                Layout.preferredHeight: menu.together ? 166 : 84
+                // Taller while the host has more to answer (who knocks on a public room)
+                Layout.preferredHeight: menu.together ? Math.max(166, coplayBar.implicitHeight + 42) : 84
                 // Not coplayBar.visible: that is false while this is hidden, and it would never show again
                 visible: !!menu.session
                 radius: 14

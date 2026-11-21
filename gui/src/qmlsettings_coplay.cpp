@@ -3,6 +3,7 @@
 // Play Together settings as seen by the QML side.
 
 #include "qmlsettings.h"
+#include "coplayrooms.h"
 
 #include <coplay/web.h>
 #include <coplay/invite.h>
@@ -134,11 +135,7 @@ QString QmlSettings::coplayInviteFor(const QString &host) const
     if (host.isEmpty() && !meet)
         return QString();
     coplay::Invite invite;
-    if (!coplay::SecretFromString(settings->GetCoPlaySecret().toStdString(), invite.secret)) {
-        // First use: there is no key yet
-        invite.secret = coplay::GenerateSecret();
-        settings->SetCoPlaySecret(QString::fromStdString(coplay::SecretToString(invite.secret)));
-    }
+    invite.secret = coplayHostSecret();
     invite.host = host.toStdString();
     int port = settings->GetCoPlayPort();
     invite.port = static_cast<uint16_t>(port > 0 && port < 65536 ? port : coplay::kDefaultPort);
@@ -288,6 +285,141 @@ bool QmlSettings::coplayWebSupported() const
     return coplay::WebGuestsSupported();
 }
 
+// ------------------------------------------------------------------ public rooms
+
+coplay::Secret QmlSettings::coplayHostSecret() const
+{
+    // A public room has a key of its own: strangers who had it cannot come back to a private session
+    const bool pub = settings->GetCoPlayPublic();
+    coplay::Secret secret;
+    const QString stored = pub ? settings->GetCoPlayPublicSecret() : settings->GetCoPlaySecret();
+    if (!coplay::SecretFromString(stored.toStdString(), secret)) {
+        // First use: there is no key yet
+        secret = coplay::GenerateSecret();
+        const QString text = QString::fromStdString(coplay::SecretToString(secret));
+        if (pub)
+            settings->SetCoPlayPublicSecret(text);
+        else
+            settings->SetCoPlaySecret(text);
+    }
+    return secret;
+}
+
+bool QmlSettings::coplayHostPublic() const
+{
+    return settings->GetCoPlayPublic();
+}
+
+void QmlSettings::setCoplayHostPublic(bool on)
+{
+    if (on == settings->GetCoPlayPublic())
+        return;
+    settings->SetCoPlayPublic(on);
+    emit coplayChanged();
+}
+
+QString QmlSettings::coplayRoomTitle() const
+{
+    return settings->GetCoPlayRoomTitle();
+}
+
+void QmlSettings::setCoplayRoomTitle(const QString &title)
+{
+    const QString clean = title.simplified().left(60);
+    if (clean == settings->GetCoPlayRoomTitle())
+        return;
+    settings->SetCoPlayRoomTitle(clean);
+    emit coplayChanged();
+}
+
+QString QmlSettings::coplayRoomLanguage() const
+{
+    return settings->GetCoPlayRoomLanguage();
+}
+
+void QmlSettings::setCoplayRoomLanguage(const QString &lang)
+{
+    if (lang == settings->GetCoPlayRoomLanguage())
+        return;
+    settings->SetCoPlayRoomLanguage(lang.left(2).toLower());
+    emit coplayChanged();
+}
+
+int QmlSettings::coplayJoinPolicy() const
+{
+    return settings->GetCoPlayJoinPolicy();
+}
+
+void QmlSettings::setCoplayJoinPolicy(int policy)
+{
+    if (policy == settings->GetCoPlayJoinPolicy())
+        return;
+    settings->SetCoPlayJoinPolicy(policy);
+    emit coplayChanged();
+}
+
+QString QmlSettings::coplayRoomsServer() const
+{
+    return settings->GetCoPlayRoomsServer();
+}
+
+void QmlSettings::setCoplayRoomsServer(const QString &server)
+{
+    if (server.trimmed() == settings->GetCoPlayRoomsServer())
+        return;
+    settings->SetCoPlayRoomsServer(server.trimmed());
+    emit coplayChanged();
+}
+
+QString QmlSettings::coplayRoomsDefault() const
+{
+    QString url = CoPlayRooms::DefaultUrl();
+    return url.startsWith(QLatin1String("https://")) ? url.mid(8) : url;
+}
+
+bool QmlSettings::coplayRoomsOn() const
+{
+    return !CoPlayRooms::UrlFromSetting(settings->GetCoPlayRoomsServer()).isEmpty();
+}
+
+QVariantList QmlSettings::coplayLanguages() const
+{
+    return CoPlayRooms::Languages();
+}
+
+QVariantList QmlSettings::coplayRooms() const
+{
+    return CoPlayRoomList::Instance()->Rooms();
+}
+
+int QmlSettings::coplayRoomsState() const
+{
+    return CoPlayRoomList::Instance()->GetState();
+}
+
+QString QmlSettings::coplayRoomsError() const
+{
+    return CoPlayRoomList::Instance()->Error();
+}
+
+void QmlSettings::coplayRefreshRooms()
+{
+    CoPlayRoomList::Instance()->Refresh(settings->GetCoPlayRoomsServer());
+}
+
+int QmlSettings::coplayMaxGuests() const
+{
+    return settings->GetCoPlayMaxGuests();
+}
+
+void QmlSettings::setCoplayMaxGuests(int n)
+{
+    if (n == settings->GetCoPlayMaxGuests())
+        return;
+    settings->SetCoPlayMaxGuests(n);
+    emit coplayChanged();
+}
+
 bool QmlSettings::coplayGuestsMaySleep() const
 {
     return settings->GetCoPlayGuestsMaySleep();
@@ -352,12 +484,7 @@ QString QmlSettings::coplayInviteWeb() const
 {
     if (!coplay::WebGuestsSupported() || !settings->GetCoPlayWebGuests() || !coplayMeetOn())
         return QString();
-    coplay::Secret secret;
-    if (!coplay::SecretFromString(settings->GetCoPlaySecret().toStdString(), secret)) {
-        // First use: there is no key yet
-        secret = coplay::GenerateSecret();
-        settings->SetCoPlaySecret(QString::fromStdString(coplay::SecretToString(secret)));
-    }
+    const coplay::Secret secret = coplayHostSecret();
     return QString::fromStdString(coplay::WebInviteLink(coplay::WebUrlFromText(settings->GetCoPlayWebUrl().toStdString()),
         secret, CoPlayMeet::InviteValue(settings->GetCoPlayMeetServer()),
         coplay::WebStunForLink(settings->GetCoPlayStunServer().toStdString())));

@@ -77,8 +77,18 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
     // A host without a forwarded port is met at the meeting point. The address in the
     // invite is tried all the same, and first.
     config.meet = CoPlayMeet::ForGuest(settings->GetCoPlayMeetServer(), settings->GetCoPlayStunServer(), config.invite);
+    // A public room whose host lets each newcomer in: say that we wait for an answer
+    config.on_waiting = [this]() {
+        QMetaObject::invokeMethod(this, [this] {
+            if (!coplay_joining)
+                return;
+            coplay_join_waiting = true;
+            emit coplayJoiningChanged();
+        }, Qt::QueuedConnection);
+    };
 
     auto client = std::make_shared<coplay::Client>(config);
+    coplay_join_client = client;
     // Kept with the session, which joins again by itself when it loses the host
     auto client_config = std::make_shared<const coplay::ClientConfig>(config);
     QString host_address = QString::fromStdString(config.invite.host);
@@ -92,7 +102,13 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
         QString failure = watcher->result();
         watcher->deleteLater();
         coplay_joining = false;
+        coplay_join_waiting = false;
+        coplay_join_client.reset();
         emit coplayJoiningChanged();
+        if (failure == QLatin1String("Cancelled")) {
+            emit coplayJoinFinished(false, QString());
+            return;
+        }
         if (!failure.isEmpty()) {
             emit coplayJoinFinished(false, failure);
             return;
@@ -164,6 +180,12 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
             return QString();
         return QString::fromStdString(failure.empty() ? "Could not connect" : failure);
     }));
+}
+
+void QmlBackend::coplayCancelJoin()
+{
+    if (auto client = coplay_join_client.lock())
+        client->CancelConnect();
 }
 
 // ------------------------------------------------------------------ stream overlay

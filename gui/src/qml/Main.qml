@@ -158,13 +158,21 @@ Item {
         stack.push(manualHostDialogComponent);
     }
 
-    /**
-     * @param standalone false when the page it is opened from has joining, the switch for
-     *        sharing and the invites on it (the start page in a wide window): each of those
-     *        has one place then, and this page is about the settings only
-     */
-    function showPlayTogetherDialog(standalone = true) {
-        stack.push(playTogetherDialogComponent, { standalone: standalone });
+    /** Play Together settings: profile, network, voice, webcam, overlays. */
+    function showPlayTogetherDialog() {
+        stack.push(playTogetherDialogComponent);
+    }
+
+    /** Host: a session friends join, set up before it starts. */
+    function showHostDialog() {
+        stack.push(hostDialogComponent);
+    }
+
+    /** Join: with an invite (page 0) or from the public rooms (page 1). */
+    function showJoinDialog(page = 0) {
+        stack.push(joinDialogComponent, { page: page });
+        if (page === 1)
+            Chiaki.settings.coplayRefreshRooms();
     }
 
     function showConfirmDialog(title, text, callback, rejectCallback = null) {
@@ -633,6 +641,16 @@ Item {
     Component {
         id: playTogetherDialogComponent
         PlayTogetherDialog { }
+    }
+
+    Component {
+        id: hostDialogComponent
+        HostDialog { }
+    }
+
+    Component {
+        id: joinDialogComponent
+        JoinDialog { }
     }
 
     Component {

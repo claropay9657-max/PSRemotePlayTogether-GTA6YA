@@ -1,4 +1,6 @@
 #include "qmlbackend.h"
+
+#include <coplay/invite.h>
 #include "qmlsettings.h"
 #include "qmlmainwindow.h"
 #include "streamsession.h"
@@ -370,7 +372,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
                 if(host.GetName() == auto_connect_nickname)
                 {
                     int index = discovery_manager.GetHosts().size() + this->settings->GetManualHosts().size() + i;
-                    connectToHost(index);
+                    startConsole(index);
                     return;
                 }
                 i++;
@@ -679,7 +681,7 @@ void QmlBackend::profileChanged()
                 if(host.GetName() == auto_connect_nickname)
                 {
                     int index = discovery_manager.GetHosts().size() + this->settings->GetManualHosts().size() + i;
-                    connectToHost(index);
+                    startConsole(index);
                     return;
                 }
                 i++;
@@ -1098,6 +1100,9 @@ void QmlBackend::stopConsoleReconnect()
 /** The current session is over for good: takes it apart and tells everybody. */
 void QmlBackend::finishSession()
 {
+    // Who had the key of a public room cannot come back to the next one
+    if (session && session->GetCoPlayPublic())
+        settings->SetCoPlayPublicSecret(QString::fromStdString(coplay::SecretToString(coplay::GenerateSecret())));
     pending_recovered_frame.storeRelaxed(0);
     {
         QMutexLocker locker(&hw_transfer_state_mutex);
@@ -1391,7 +1396,9 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 
         if (!session_for_connections->IsConnected())
             return;
-        setDiscoveryEnabled(false);
+        // A public room tells the list which game runs, which the console's discovery answers say
+        if (!session_for_connections->GetCoPlayPublic())
+            setDiscoveryEnabled(false);
         if (console_reconnecting) {
             qCInfo(chiakiGui) << "Connected to the console again after" << console_reconnect_clock.elapsed() << "ms";
             // The clock runs on: a session that is lost again at once does not get all the time anew
@@ -1728,6 +1735,25 @@ void QmlBackend::setWebEngineHints(QQuickWebEngineProfile *profile)
 
 void QmlBackend::connectToHost(int index, QString nickname)
 {
+    // Play: this computer's own session. Remembered, so that connecting at start does the same.
+    settings->SetCoPlayHostEnabled(false);
+    startConsole(index, nickname);
+}
+
+void QmlBackend::hostConsole(int index, QString nickname)
+{
+    settings->SetCoPlayHostEnabled(true);
+    // A public room has a key of its own, renewed when the room closes (finishSession)
+    if (settings->GetCoPlayPublic()) {
+        coplay::Secret secret;
+        if (!coplay::SecretFromString(settings->GetCoPlayPublicSecret().toStdString(), secret))
+            settings->SetCoPlayPublicSecret(QString::fromStdString(coplay::SecretToString(coplay::GenerateSecret())));
+    }
+    startConsole(index, nickname);
+}
+
+void QmlBackend::startConsole(int index, QString nickname)
+{
     window->setWindowAdjustable(false);
     auto server = displayServerAt(index);
     if (!server.valid)
@@ -1807,6 +1833,8 @@ void QmlBackend::connectToHost(int index, QString nickname)
                 fullscreen,
                 zoom,
                 stretch);
+        info.coplay_room_game = server.discovered ? server.discovery_host.running_app_name : QString();
+        info.coplay_room_title_id = server.discovered ? server.discovery_host.running_app_titleid : QString();
         createSession(info);
     }
     else
@@ -1824,6 +1852,8 @@ void QmlBackend::connectToHost(int index, QString nickname)
                 fullscreen,
                 zoom,
                 stretch);
+        info.coplay_room_game = server.discovered ? server.discovery_host.running_app_name : QString();
+        info.coplay_room_title_id = server.discovered ? server.discovery_host.running_app_titleid : QString();
 
         QString expiry_s = settings->GetPsnAuthTokenExpiry();
         QString refresh = settings->GetPsnRefreshToken();
@@ -2541,6 +2571,15 @@ void QmlBackend::controllerMappingApply()
 
 void QmlBackend::updateDiscoveryHosts()
 {
+    // The game of a public room: what the console of the session says it runs
+    if (session && session->GetCoPlayPublic()) {
+        for (const auto &host : discovery_manager.GetHosts()) {
+            if (host.host_addr == session_info.host && host.state == CHIAKI_DISCOVERY_HOST_STATE_READY) {
+                session->SetCoPlayRoomGame(host.running_app_name, host.running_app_titleid);
+                break;
+            }
+        }
+    }
     // Wakeup console that we are currently connecting to
     for (const auto &host : discovery_manager.GetHosts()) {
         if (host.host_addr != session_info.host)
@@ -2578,7 +2617,7 @@ void QmlBackend::updateDiscoveryHosts()
             if (discovery_manager.GetHosts().at(i).GetHostMAC() != auto_connect_mac)
                 continue;
             psn_auto_connect_timer->stop();
-            connectToHost(i, discovery_manager.GetHosts().at(i).host_name);
+            startConsole(i, discovery_manager.GetHosts().at(i).host_name);
             break;
         }
     }

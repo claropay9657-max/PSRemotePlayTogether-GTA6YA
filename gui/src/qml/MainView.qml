@@ -92,7 +92,7 @@ Pane {
             event.accepted = true;
             break;
         case Qt.Key_F3:
-            root.showPlayTogetherDialog(!consolePane.wide);
+            root.showHostDialog();
             event.accepted = true;
             break;
         }
@@ -230,11 +230,18 @@ Pane {
 
             Item { Layout.fillWidth: true }
 
+            // Without room for the Play Together card: its two ways in the header
             PageButton {
                 visible: !consolePane.wide
                 primary: true
-                text: qsTr("Play Together")
-                onClicked: root.showPlayTogetherDialog(!consolePane.wide)
+                text: qsTr("Host")
+                onClicked: root.showHostDialog()
+            }
+
+            PageButton {
+                visible: !consolePane.wide
+                text: qsTr("Join")
+                onClicked: root.showJoinDialog(0)
             }
 
             PageButton {
@@ -777,64 +784,48 @@ Pane {
                         }
                     }
 
+                    // Two ways to play together, each with a page of its own: everything
+                    // about it is there, and nowhere else
+                    PageButton {
+                        Layout.topMargin: 8
+                        Layout.fillWidth: true
+                        primary: true
+                        text: qsTr("Host…")
+                        onClicked: root.showHostDialog()
+                    }
+
                     Label {
-                        Layout.topMargin: 6
-                        font.pixelSize: 14
-                        font.bold: true
-                        text: qsTr("Join a friend")
-                    }
-
-                    TextField {
-                        id: inviteField
                         Layout.fillWidth: true
-                        placeholderText: qsTr("Paste the invite: psrpt://…")
-                        text: Chiaki.settings.coplayLastInvite
-                        selectByMouse: true
-                        font.pixelSize: 14
-                        onAccepted: if (joinButton.enabled) joinButton.clicked()
-                        Keys.onEscapePressed: consolePane.forceActiveFocus()
-                    }
-
-                    // This is the one place to join from while it is on screen, so everything
-                    // about joining is here (the Play Together page only has it in a narrow window)
-                    CheckBox {
-                        id: joinControllerOnly
-                        Layout.fillWidth: true
-                        Layout.topMargin: -6
-                        Layout.bottomMargin: -6
-                        focusPolicy: Qt.NoFocus
-                        font.pixelSize: 13
-                        text: qsTr("With my controller only (no picture or sound)")
-                        checked: Chiaki.settings.coplayControllerOnly
+                        Layout.bottomMargin: 4
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        opacity: 0.6
+                        font.pixelSize: 12
+                        text: qsTr("Share your console: privately with friends, or as a public room.")
                     }
 
                     PageButton {
-                        id: joinButton
                         Layout.fillWidth: true
-                        primary: true
-                        enabled: !Chiaki.coplayJoining && inviteField.text.trim().length > 0
-                        text: Chiaki.coplayJoining ? qsTr("Connecting…") : qsTr("Join")
-                        onClicked: {
-                            joinError.text = "";
-                            Chiaki.joinCoPlay(inviteField.text, Chiaki.settings.coplayName, joinControllerOnly.checked);
-                        }
+                        text: qsTr("Join…")
+                        onClicked: root.showJoinDialog(0)
                     }
 
                     Label {
-                        id: joinError
                         Layout.fillWidth: true
-                        visible: text.length > 0
+                        horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        color: consolePane.red
-                        font.pixelSize: 13
+                        opacity: 0.6
+                        font.pixelSize: 12
+                        text: qsTr("With an invite from a friend, or a public room.")
                     }
 
-                    Connections {
-                        target: Chiaki
-                        function onCoplayJoinFinished(ok, message) {
-                            if (!ok)
-                                joinError.text = message;
-                        }
+                    // A look at the public rooms, for whoever wants to play with somebody right now
+                    PageButton {
+                        Layout.fillWidth: true
+                        visible: !!Chiaki.settings.coplayRoomsOn
+                        font.pixelSize: 13
+                        text: qsTr("Browse public rooms")
+                        onClicked: root.showJoinDialog(1)
                     }
 
                     Rectangle {
@@ -844,158 +835,11 @@ Pane {
                         color: Qt.rgba(1, 1, 1, 0.08)
                     }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            Label {
-                                font.pixelSize: 14
-                                font.bold: true
-                                text: qsTr("Share your console")
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                opacity: 0.6
-                                font.pixelSize: 12
-                                text: Chiaki.settings.coplayHostEnabled
-                                      ? qsTr("Friends with your invite can join while you play.")
-                                      : qsTr("Off: your sessions stay yours alone.")
-                            }
-                        }
-
-                        Switch {
-                            focusPolicy: Qt.NoFocus
-                            checked: Chiaki.settings.coplayHostEnabled
-                            onToggled: Chiaki.settings.coplayHostEnabled = checked
-                        }
-                    }
-
-                    // Every invite is here and nowhere else before a game (while playing, the stream
-                    // menu has the same list): one per way a friend can reach this computer
-                    PageButton {
-                        id: inviteButton
-                        Layout.fillWidth: true
-                        visible: Chiaki.settings.coplayHostEnabled
-                        text: copiedTimer.running ? qsTr("Copied") : qsTr("Copy invite")
-
-                        readonly property string lan: Chiaki.settings.coplayInviteLan || Chiaki.settings.coplayInvite || ""
-                        readonly property string internet: Chiaki.settings.coplayInvitePublic || ""
-                        readonly property string ipv6: Chiaki.settings.coplayInviteIPv6 || ""
-                        readonly property string web: Chiaki.settings.coplayInviteWeb || ""
-                        /** 0 nothing asked yet, 1 looking, 2 found, 3 not found */
-                        readonly property int lookup: Chiaki.settings.coplayPublicLookupState || 0
-
-                        function copy(text) {
-                            clipboard.text = text;
-                            clipboard.selectAll();
-                            clipboard.copy();
-                            clipboard.text = "";
-                            copiedTimer.restart();
-                        }
-
-                        onClicked: {
-                            // The address on the internet is asked from a server out there, so
-                            // only now that somebody wants an invite
-                            if (lookup === 0 && Chiaki.settings.coplayLookupPublicAddress)
-                                Chiaki.settings.coplayLookupPublicAddress();
-                            // Below the button; the menu moves itself where that is outside the window
-                            inviteMenu.fit();
-                            inviteMenu.popup(inviteButton, inviteButton.width - inviteMenu.width, inviteButton.height + 4);
-                        }
-
-                        Timer {
-                            id: copiedTimer
-                            interval: 1600
-                        }
-
-                        // Copies any text: a text item is the one thing in QML that reaches the clipboard
-                        TextEdit {
-                            id: clipboard
-                            visible: false
-                        }
-
-                        C.Menu {
-                            id: inviteMenu
-                            font.pixelSize: 15
-
-                            MenuItem {
-                                text: qsTr("For a friend over the internet")
-                                enabled: inviteButton.internet.length > 0
-                                onTriggered: inviteButton.copy(inviteButton.internet)
-                            }
-
-                            MenuItem {
-                                text: qsTr("For a friend in the same network")
-                                onTriggered: inviteButton.copy(inviteButton.lan)
-                            }
-
-                            MenuItem {
-                                visible: inviteButton.ipv6.length > 0
-                                height: visible ? implicitHeight : 0
-                                text: qsTr("For a friend over the internet, IPv6")
-                                onTriggered: inviteButton.copy(inviteButton.ipv6)
-                            }
-
-                            MenuItem {
-                                visible: inviteButton.web.length > 0
-                                height: visible ? implicitHeight : 0
-                                text: qsTr("For a friend without the app: a link for the web browser")
-                                onTriggered: inviteButton.copy(inviteButton.web)
-                            }
-                        }
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        visible: Chiaki.settings.coplayHostEnabled && inviteButton.lookup === 3
-                        wrapMode: Text.WordWrap
-                        opacity: 0.6
-                        font.pixelSize: 12
-                        text: qsTr("Your address on the internet could not be found. More under Profile & settings.")
-                    }
-
-                    // For a host who plays on the TV; see "Controller only" in PlayTogetherDialog
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            Label {
-                                font.pixelSize: 14
-                                font.bold: true
-                                text: qsTr("I play on the TV")
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                opacity: 0.6
-                                font.pixelSize: 12
-                                text: (Chiaki.settings.audioVideoDisabled & 0x02)
-                                      ? qsTr("Controller only: no picture or sound of your console on this computer.")
-                                      : qsTr("Off: picture and sound on this computer.")
-                            }
-                        }
-
-                        Switch {
-                            focusPolicy: Qt.NoFocus
-                            checked: (Chiaki.settings.audioVideoDisabled & 0x02) !== 0
-                            onToggled: Chiaki.settings.audioVideoDisabled = checked ? 3 : 0
-                        }
-                    }
-
                     PageButton {
                         Layout.fillWidth: true
                         text: qsTr("Profile & settings…")
                         font.pixelSize: 13
-                        onClicked: root.showPlayTogetherDialog(!consolePane.wide)
+                        onClicked: root.showPlayTogetherDialog()
                     }
                 }
             }

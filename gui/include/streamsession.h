@@ -145,6 +145,18 @@ class SdeckHapticsWorker;
 		QString coplay_meet_server;
 		/** Guests may put the console to sleep when they leave. */
 		bool coplay_guests_may_sleep = false;
+		/** How many friends may join at the same time. */
+		int coplay_max_guests = 4;
+		/** A public room: listed for everybody, with a key of its own (coplay_secret is that one). */
+		bool coplay_public = false;
+		QString coplay_room_title;
+		QString coplay_room_lang;
+		/** The game the console runs, as the host's discovery last saw it; may be empty. */
+		QString coplay_room_game;
+		QString coplay_room_title_id;
+		/** 0 the host lets each in, 1 everybody watches first, 2 everybody plays. */
+		int coplay_join_policy = 0;
+		QString coplay_rooms_server;
 		/** Let friends in who join from a web browser, and the page they open (empty: the built-in one). */
 		bool coplay_web_guests = true;
 		QString coplay_web_url;
@@ -210,6 +222,14 @@ class StreamSession : public QObject
 	Q_PROPERTY(bool coplayHosting READ IsCoPlayHosting NOTIFY CoPlayChanged)
 	/** Guest: the host lets guests put the console to sleep when they leave. */
 	Q_PROPERTY(bool coplayMaySleep READ CoPlayGuestMaySleep NOTIFY CoPlayChanged)
+	// A public room: listed for everybody; who knocks, and who may come in
+	Q_PROPERTY(bool coplayPublic READ GetCoPlayPublic NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayRoomTitle READ GetCoPlayRoomTitle NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayRoomGame READ GetCoPlayRoomGame NOTIFY CoPlayChanged)
+	Q_PROPERTY(QString coplayRoomProblem READ GetCoPlayRoomProblem NOTIFY CoPlayChanged)
+	Q_PROPERTY(int coplayJoinPolicy READ GetCoPlayJoinPolicy WRITE SetCoPlayJoinPolicy NOTIFY CoPlayChanged)
+	Q_PROPERTY(bool coplayLocked READ GetCoPlayLocked WRITE SetCoPlayLocked NOTIFY CoPlayChanged)
+	Q_PROPERTY(QVariantList coplayPending READ GetCoPlayPending NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInvite READ GetCoPlayInvite NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInviteLan READ GetCoPlayInviteLan NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInvitePublic READ GetCoPlayInvitePublic NOTIFY CoPlayChanged)
@@ -417,6 +437,9 @@ class StreamSession : public QObject
 		void CoPlayStartGuest();
 		void CoPlayStopGuest(bool sleep_console = false);
 		void CoPlayStopHost();
+		void CoPlayStartRoom(const StreamSessionConnectInfo &connect_info, size_t max_guests);
+		void CoPlayUpdateRoom();
+		void CoPlayUpdatePending();
 		void CoPlayGuestLost(coplay::DisconnectReason reason);
 		void CoPlayGuestQuit();
 		void CoPlayBeginRejoin(coplay::DisconnectReason reason);
@@ -549,6 +572,21 @@ class StreamSession : public QObject
 		Q_INVOKABLE void coplaySendChat(const QString &text);
 		Q_INVOKABLE void coplayMarkChatRead();
 		Q_INVOKABLE void coplayKick(int slot);
+		/** Removes a guest and keeps it out for the rest of the session. */
+		Q_INVOKABLE void coplayBlock(int slot);
+		/** Lets somebody who knocks in, or not (id from coplayPending). */
+		Q_INVOKABLE void coplayAdmit(const QString &id, bool allow);
+		bool GetCoPlayPublic() const;
+		QString GetCoPlayRoomTitle() const;
+		QString GetCoPlayRoomGame() const;
+		QString GetCoPlayRoomProblem() const;
+		int GetCoPlayJoinPolicy() const;
+		void SetCoPlayJoinPolicy(int policy);
+		bool GetCoPlayLocked() const;
+		void SetCoPlayLocked(bool locked);
+		QVariantList GetCoPlayPending() const;
+		/** The game the console runs, for the list of public rooms. */
+		void SetCoPlayRoomGame(const QString &game, const QString &title_id);
 		Q_INVOKABLE void coplaySetCanControl(int slot, bool allowed);
 		Q_INVOKABLE void coplayCopyInvite();
 		Q_INVOKABLE void coplayCopyInviteLan();
@@ -654,6 +692,8 @@ class StreamSession : public QObject
 		void CoPlayNotice(const QString &text);
 		/** Host: a guest left and asked for the console to be put to sleep, and guests may. */
 		void CoPlaySleepRequested(const QString &name);
+		/** Host: somebody knocks on the public room (QML: onCoplayKnock). */
+		void coplayKnock(const QString &name);
 
 	private slots:
 		void UpdateGamepads();
