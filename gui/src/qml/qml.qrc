@@ -82,5 +82,7 @@
     <file>controls/SettingsRow.qml</file>
     <file>controls/TextLink.qml</file>
     <file>controls/ValueSlider.qml</file>
+    <file>controls/GlyphButton.qml</file>
+    <file>controls/PopupCard.qml</file>
   </qresource>
 </RCC>

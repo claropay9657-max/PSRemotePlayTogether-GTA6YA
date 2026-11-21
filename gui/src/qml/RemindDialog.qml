@@ -1,33 +1,19 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
-import QtQuick.Controls.Material
 import "controls" as C
 
 import org.streetpea.chiaking
 
-Dialog {
+// A question the app asks at the start (PSN, a Steam shortcut): Yes, No (never ask
+// again) or Later. Return or Cross says yes, Escape or Circle no, Triangle later.
+C.PopupCard {
     id: dialog
     property alias text: label.text
     property var remotePlay
     property var callback
     property bool newDialogOpen: false
     property Item restoreFocusItem
-    parent: Overlay.overlay
-    x: Math.round((root.width - width) / 2)
-    y: Math.round((root.height - height) / 2)
-    modal: true
-    // A glass card in the GamerNova look, on a dimmed backdrop
-    background: Rectangle {
-        radius: 18
-        color: Qt.rgba(13 / 255, 11 / 255, 31 / 255, 0.97)
-        border.width: 1
-        border.color: Qt.rgba(140 / 255, 82 / 255, 255 / 255, 0.6)
-    }
-    Overlay.modal: Rectangle {
-        color: Qt.rgba(5 / 255, 5 / 255, 20 / 255, 0.62)
-    }
-    Material.roundedScale: Material.MediumScale
+
     onOpened: label.forceActiveFocus(Qt.TabFocusReason)
     onAccepted: {
         newDialogOpen = true;
@@ -59,87 +45,42 @@ Dialog {
         label.focus = false;
     }
 
-    Component.onCompleted: {
-        header.horizontalAlignment = Text.AlignHCenter;
-        // Qt 6.6: Workaround dialog background becoming immediately transparent during close animation
-        header.background = null;
-    }
-
     ColumnLayout {
         spacing: 20
 
-        Label {
+        Text {
             id: label
+            Layout.preferredWidth: Math.min(implicitWidth, 480)
+            wrapMode: Text.WordWrap
+            lineHeight: 1.2
+            color: C.Theme.textSoft
+            font.pixelSize: 14
             Keys.onEscapePressed: dialog.reject()
             Keys.onReturnPressed: dialog.accept()
             Keys.onYesPressed: dialog.close()
         }
 
         RowLayout {
-            Layout.alignment: Qt.AlignCenter
-            spacing: 20
+            Layout.alignment: Qt.AlignRight
+            spacing: 10
 
-            Button {
-                text: qsTr("Yes")
-                Material.background: Material.accent
-                flat: true
-                leftPadding: 50
-                onClicked: dialog.accept()
-                Material.roundedScale: Material.SmallScale
-
-                Image {
-                    anchors {
-                        left: parent.left
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: 12
-                    }
-                    width: 28
-                    height: 28
-                    sourceSize: Qt.size(width, height)
-                    source: root.controllerButton("cross")
-                }
-            }
-
-            Button {
-                Material.background: Material.accent
-                text: qsTr("No")
-                flat: true
-                leftPadding: 50
-                onClicked: dialog.reject()
-                Material.roundedScale: Material.SmallScale
-
-                Image {
-                    anchors {
-                        left: parent.left
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: 12
-                    }
-                    width: 28
-                    height: 28
-                    sourceSize: Qt.size(width, height)
-                    source: root.controllerButton("moon")
-                }
-            }
-
-            Button {
-                Material.background: Material.accent
-                text: qsTr("Remind Me Later")
-                flat: true
-                leftPadding: 50
+            C.GlyphButton {
+                text: qsTr("Remind me later")
+                glyph: root.controllerButton("pyramid")
                 onClicked: dialog.close()
-                Material.roundedScale: Material.SmallScale
+            }
 
-                Image {
-                    anchors {
-                        left: parent.left
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: 12
-                    }
-                    width: 28
-                    height: 28
-                    sourceSize: Qt.size(width, height)
-                    source: root.controllerButton("pyramid")
-                }
+            C.GlyphButton {
+                text: qsTr("No")
+                glyph: root.controllerButton("moon")
+                onClicked: dialog.reject()
+            }
+
+            C.GlyphButton {
+                text: qsTr("Yes")
+                primary: true
+                glyph: root.controllerButton("cross")
+                onClicked: dialog.accept()
             }
         }
     }

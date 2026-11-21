@@ -1,1138 +1,994 @@
-import QtCore
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import QtQuick.Controls.Material
-import QtQuick.Dialogs
 
 import org.streetpea.chiaking
 
 import "controls" as C
 
+// The renderer's own options (libplacebo), in the look of the settings window: the
+// sections in a list on the left, the one shown on the right. Saved as you go.
+// Also shown over the game (Main.qml's placeboSettingsLoader, 1200 × 650, or a window
+// of its own): every section scrolls, and the setting with the focus stays on screen.
+//
+// Keys and controller: the list is one stop in the focus chain. Up and Down there go
+// through the sections, Right or Return goes into the section shown; Up from its first
+// setting or Left comes back. Page Up / Page Down (L1 / R1) change the section from
+// anywhere; from inside a section the focus goes into the new one.
 DialogView {
     id: dialog
     property string options_url: ""
     title: qsTr("Renderer")
     header: qsTr("Advanced picture processing. Changes are saved at once")
     buttonVisible: false
+
+    readonly property var sections: [qsTr("General"), qsTr("Scaling"), qsTr("Deinterlacing"), qsTr("Debanding"),
+        qsTr("Sigmoidization"), qsTr("Colour"), qsTr("Peak detection"), qsTr("Colour mapping")]
+    /** The section shown, by its place in `sections`. */
+    property int section: 0
+
+    readonly property bool narrow: width < 900
+    readonly property int gutter: width < 600 ? 16 : 32
+    /** Width of a section: the room there is, up to a width that still reads well. */
+    readonly property real pageWidth: Math.max(0, Math.min(pages.width - gutter, 920))
+    /** Width of the column the controls sit in: up to 380, less where there is little room. */
+    readonly property int controlWidth: Math.round(Math.min(380, Math.max(180, (pageWidth - 36) * 0.45)))
+
+    function showSection(index) {
+        if (index < 0 || index >= sections.length || index === section)
+            return;
+        // From inside a section (L1 / R1) the focus goes along into the new one
+        const fromPage = !side.activeFocus;
+        section = index;
+        if (fromPage)
+            Qt.callLater(enterSection);
+    }
+
+    /** Into the section shown: its first setting gets the focus, or the list keeps it. */
+    function enterSection() {
+        const flick = pages.children[section];
+        const first = flick ? flick.contentItem.nextItemInFocusChain(true) : null;
+        if (first && inside(first, flick))
+            first.forceActiveFocus(Qt.TabFocusReason);
+        else
+            side.forceActiveFocus(Qt.TabFocusReason);
+    }
+
+    function inside(item, ancestor) {
+        for (let p = item; p; p = p.parent) {
+            if (p === ancestor)
+                return true;
+        }
+        return false;
+    }
+
+    /** The row (or the item) that should be on screen when `item` has the focus. */
+    function rowOf(item, flick) {
+        for (let p = item; p && p !== flick.contentItem; p = p.parent) {
+            if (p.isSettingRow === true)
+                return p;
+        }
+        return item;
+    }
+
+    function scrollTo(item, flick, margin) {
+        const top = item.mapToItem(flick.contentItem, 0, 0).y;
+        const bottom = top + item.height;
+        const max = Math.max(0, flick.contentHeight - flick.height);
+        if (top - margin < flick.contentY)
+            flick.contentY = Math.max(0, Math.min(max, top - margin));
+        else if (bottom + margin > flick.contentY + flick.height)
+            flick.contentY = Math.max(0, Math.min(max, bottom + margin - flick.height));
+    }
+
     Keys.onPressed: (event) => {
         if (event.modifiers)
             return;
         switch (event.key) {
         case Qt.Key_PageUp:
-            bar.decrementCurrentIndex();
+            showSection(section - 1);
             event.accepted = true;
             break;
         case Qt.Key_PageDown:
-            bar.incrementCurrentIndex();
+            showSection(section + 1);
             event.accepted = true;
             break;
+        case Qt.Key_Left: {
+            // Left that no setting took: back to the list
+            const item = dialog.Window.window ? dialog.Window.window.activeFocusItem : null;
+            // Not while a dropdown's list is open: Left there means nothing yet
+            if (item && inside(item, pages) && !(item.popup && item.popup.visible)) {
+                side.forceActiveFocus(Qt.TabFocusReason);
+                event.accepted = true;
+            }
+            break;
+        }
         }
     }
 
+    /** A section: scrolls, its groups one under the other. */
+    component Page: Flickable {
+        id: pageFlick
+        default property alias content: pageColumn.data
+        contentWidth: width
+        contentHeight: pageColumn.implicitHeight + 18 + 32
+        clip: true
+        flickableDirection: Flickable.VerticalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar {
+            policy: pageFlick.contentHeight > pageFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+            width: 10
+        }
+
+        ColumnLayout {
+            id: pageColumn
+            y: 18
+            width: dialog.pageWidth
+            spacing: 18
+        }
+    }
+
+    component Setting: C.SettingRow {
+        controlWidth: dialog.controlWidth
+    }
+
+    /** An amount; set `valueText` in the decimals the setting has. */
+    component Amount: C.ValueSlider {
+        Layout.fillWidth: true
+        valueWidth: 72
+    }
+
     Item {
-        // The sections, down the left side; L1 / R1 on a controller go up and down
-        Rectangle {
-            id: sidebar
+        // Keeps the setting with the focus on screen, also over the game where there is little room
+        Connections {
+            target: dialog.Window.window
+            function onActiveFocusItemChanged() {
+                const item = dialog.Window.window ? dialog.Window.window.activeFocusItem : null;
+                const flick = pages.children[dialog.section];
+                if (item && flick && dialog.inside(item, flick.contentItem))
+                    dialog.scrollTo(dialog.rowOf(item, flick), flick, 12);
+            }
+        }
+
+        // ------------------------------------------------ the sections, down the left side
+
+        Flickable {
+            id: sideFlick
             anchors {
                 top: parent.top
                 left: parent.left
                 bottom: parent.bottom
-                margins: 14
-                topMargin: 10
+                leftMargin: dialog.gutter
             }
-            width: 210
-            radius: 18
-            color: Qt.rgba(16 / 255, 14 / 255, 32 / 255, 0.72)
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.07)
+            width: dialog.narrow ? 190 : 220
+            contentWidth: width
+            contentHeight: side.implicitHeight + 18 + 24
+            clip: true
+            flickableDirection: Flickable.VerticalFlick
+            boundsBehavior: Flickable.StopAtBounds
 
-            Column {
-                anchors {
-                    fill: parent
-                    margins: 10
+            Control {
+                id: side
+                y: 18
+                width: sideFlick.width
+                focusPolicy: Qt.StrongFocus
+                padding: 0
+                Accessible.role: Accessible.PageTabList
+                Accessible.name: qsTr("Renderer sections")
+
+                Keys.onPressed: (event) => {
+                    switch (event.key) {
+                    case Qt.Key_Up:
+                        dialog.showSection(dialog.section - 1);
+                        event.accepted = true;
+                        break;
+                    case Qt.Key_Down:
+                        dialog.showSection(dialog.section + 1);
+                        event.accepted = true;
+                        break;
+                    case Qt.Key_Right:
+                    case Qt.Key_Return:
+                    case Qt.Key_Enter:
+                    case Qt.Key_Space:
+                        dialog.enterSection();
+                        event.accepted = true;
+                        break;
+                    }
                 }
-                spacing: 4
 
-                Repeater {
-                    model: [
-                        { label: qsTr("General"), detail: qsTr("Documentation, import, export") },
-                        { label: qsTr("Scaling"), detail: qsTr("Up- and downscalers") },
-                        { label: qsTr("Deinterlacing"), detail: qsTr("For interlaced video") },
-                        { label: qsTr("Debanding"), detail: qsTr("Smooth colour steps") },
-                        { label: qsTr("Sigmoidization"), detail: qsTr("Less ringing when upscaling") },
-                        { label: qsTr("Colour"), detail: qsTr("Brightness, contrast, gamma") },
-                        { label: qsTr("Peak detection"), detail: qsTr("For HDR tone mapping") },
-                        { label: qsTr("Colour mapping"), detail: qsTr("Gamut and tone mapping") }
-                    ]
-                    delegate: Rectangle {
-                        id: navItem
-                        required property var modelData
-                        required property int index
-                        readonly property bool current: bar.currentIndex === index
-                        width: parent.width
-                        height: 52
-                        radius: 12
-                        color: current ? Qt.rgba(140 / 255, 82 / 255, 1, 0.28)
-                             : navArea.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
-                        border.width: current ? 1 : 0
-                        border.color: Qt.rgba(140 / 255, 82 / 255, 1, 0.7)
+                contentItem: Column {
+                    spacing: 2
+
+                    Repeater {
+                        model: dialog.sections
 
                         Rectangle {
-                            visible: navItem.current
-                            anchors {
-                                left: parent.left
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: 4
+                            id: entry
+                            required property var modelData
+                            required property int index
+                            readonly property bool current: index === dialog.section
+
+                            width: side.width
+                            height: 36
+                            radius: 10
+                            color: current ? Qt.rgba(140 / 255, 82 / 255, 1, 0.20)
+                                 : entryMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent"
+                            border.width: side.visualFocus && current ? 2 : 0
+                            border.color: C.Theme.focus
+
+                            Text {
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                    leftMargin: 12
+                                    rightMargin: 10
+                                }
+                                elide: Text.ElideRight
+                                text: entry.modelData
+                                color: entry.current ? "#ffffff" : "#d9d5f2"
+                                font.pixelSize: 14
+                                font.weight: entry.current ? Font.ExtraBold : Font.DemiBold
                             }
-                            width: 3
-                            height: 24
-                            radius: 1.5
-                            color: "#00f2ff"
+
+                            MouseArea {
+                                id: entryMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    side.forceActiveFocus(Qt.MouseFocusReason);
+                                    dialog.showSection(entry.index);
+                                }
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 14 }
+
+                    // L1 / R1 change the section, once a controller is there
+                    Row {
+                        visible: Chiaki.controllers.length > 0
+                        spacing: 6
+                        leftPadding: 12
+
+                        Image {
+                            width: 22
+                            height: 22
+                            sourceSize: Qt.size(width, height)
+                            source: "qrc:/icons/l1.svg"
                         }
 
-                        Column {
-                            anchors {
-                                left: parent.left
-                                right: parent.right
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: 16
-                                rightMargin: 8
-                            }
-                            spacing: 1
-
-                            Label {
-                                width: parent.width
-                                elide: Text.ElideRight
-                                font.pixelSize: 15
-                                font.bold: true
-                                text: navItem.modelData.label
-                            }
-                            Label {
-                                width: parent.width
-                                elide: Text.ElideRight
-                                font.pixelSize: 11
-                                opacity: 0.5
-                                text: navItem.modelData.detail
-                            }
+                        Image {
+                            width: 22
+                            height: 22
+                            sourceSize: Qt.size(width, height)
+                            source: "qrc:/icons/r1.svg"
                         }
 
-                        MouseArea {
-                            id: navArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: bar.currentIndex = navItem.index
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("change the section")
+                            color: C.Theme.textDim
+                            font.pixelSize: 12
                         }
                     }
                 }
             }
         }
 
-        // The pages sit on a glass panel
-        Rectangle {
-            anchors {
-                top: parent.top
-                left: sidebar.right
-                right: parent.right
-                bottom: parent.bottom
-                margins: 14
-                topMargin: 10
-            }
-            radius: 18
-            color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.5)
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.07)
-        }
-
-        TabBar {
-            id: bar
-            // Keeps the current page; the sidebar above is what is shown
-            visible: false
-            height: 0
-
-
-            TabButton {
-                text: qsTr("Config")
-                focusPolicy: Qt.NoFocus
-            }
-
-            TabButton {
-                text: qsTr("Scaling")
-                focusPolicy: Qt.NoFocus
-            }
-
-            TabButton {
-                text: qsTr("Deinterlace")
-                focusPolicy: Qt.NoFocus
-            }
-
-            TabButton {
-                text: qsTr("Debanding")
-                focusPolicy: Qt.NoFocus
-            }
-
-            TabButton {
-                text: qsTr("Sigmoidization")
-                focusPolicy: Qt.NoFocus
-            }
-
-            TabButton {
-                text: qsTr("Color")
-                focusPolicy: Qt.NoFocus
-            }
-
-            TabButton {
-                text: qsTr("Peak Detection")
-                focusPolicy: Qt.NoFocus
-            }
-
-            TabButton {
-                text: qsTr("Color Mapping")
-                focusPolicy: Qt.NoFocus
-            }
-        }
+        // ------------------------------------------------ the section shown
 
         StackLayout {
+            id: pages
             anchors {
                 top: parent.top
-                left: sidebar.right
+                left: sideFlick.right
                 right: parent.right
                 bottom: parent.bottom
-                topMargin: 10
-                leftMargin: 14
-                rightMargin: 14
+                leftMargin: dialog.narrow ? 18 : 28
             }
-            currentIndex: bar.currentIndex
-            onCurrentIndexChanged: nextItemInFocusChain().forceActiveFocus(Qt.TabFocusReason)
+            currentIndex: dialog.section
 
-            Item {
-                // Config
-                Flickable {
-                    id: configFlick
-                    anchors.fill: parent
-                    clip: true
-                    contentWidth: width
-                    contentHeight: configColumn.implicitHeight + 48
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    ColumnLayout {
-                        id: configColumn
-                        x: Math.max(28, Math.round((configFlick.width - width) / 2))
-                        y: 24
-                        width: Math.min(configFlick.width - 56, 980)
-                        spacing: 18
+            Page {
+                // General
+                C.SettingsSection {
+                    title: qsTr("Renderer")
+                    description: qsTr("The picture goes through libplacebo. This is for fine-tuning: for most screens the quality presets in Settings › Picture are right.")
 
-                        C.SettingsSection {
-                            title: qsTr("Renderer")
-                            description: qsTr("The picture goes through libplacebo. These settings are for fine-tuning; the presets in Settings > Video are right for most screens.")
+                    Setting {
+                        title: qsTr("Documentation")
+                        description: dialog.options_url.length > 0
+                                     ? qsTr("It opened in your web browser. If it did not, copy the address and paste it there.")
+                                     : qsTr("What every option does, on the libplacebo website.")
 
-                            C.SettingRow {
-                                title: qsTr("Documentation")
-                                description: options_url ? qsTr("The address was copied. Paste it into your web browser.")
-                                                         : qsTr("What every option does, on the libplacebo website.")
-
-                                TextField {
-                                    id: openurl
-                                    echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                                    text: options_url
-                                    visible: false
-                                }
-                                Item { Layout.fillWidth: true }
-                                C.Button {
-                                    id: openwebpage
-                                    text: qsTr("Open documentation")
-                                    onClicked: {
-                                        options_url = Chiaki.openPlaceboOptionsLink()
-                                    }
-                                    visible: !options_url
-                                }
-                                C.Button {
-                                    id: copyUrl
-                                    text: qsTr("Copy the address again")
-                                    onClicked: {
-                                        openurl.selectAll()
-                                        openurl.copy()
-                                    }
-                                    visible: options_url
-                                }
+                        // Only for copying the address; hidden in streamer mode as before
+                        TextField {
+                            id: openurl
+                            echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
+                            text: dialog.options_url
+                            visible: false
+                        }
+                        Item { Layout.fillWidth: true }
+                        C.PillButton {
+                            id: openwebpage
+                            small: true
+                            iconName: "external"
+                            text: qsTr("Open documentation")
+                            visible: dialog.options_url.length === 0
+                            onClicked: {
+                                const byKeys = visualFocus;
+                                dialog.options_url = Chiaki.openPlaceboOptionsLink();
+                                // This button goes; the keys go on with the one in its place
+                                if (byKeys)
+                                    Qt.callLater(() => copyUrl.forceActiveFocus(Qt.TabFocusReason));
                             }
-
-                            C.SettingRow {
-                                title: qsTr("Renderer settings file")
-                                description: qsTr("Save these settings to a file, or load them from one.")
-
-                                Item { Layout.fillWidth: true }
-                                C.Button {
-                                    id: exportButton
-                                    text: qsTr("Export")
-                                    onClicked: {
-                                        Chiaki.settings.exportPlaceboSettings();
-                                    }
-                                    Material.roundedScale: Material.SmallScale
-                                    KeyNavigation.down: importButton
-                                    KeyNavigation.right: importButton
-                                }
-                                C.Button {
-                                    id: importButton
-                                    lastInFocusChain: true
-                                    text: qsTr("Import")
-                                    onClicked: {
-                                        Chiaki.settings.importPlaceboSettings();
-                                    }
-                                    Material.roundedScale: Material.SmallScale
-                                    KeyNavigation.up: exportButton
-                                    KeyNavigation.left: exportButton
-                                }
+                        }
+                        C.PillButton {
+                            id: copyUrl
+                            small: true
+                            iconName: "copy"
+                            text: qsTr("Copy the address")
+                            visible: dialog.options_url.length > 0
+                            onClicked: {
+                                openurl.selectAll();
+                                openurl.copy();
                             }
+                        }
+                    }
+
+                    Setting {
+                        title: qsTr("Settings file")
+                        description: qsTr("Save these settings to a file, or load them from one.")
+
+                        Item { Layout.fillWidth: true }
+                        C.PillButton {
+                            id: exportButton
+                            small: true
+                            text: qsTr("Export…")
+                            onClicked: Chiaki.settings.exportPlaceboSettings()
+                            KeyNavigation.down: importButton
+                            KeyNavigation.right: importButton
+                        }
+                        C.PillButton {
+                            id: importButton
+                            small: true
+                            lastInFocusChain: true
+                            text: qsTr("Import…")
+                            onClicked: Chiaki.settings.importPlaceboSettings()
+                            KeyNavigation.up: exportButton
+                            KeyNavigation.left: exportButton
                         }
                     }
                 }
             }
 
-            Item {
+            Page {
                 // Scaling
-                Flickable {
-                    id: page1Flick
-                    anchors.fill: parent
-                    clip: true
-                    contentWidth: width
-                    contentHeight: page1Column.implicitHeight + 48
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {
-                        visible: page1Flick.contentHeight > page1Flick.height
+                C.SettingsSection {
+                    title: qsTr("Scaling")
+                    description: qsTr("How the picture is made larger or smaller for your screen.")
+
+                    Setting {
+                        title: qsTr("Upscaler")
+                        description: qsTr("Makes the picture larger.")
+                        hint: qsTr("EwaLanczosSharp")
+
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Upscaler")
+                            model: [qsTr("Custom"), qsTr("Nearest"), qsTr("Bilinear"), qsTr("Oversample"), qsTr("Bicubic"), qsTr("Gaussian"), qsTr("Catmull-Rom"), qsTr("Lanczos"), qsTr("EwaLanczos"), qsTr("EwaLanczosSharp"), qsTr("EwaLanczosSharpest"), qsTr("FSR"), qsTr("FSRCNNX x2 8-0-4-1"), qsTr("FSRCNNX x2 16-0-4-1")]
+                            currentIndex: Chiaki.settings.placeboUpscaler
+                            onActivated: index => Chiaki.settings.placeboUpscaler = index
+                        }
                     }
-                    ColumnLayout {
-                        id: page1Column
-                        x: Math.max(28, Math.round((page1Flick.width - width) / 2))
-                        y: 24
-                        width: Math.min(page1Flick.width - 56, 980)
-                        spacing: 18
 
-                        C.SettingsSection {
-                            title: qsTr("Scaling")
+                    Setting {
+                        title: qsTr("Plane upscaler")
+                        description: qsTr("For the colour planes.")
+                        hint: qsTr("Same as the upscaler")
 
-                            C.SettingRow {
-                                title: qsTr("Upscaler")
-                                hint: qsTr("(EwaLanczos)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Plane upscaler")
+                            model: [qsTr("Same as the upscaler"), qsTr("Nearest"), qsTr("Bilinear"), qsTr("Oversample"), qsTr("Bicubic"), qsTr("Gaussian"), qsTr("Catmull-Rom"), qsTr("Lanczos"), qsTr("EwaLanczos"), qsTr("EwaLanczosSharp"), qsTr("EwaLanczosSharpest")]
+                            currentIndex: Chiaki.settings.placeboPlaneUpscaler
+                            onActivated: index => Chiaki.settings.placeboPlaneUpscaler = index
+                        }
+                    }
 
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    firstInFocusChain: true
-                                    model: [qsTr("Custom"), qsTr("Nearest"), qsTr("Bilinear"), qsTr("Oversample"), qsTr("Bicubic"), qsTr("Gaussian"), qsTr("Catmull Rom"), qsTr("Lanczos"), qsTr("EwaLanczos"), qsTr("EwaLanczosSharp"), qsTr("EwaLanczosSharpest"), qsTr("FSR"), qsTr("FSRCNNX x2 8-0-4-1"), qsTr("FSRCNNX x2 16-0-4-1")]
-                                    currentIndex: Chiaki.settings.placeboUpscaler
-                                    onActivated: index => Chiaki.settings.placeboUpscaler = index
-                                }
-                            }
+                    Setting {
+                        title: qsTr("Downscaler")
+                        description: qsTr("Makes the picture smaller.")
+                        hint: qsTr("Hermite")
 
-                            C.SettingRow {
-                                title: qsTr("Plane Upscaler")
-                                hint: qsTr("(Chosen Upscaler)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Downscaler")
+                            model: [qsTr("Custom"), qsTr("Box"), qsTr("Hermite"), qsTr("Bilinear"), qsTr("Bicubic"), qsTr("Gaussian"), qsTr("Catmull-Rom"), qsTr("Mitchell"), qsTr("Lanczos")]
+                            currentIndex: Chiaki.settings.placeboDownscaler
+                            onActivated: index => Chiaki.settings.placeboDownscaler = index
+                        }
+                    }
 
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    firstInFocusChain: true
-                                    model: [qsTr("Chosen Upscaler"), qsTr("Nearest"), qsTr("Bilinear"), qsTr("Oversample"), qsTr("Bicubic"), qsTr("Gaussian"), qsTr("Catmull Rom"), qsTr("Lanczos"), qsTr("EwaLanczos"), qsTr("EwaLanczosSharp"), qsTr("EwaLanczosSharpest")]
-                                    currentIndex: Chiaki.settings.placeboPlaneUpscaler
-                                    onActivated: index => Chiaki.settings.placeboPlaneUpscaler = index
-                                }
-                            }
+                    Setting {
+                        title: qsTr("Plane downscaler")
+                        description: qsTr("For the colour planes.")
+                        hint: qsTr("Same as the downscaler")
 
-                            C.SettingRow {
-                                title: qsTr("Downscaler")
-                                hint: qsTr("(Hermite)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Plane downscaler")
+                            model: [qsTr("Same as the downscaler"), qsTr("Box"), qsTr("Hermite"), qsTr("Bilinear"), qsTr("Bicubic"), qsTr("Gaussian"), qsTr("Catmull-Rom"), qsTr("Mitchell"), qsTr("Lanczos")]
+                            currentIndex: Chiaki.settings.placeboPlaneDownscaler
+                            onActivated: index => Chiaki.settings.placeboPlaneDownscaler = index
+                        }
+                    }
 
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    firstInFocusChain: true
-                                    model: [qsTr("Custom"), qsTr("Box"), qsTr("Hermite"), qsTr("Bilinear"), qsTr("Bicubic"), qsTr("Gaussian"), qsTr("Catmull Rom"), qsTr("Mitchell"), qsTr("Lanczos")]
-                                    currentIndex: Chiaki.settings.placeboDownscaler
-                                    onActivated: index => Chiaki.settings.placeboDownscaler = index
-                                }
-                            }
+                    Setting {
+                        title: qsTr("Anti-ringing strength")
+                        description: qsTr("Less of a halo around sharp edges.")
+                        hint: "0.00"
 
-                            C.SettingRow {
-                                title: qsTr("Plane Downscaler")
-                                hint: qsTr("(Chosen Downscaler)")
-
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    firstInFocusChain: true
-                                    model: [qsTr("Chosen Downscaler"), qsTr("Box"), qsTr("Hermite"), qsTr("Bilinear"), qsTr("Bicubic"), qsTr("Gaussian"), qsTr("Catmull Rom"), qsTr("Mitchell"), qsTr("Lanczos")]
-                                    currentIndex: Chiaki.settings.placeboPlaneDownscaler
-                                    onActivated: index => Chiaki.settings.placeboPlaneDownscaler = index
-                                }
-                            }
-
-                            C.SettingRow {
-                                title: qsTr("Anti-ringing Strength")
-                                hint: qsTr("(0.00)")
-
-                                C.Slider {
-                                    id: valueSlider1
-                                    Layout.fillWidth: true
-                                    from: 0.00
-                                    to: 1.00
-                                    stepSize: 0.01
-                                    value: Chiaki.settings.placeboAntiringingStrength
-                                    onMoved: Chiaki.settings.placeboAntiringingStrength = value
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider1.value.toFixed(2))
-                                }
-                            }
+                        Amount {
+                            Accessible.name: qsTr("Anti-ringing strength")
+                            lastInFocusChain: true
+                            from: 0.00
+                            to: 1.00
+                            stepSize: 0.01
+                            value: Chiaki.settings.placeboAntiringingStrength
+                            valueText: value.toFixed(2)
+                            onMoved: Chiaki.settings.placeboAntiringingStrength = value
                         }
                     }
                 }
             }
 
-            Item {
-                // Deinterlace
-                Flickable {
-                    id: page2Flick
-                    anchors.fill: parent
-                    clip: true
-                    contentWidth: width
-                    contentHeight: page2Column.implicitHeight + 48
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {
-                        visible: page2Flick.contentHeight > page2Flick.height
+            Page {
+                // Deinterlacing
+                C.SettingsSection {
+                    title: qsTr("Deinterlacing")
+                    description: qsTr("Only for interlaced video.")
+
+                    Setting {
+                        title: qsTr("Deinterlace")
+                        hint: qsTr("Off")
+
+                        Item { Layout.fillWidth: true }
+                        C.Toggle {
+                            Accessible.name: qsTr("Deinterlace")
+                            lastInFocusChain: !Chiaki.settings.placeboDeinterlaceEnabled
+                            checked: Chiaki.settings.placeboDeinterlaceEnabled
+                            onToggled: Chiaki.settings.placeboDeinterlaceEnabled = checked
+                        }
                     }
-                    ColumnLayout {
-                        id: page2Column
-                        x: Math.max(28, Math.round((page2Flick.width - width) / 2))
-                        y: 24
-                        width: Math.min(page2Flick.width - 56, 980)
-                        spacing: 18
 
-                        C.SettingsSection {
-                            title: qsTr("Deinterlacing")
+                    Setting {
+                        visible: Chiaki.settings.placeboDeinterlaceEnabled
+                        title: qsTr("Preset")
+                        hint: qsTr("Default")
 
-                            C.SettingRow {
-                                title: qsTr("Enable Deinterlace")
-                                hint: qsTr("(no)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Deinterlacing preset")
+                            model: [qsTr("Default")]
+                            currentIndex: Chiaki.settings.placeboDeinterlacePreset
+                            enabled: Chiaki.settings.placeboDeinterlaceEnabled
+                            onActivated: index => Chiaki.settings.placeboDeinterlacePreset = index
+                        }
+                    }
 
-                                Item { Layout.fillWidth: true }
-                                C.CheckBox {
-                                    checked: Chiaki.settings.placeboDeinterlaceEnabled
-                                    onToggled: Chiaki.settings.placeboDeinterlaceEnabled = checked
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboDeinterlaceEnabled
+                        title: qsTr("Algorithm")
+                        hint: qsTr("Yadif")
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboDeinterlaceEnabled
-                                title: qsTr("Preset")
-                                hint: qsTr("(Default)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Deinterlacing algorithm")
+                            model: [qsTr("Weave"), qsTr("Bob"), qsTr("Yadif"), qsTr("Bwdif")]
+                            currentIndex: Chiaki.settings.placeboDeinterlaceAlgorithm
+                            enabled: Chiaki.settings.placeboDeinterlaceEnabled
+                            onActivated: index => Chiaki.settings.placeboDeinterlaceAlgorithm = index
+                        }
+                    }
 
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    model: [qsTr("Default")]
-                                    currentIndex: Chiaki.settings.placeboDeinterlacePreset
-                                    enabled: Chiaki.settings.placeboDeinterlaceEnabled
-                                    visible: Chiaki.settings.placeboDeinterlaceEnabled
-                                    onActivated: index => Chiaki.settings.placeboDeinterlacePreset = index
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboDeinterlaceEnabled
+                        title: qsTr("Skip the spatial check")
+                        hint: qsTr("Off")
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboDeinterlaceEnabled
-                                title: qsTr("Algorithm")
-                                hint: qsTr("(Yadif)")
-
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    model: [qsTr("Weave"), qsTr("Bob"), qsTr("Yadif"), qsTr("Bwdif")]
-                                    currentIndex: Chiaki.settings.placeboDeinterlaceAlgorithm
-                                    enabled: Chiaki.settings.placeboDeinterlaceEnabled
-                                    visible: Chiaki.settings.placeboDeinterlaceEnabled
-                                    onActivated: index => Chiaki.settings.placeboDeinterlaceAlgorithm = index
-                                }
-                            }
-
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboDeinterlaceEnabled
-                                title: qsTr("Skip spatial check")
-                                hint: qsTr("(no)")
-
-                                Item { Layout.fillWidth: true }
-                                C.CheckBox {
-                                    checked: Chiaki.settings.placeboDeinterlaceSkipSpatial
-                                    enabled: Chiaki.settings.placeboDeinterlaceEnabled
-                                    visible: Chiaki.settings.placeboDeinterlaceEnabled
-                                    onToggled: Chiaki.settings.placeboDeinterlaceSkipSpatial = checked
-                                    Material.roundedScale: Material.SmallScale
-                                }
-                            }
+                        Item { Layout.fillWidth: true }
+                        C.Toggle {
+                            Accessible.name: qsTr("Skip the spatial check")
+                            lastInFocusChain: true
+                            checked: Chiaki.settings.placeboDeinterlaceSkipSpatial
+                            enabled: Chiaki.settings.placeboDeinterlaceEnabled
+                            onToggled: Chiaki.settings.placeboDeinterlaceSkipSpatial = checked
                         }
                     }
                 }
             }
 
-            Item {
+            Page {
                 // Debanding
-                Flickable {
-                    id: page3Flick
-                    anchors.fill: parent
-                    clip: true
-                    contentWidth: width
-                    contentHeight: page3Column.implicitHeight + 48
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {
-                        visible: page3Flick.contentHeight > page3Flick.height
+                C.SettingsSection {
+                    title: qsTr("Debanding")
+                    description: qsTr("Smooths out the steps that compression leaves in colour gradients.")
+
+                    Setting {
+                        title: qsTr("Deband")
+                        hint: qsTr("On")
+
+                        Item { Layout.fillWidth: true }
+                        C.Toggle {
+                            Accessible.name: qsTr("Deband")
+                            lastInFocusChain: !Chiaki.settings.placeboDebandEnabled
+                            checked: Chiaki.settings.placeboDebandEnabled
+                            onToggled: Chiaki.settings.placeboDebandEnabled = checked
+                        }
                     }
-                    ColumnLayout {
-                        id: page3Column
-                        x: Math.max(28, Math.round((page3Flick.width - width) / 2))
-                        y: 24
-                        width: Math.min(page3Flick.width - 56, 980)
-                        spacing: 18
 
-                        C.SettingsSection {
-                            title: qsTr("Debanding")
+                    Setting {
+                        visible: Chiaki.settings.placeboDebandEnabled
+                        title: qsTr("Preset")
+                        hint: qsTr("Custom")
 
-                            C.SettingRow {
-                                title: qsTr("Deband Enabled")
-                                description: qsTr("Enable Debanding")
-                                hint: qsTr("(Checked)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Debanding preset")
+                            lastInFocusChain: Chiaki.settings.placeboDebandPreset != 0
+                            model: [qsTr("Custom"), qsTr("Default")]
+                            currentIndex: Chiaki.settings.placeboDebandPreset
+                            onActivated: index => Chiaki.settings.placeboDebandPreset = index
+                        }
+                    }
 
-                                Item { Layout.fillWidth: true }
-                                C.CheckBox {
-                                    checked: Chiaki.settings.placeboDebandEnabled
-                                    onToggled: Chiaki.settings.placeboDebandEnabled = checked
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
+                        title: qsTr("Iterations")
+                        hint: "1"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboDebandEnabled
-                                title: qsTr("Deband Preset")
-                                hint: qsTr("(Custom)")
+                        Amount {
+                            Accessible.name: qsTr("Debanding iterations")
+                            from: 0
+                            to: 16
+                            stepSize: 1
+                            value: Chiaki.settings.placeboDebandIterations
+                            valueText: qsTr("%1").arg(value)
+                            onMoved: Chiaki.settings.placeboDebandIterations = value
+                        }
+                    }
 
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    model: [qsTr("Custom"), qsTr("Default")]
-                                    currentIndex: Chiaki.settings.placeboDebandPreset
-                                    onActivated: index => Chiaki.settings.placeboDebandPreset = index
-                                    visible: Chiaki.settings.placeboDebandEnabled
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
+                        title: qsTr("Threshold")
+                        hint: "3.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
-                                title: qsTr("Deband Iterations")
-                                hint: qsTr("(1)")
+                        Amount {
+                            Accessible.name: qsTr("Debanding threshold")
+                            from: 0.0
+                            to: 1000.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboDebandThreshold
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboDebandThreshold = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider2
-                                    Layout.fillWidth: true
-                                    from: 0
-                                    to: 16
-                                    stepSize: 1
-                                    value: Chiaki.settings.placeboDebandIterations
-                                    onMoved: Chiaki.settings.placeboDebandIterations = value
-                                    visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr("%1").arg(valueSlider2.value)
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
+                        title: qsTr("Radius")
+                        hint: "16.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
-                                title: qsTr("Deband Threshold")
-                                hint: qsTr("(3.0)")
+                        Amount {
+                            Accessible.name: qsTr("Debanding radius")
+                            from: 0.0
+                            to: 1000.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboDebandRadius
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboDebandRadius = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider3
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 1000.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboDebandThreshold
-                                    onMoved: Chiaki.settings.placeboDebandThreshold = value
-                                    visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider3.value.toFixed(1))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
+                        title: qsTr("Grain")
+                        hint: "4.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
-                                title: qsTr("Deband Radius")
-                                hint: qsTr("(16.0)")
-
-                                C.Slider {
-                                    id: valueSlider4
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 1000.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboDebandRadius
-                                    onMoved: Chiaki.settings.placeboDebandRadius = value
-                                    visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider4.value.toFixed(1))
-                                }
-                            }
-
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
-                                title: qsTr("Deband Grain")
-                                hint: qsTr("(4.0)")
-
-                                C.Slider {
-                                    id: valueSlider5
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 1000.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboDebandGrain
-                                    onMoved: Chiaki.settings.placeboDebandGrain = value
-                                    visible: Chiaki.settings.placeboDebandEnabled && (Chiaki.settings.placeboDebandPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider5.value.toFixed(1))
-                                }
-                            }
+                        Amount {
+                            Accessible.name: qsTr("Debanding grain")
+                            lastInFocusChain: true
+                            from: 0.0
+                            to: 1000.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboDebandGrain
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboDebandGrain = value
                         }
                     }
                 }
             }
 
-            Item {
+            Page {
                 // Sigmoidization
-                Flickable {
-                    id: page4Flick
-                    anchors.fill: parent
-                    clip: true
-                    contentWidth: width
-                    contentHeight: page4Column.implicitHeight + 48
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {
-                        visible: page4Flick.contentHeight > page4Flick.height
+                C.SettingsSection {
+                    title: qsTr("Sigmoidization")
+                    description: qsTr("Less ringing around edges when the picture is made larger.")
+
+                    Setting {
+                        title: qsTr("Sigmoidize")
+                        hint: qsTr("On")
+
+                        Item { Layout.fillWidth: true }
+                        C.Toggle {
+                            Accessible.name: qsTr("Sigmoidize")
+                            lastInFocusChain: !Chiaki.settings.placeboSigmoidEnabled
+                            checked: Chiaki.settings.placeboSigmoidEnabled
+                            onToggled: Chiaki.settings.placeboSigmoidEnabled = checked
+                        }
                     }
-                    ColumnLayout {
-                        id: page4Column
-                        x: Math.max(28, Math.round((page4Flick.width - width) / 2))
-                        y: 24
-                        width: Math.min(page4Flick.width - 56, 980)
-                        spacing: 18
 
-                        C.SettingsSection {
-                            title: qsTr("Sigmoidization")
+                    Setting {
+                        visible: Chiaki.settings.placeboSigmoidEnabled
+                        title: qsTr("Preset")
+                        hint: qsTr("Custom")
 
-                            C.SettingRow {
-                                title: qsTr("Sigmoidization Enabled")
-                                description: qsTr("Enable Sigmoidization")
-                                hint: qsTr("(Checked)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Sigmoidization preset")
+                            lastInFocusChain: Chiaki.settings.placeboSigmoidPreset != 0
+                            model: [qsTr("Custom"), qsTr("Default")]
+                            currentIndex: Chiaki.settings.placeboSigmoidPreset
+                            onActivated: index => Chiaki.settings.placeboSigmoidPreset = index
+                        }
+                    }
 
-                                Item { Layout.fillWidth: true }
-                                C.CheckBox {
-                                    checked: Chiaki.settings.placeboSigmoidEnabled
-                                    onToggled: Chiaki.settings.placeboSigmoidEnabled = checked
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboSigmoidEnabled && (Chiaki.settings.placeboSigmoidPreset == 0)
+                        title: qsTr("Centre")
+                        hint: "0.75"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboSigmoidEnabled
-                                title: qsTr("Sigmoid Preset")
-                                hint: qsTr("(Custom)")
+                        Amount {
+                            Accessible.name: qsTr("Sigmoid centre")
+                            from: 0.00
+                            to: 1.00
+                            stepSize: 0.01
+                            value: Chiaki.settings.placeboSigmoidCenter
+                            valueText: value.toFixed(2)
+                            onMoved: Chiaki.settings.placeboSigmoidCenter = value
+                        }
+                    }
 
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    model: [qsTr("Custom"), qsTr("Default")]
-                                    currentIndex: Chiaki.settings.placeboSigmoidPreset
-                                    onActivated: index => Chiaki.settings.placeboSigmoidPreset = index
-                                    visible: Chiaki.settings.placeboSigmoidEnabled
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboSigmoidEnabled && (Chiaki.settings.placeboSigmoidPreset == 0)
+                        title: qsTr("Slope")
+                        hint: "6.5"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboSigmoidEnabled && (Chiaki.settings.placeboSigmoidPreset == 0)
-                                title: qsTr("Sigmoid Center")
-                                hint: qsTr("(0.75)")
-
-                                C.Slider {
-                                    id: valueSlider6
-                                    Layout.fillWidth: true
-                                    from: 0.00
-                                    to: 1.00
-                                    stepSize: 0.01
-                                    value: Chiaki.settings.placeboSigmoidCenter
-                                    onMoved: Chiaki.settings.placeboSigmoidCenter = value
-                                    visible: Chiaki.settings.placeboSigmoidEnabled && (Chiaki.settings.placeboSigmoidPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider6.value.toFixed(2))
-                                }
-                            }
-
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboSigmoidEnabled && (Chiaki.settings.placeboSigmoidPreset == 0)
-                                title: qsTr("Sigmoid Slope")
-                                hint: qsTr("(6.5)")
-
-                                C.Slider {
-                                    id: valueSlider7
-                                    Layout.fillWidth: true
-                                    from: 1.0
-                                    to: 20.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboSigmoidSlope
-                                    onMoved: Chiaki.settings.placeboSigmoidSlope = value
-                                    visible: Chiaki.settings.placeboSigmoidEnabled && (Chiaki.settings.placeboSigmoidPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider7.value.toFixed(1))
-                                }
-                            }
+                        Amount {
+                            Accessible.name: qsTr("Sigmoid slope")
+                            lastInFocusChain: true
+                            from: 1.0
+                            to: 20.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboSigmoidSlope
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboSigmoidSlope = value
                         }
                     }
                 }
             }
 
-            Item {
-                // Color
-                Flickable {
-                    id: page5Flick
-                    anchors.fill: parent
-                    clip: true
-                    contentWidth: width
-                    contentHeight: page5Column.implicitHeight + 48
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {
-                        visible: page5Flick.contentHeight > page5Flick.height
+            Page {
+                // Colour
+                C.SettingsSection {
+                    title: qsTr("Colour")
+                    description: qsTr("Brightness, contrast, saturation, hue, gamma and temperature of the picture.")
+
+                    Setting {
+                        title: qsTr("Adjust the colours")
+                        hint: qsTr("On")
+
+                        Item { Layout.fillWidth: true }
+                        C.Toggle {
+                            Accessible.name: qsTr("Adjust the colours")
+                            lastInFocusChain: !Chiaki.settings.placeboColorAdjustmentEnabled
+                            checked: Chiaki.settings.placeboColorAdjustmentEnabled
+                            onToggled: Chiaki.settings.placeboColorAdjustmentEnabled = checked
+                        }
                     }
-                    ColumnLayout {
-                        id: page5Column
-                        x: Math.max(28, Math.round((page5Flick.width - width) / 2))
-                        y: 24
-                        width: Math.min(page5Flick.width - 56, 980)
-                        spacing: 18
 
-                        C.SettingsSection {
-                            title: qsTr("Colour")
+                    Setting {
+                        visible: Chiaki.settings.placeboColorAdjustmentEnabled
+                        title: qsTr("Preset")
+                        hint: qsTr("Custom")
 
-                            C.SettingRow {
-                                title: qsTr("Color Adjustment Enabled")
-                                description: qsTr("Enable Color Adjustment")
-                                hint: qsTr("(Checked)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Colour preset")
+                            lastInFocusChain: Chiaki.settings.placeboColorAdjustmentPreset != 0
+                            model: [qsTr("Custom"), qsTr("Neutral")]
+                            currentIndex: Chiaki.settings.placeboColorAdjustmentPreset
+                            onActivated: index => Chiaki.settings.placeboColorAdjustmentPreset = index
+                        }
+                    }
 
-                                Item { Layout.fillWidth: true }
-                                C.CheckBox {
-                                    checked: Chiaki.settings.placeboColorAdjustmentEnabled
-                                    onToggled: Chiaki.settings.placeboColorAdjustmentEnabled = checked
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
+                        title: qsTr("Brightness")
+                        hint: "0.00"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorAdjustmentEnabled
-                                title: qsTr("Color Adjustment Preset")
-                                hint: qsTr("(Custom)")
+                        Amount {
+                            Accessible.name: qsTr("Brightness")
+                            from: -1.00
+                            to: 1.00
+                            stepSize: 0.01
+                            value: Chiaki.settings.placeboColorAdjustmentBrightness
+                            valueText: value.toFixed(2)
+                            onMoved: Chiaki.settings.placeboColorAdjustmentBrightness = value
+                        }
+                    }
 
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    model: [qsTr("Custom"), qsTr("Neutral")]
-                                    currentIndex: Chiaki.settings.placeboColorAdjustmentPreset
-                                    onActivated: index => Chiaki.settings.placeboColorAdjustmentPreset = index
-                                    visible: Chiaki.settings.placeboColorAdjustmentEnabled
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
+                        title: qsTr("Contrast")
+                        hint: "1.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                title: qsTr("Brightness")
-                                hint: qsTr("(0.00)")
+                        Amount {
+                            Accessible.name: qsTr("Contrast")
+                            from: 0.0
+                            to: 100.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboColorAdjustmentContrast
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboColorAdjustmentContrast = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider8
-                                    Layout.fillWidth: true
-                                    from: -1.00
-                                    to: 1.00
-                                    stepSize: 0.01
-                                    value: Chiaki.settings.placeboColorAdjustmentBrightness
-                                    onMoved: Chiaki.settings.placeboColorAdjustmentBrightness = value
-                                    visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider8.value.toFixed(2))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
+                        title: qsTr("Saturation")
+                        hint: "1.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                title: qsTr("Contrast")
-                                hint: qsTr("(1.0)")
+                        Amount {
+                            Accessible.name: qsTr("Saturation")
+                            from: 0.0
+                            to: 100.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboColorAdjustmentSaturation
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboColorAdjustmentSaturation = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider9
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 100.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboColorAdjustmentContrast
-                                    onMoved: Chiaki.settings.placeboColorAdjustmentContrast = value
-                                    visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider9.value.toFixed(1))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
+                        title: qsTr("Hue")
+                        hint: "0.00"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                title: qsTr("Saturation")
-                                hint: qsTr("(1.0)")
+                        Amount {
+                            Accessible.name: qsTr("Hue")
+                            from: 0.00
+                            to: 6.28
+                            stepSize: 0.01
+                            value: Chiaki.settings.placeboColorAdjustmentHue
+                            valueText: value.toFixed(2)
+                            onMoved: Chiaki.settings.placeboColorAdjustmentHue = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider10
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 100.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboColorAdjustmentSaturation
-                                    onMoved: Chiaki.settings.placeboColorAdjustmentSaturation = value
-                                    visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider10.value.toFixed(1))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
+                        title: qsTr("Gamma")
+                        hint: "1.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                title: qsTr("Hue")
-                                hint: qsTr("(0.00)")
+                        Amount {
+                            Accessible.name: qsTr("Gamma")
+                            from: 0.0
+                            to: 100.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboColorAdjustmentGamma
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboColorAdjustmentGamma = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider11
-                                    Layout.fillWidth: true
-                                    from: 0.00
-                                    to: 6.28
-                                    stepSize: 0.01
-                                    value: Chiaki.settings.placeboColorAdjustmentHue
-                                    onMoved: Chiaki.settings.placeboColorAdjustmentHue = value
-                                    visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider11.value.toFixed(2))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
+                        title: qsTr("Temperature")
+                        hint: "0.000"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                title: qsTr("Gamma")
-                                hint: qsTr("(1.0)")
-
-                                C.Slider {
-                                    id: valueSlider12
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 100.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboColorAdjustmentGamma
-                                    onMoved: Chiaki.settings.placeboColorAdjustmentGamma = value
-                                    visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider12.value.toFixed(1))
-                                }
-                            }
-
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                title: qsTr("Temperature")
-                                hint: qsTr("(0.000)")
-
-                                C.Slider {
-                                    id: valueSlider13
-                                    Layout.fillWidth: true
-                                    from: -1.143
-                                    to: 5.286
-                                    stepSize: 0.001
-                                    value: Chiaki.settings.placeboColorAdjustmentTemperature
-                                    onMoved: Chiaki.settings.placeboColorAdjustmentTemperature = value
-                                    visible: Chiaki.settings.placeboColorAdjustmentEnabled && (Chiaki.settings.placeboColorAdjustmentPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider13.value.toFixed(3))
-                                }
-                            }
+                        Amount {
+                            Accessible.name: qsTr("Temperature")
+                            lastInFocusChain: true
+                            from: -1.143
+                            to: 5.286
+                            stepSize: 0.001
+                            value: Chiaki.settings.placeboColorAdjustmentTemperature
+                            valueText: value.toFixed(3)
+                            onMoved: Chiaki.settings.placeboColorAdjustmentTemperature = value
                         }
                     }
                 }
             }
 
-            Item {
-                // Peak Detection
-                Flickable {
-                    id: page6Flick
-                    anchors.fill: parent
-                    clip: true
-                    contentWidth: width
-                    contentHeight: page6Column.implicitHeight + 48
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {
-                        visible: page6Flick.contentHeight > page6Flick.height
+            Page {
+                // Peak detection
+                C.SettingsSection {
+                    title: qsTr("Peak detection")
+                    description: qsTr("Measures how bright each scene is, for HDR tone mapping.")
+
+                    Setting {
+                        title: qsTr("Detect the HDR peak")
+                        hint: qsTr("On")
+
+                        Item { Layout.fillWidth: true }
+                        C.Toggle {
+                            Accessible.name: qsTr("Detect the HDR peak")
+                            lastInFocusChain: !Chiaki.settings.placeboPeakDetectionEnabled
+                            checked: Chiaki.settings.placeboPeakDetectionEnabled
+                            onToggled: Chiaki.settings.placeboPeakDetectionEnabled = checked
+                        }
                     }
-                    ColumnLayout {
-                        id: page6Column
-                        x: Math.max(28, Math.round((page6Flick.width - width) / 2))
-                        y: 24
-                        width: Math.min(page6Flick.width - 56, 980)
-                        spacing: 18
 
-                        C.SettingsSection {
-                            title: qsTr("Peak detection")
+                    Setting {
+                        visible: Chiaki.settings.placeboPeakDetectionEnabled
+                        title: qsTr("Preset")
+                        hint: qsTr("Custom")
 
-                            C.SettingRow {
-                                title: qsTr("HDR Peak Detection Enabled")
-                                description: qsTr("Enable HDR Peak Detection")
-                                hint: qsTr("(Checked)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Peak detection preset")
+                            lastInFocusChain: Chiaki.settings.placeboPeakDetectionPreset != 0
+                            model: [qsTr("Custom"), qsTr("Default"), qsTr("High quality")]
+                            currentIndex: Chiaki.settings.placeboPeakDetectionPreset
+                            onActivated: index => Chiaki.settings.placeboPeakDetectionPreset = index
+                        }
+                    }
 
-                                Item { Layout.fillWidth: true }
-                                C.CheckBox {
-                                    checked: Chiaki.settings.placeboPeakDetectionEnabled
-                                    onToggled: Chiaki.settings.placeboPeakDetectionEnabled = checked
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
+                        title: qsTr("Smoothing period")
+                        hint: "20.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboPeakDetectionEnabled
-                                title: qsTr("Peak Detection Preset")
-                                hint: qsTr("(High Quality)")
+                        Amount {
+                            Accessible.name: qsTr("Peak smoothing period")
+                            from: 0.0
+                            to: 1000.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboPeakDetectionPeakSmoothingPeriod
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboPeakDetectionPeakSmoothingPeriod = value
+                        }
+                    }
 
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    model: [qsTr("Custom"), qsTr("Default"), qsTr("High Quality")]
-                                    currentIndex: Chiaki.settings.placeboPeakDetectionPreset
-                                    onActivated: index => Chiaki.settings.placeboPeakDetectionPreset = index
-                                    visible: Chiaki.settings.placeboPeakDetectionEnabled
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
+                        title: qsTr("Scene threshold, low")
+                        hint: "1.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                title: qsTr("Peak Smoothing Period")
-                                hint: qsTr("(20.0)")
+                        Amount {
+                            Accessible.name: qsTr("Scene threshold, low")
+                            from: 0.0
+                            to: 100.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboPeakDetectionSceneThresholdLow
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboPeakDetectionSceneThresholdLow = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider14
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 1000.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboPeakDetectionPeakSmoothingPeriod
-                                    onMoved: Chiaki.settings.placeboPeakDetectionPeakSmoothingPeriod = value
-                                    visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider14.value.toFixed(1))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
+                        title: qsTr("Scene threshold, high")
+                        hint: "3.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                title: qsTr("Scene Threshold Low")
-                                hint: qsTr("(1.0)")
+                        Amount {
+                            Accessible.name: qsTr("Scene threshold, high")
+                            from: 0.0
+                            to: 100.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboPeakDetectionSceneThresholdHigh
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboPeakDetectionSceneThresholdHigh = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider15
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 100.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboPeakDetectionSceneThresholdLow
-                                    onMoved: Chiaki.settings.placeboPeakDetectionSceneThresholdLow = value
-                                    visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider15.value.toFixed(1))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
+                        title: qsTr("Peak percentile")
+                        hint: "100.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                title: qsTr("Scene Threshold High")
-                                hint: qsTr("(3.0)")
+                        Amount {
+                            Accessible.name: qsTr("Peak percentile")
+                            from: 0.0
+                            to: 100.0
+                            stepSize: 0.001
+                            value: Chiaki.settings.placeboPeakDetectionPeakPercentile
+                            valueText: value.toFixed(3)
+                            onMoved: Chiaki.settings.placeboPeakDetectionPeakPercentile = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider16
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 100.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboPeakDetectionSceneThresholdHigh
-                                    onMoved: Chiaki.settings.placeboPeakDetectionSceneThresholdHigh = value
-                                    visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider16.value.toFixed(1))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
+                        title: qsTr("Black cutoff")
+                        hint: "1.0"
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                title: qsTr("Peak Percentile")
-                                hint: qsTr("(99.995)")
+                        Amount {
+                            Accessible.name: qsTr("Black cutoff")
+                            from: 0.0
+                            to: 100.0
+                            stepSize: 0.1
+                            value: Chiaki.settings.placeboPeakDetectionBlackCutoff
+                            valueText: value.toFixed(1)
+                            onMoved: Chiaki.settings.placeboPeakDetectionBlackCutoff = value
+                        }
+                    }
 
-                                C.Slider {
-                                    id: valueSlider17
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 100.0
-                                    stepSize: 0.001
-                                    value: Chiaki.settings.placeboPeakDetectionPeakPercentile
-                                    onMoved: Chiaki.settings.placeboPeakDetectionPeakPercentile = value
-                                    visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider17.value.toFixed(3))
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
+                        title: qsTr("Allow a delayed peak")
+                        description: qsTr("Uses the peak one frame late.")
+                        hint: qsTr("Off")
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                title: qsTr("Black Cutoff")
-                                hint: qsTr("(1.0)")
-
-                                C.Slider {
-                                    id: valueSlider18
-                                    Layout.fillWidth: true
-                                    from: 0.0
-                                    to: 100.0
-                                    stepSize: 0.1
-                                    value: Chiaki.settings.placeboPeakDetectionBlackCutoff
-                                    onMoved: Chiaki.settings.placeboPeakDetectionBlackCutoff = value
-                                    visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                }
-                                Label {
-                                    Layout.preferredWidth: 110
-                                    horizontalAlignment: Text.AlignRight
-                                    text: qsTr(valueSlider18.value.toFixed(1))
-                                }
-                            }
-
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                title: qsTr("Allow Delayed Peak")
-                                description: qsTr("Enable 1-Frame Delayed Peak")
-                                hint: qsTr("(Unchecked)")
-
-                                Item { Layout.fillWidth: true }
-                                C.CheckBox {
-                                    checked: Chiaki.settings.placeboPeakDetectionAllowDelayedPeak
-                                    onToggled: Chiaki.settings.placeboPeakDetectionAllowDelayedPeak = checked
-                                    visible: Chiaki.settings.placeboPeakDetectionEnabled && (Chiaki.settings.placeboPeakDetectionPreset == 0)
-                                }
-                            }
+                        Item { Layout.fillWidth: true }
+                        C.Toggle {
+                            Accessible.name: qsTr("Allow a delayed peak")
+                            lastInFocusChain: true
+                            checked: Chiaki.settings.placeboPeakDetectionAllowDelayedPeak
+                            onToggled: Chiaki.settings.placeboPeakDetectionAllowDelayedPeak = checked
                         }
                     }
                 }
             }
 
-            Item {
-                // Color Mapping
-                Flickable {
-                    id: page7Flick
-                    anchors.fill: parent
-                    clip: true
-                    contentWidth: width
-                    contentHeight: page7Column.implicitHeight + 48
-                    flickableDirection: Flickable.VerticalFlick
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {
-                        visible: page7Flick.contentHeight > page7Flick.height
+            Page {
+                // Colour mapping
+                C.SettingsSection {
+                    title: qsTr("Colour mapping")
+                    description: qsTr("Fits the colours and the brightness to your screen.")
+
+                    Setting {
+                        title: qsTr("Map the colours")
+                        hint: qsTr("On")
+
+                        Item { Layout.fillWidth: true }
+                        C.Toggle {
+                            Accessible.name: qsTr("Map the colours")
+                            lastInFocusChain: !Chiaki.settings.placeboColorMappingEnabled
+                            checked: Chiaki.settings.placeboColorMappingEnabled
+                            onToggled: Chiaki.settings.placeboColorMappingEnabled = checked
+                        }
                     }
-                    ColumnLayout {
-                        id: page7Column
-                        x: Math.max(28, Math.round((page7Flick.width - width) / 2))
-                        y: 24
-                        width: Math.min(page7Flick.width - 56, 980)
-                        spacing: 18
 
-                        C.SettingsSection {
-                            title: qsTr("Colour mapping")
+                    Setting {
+                        visible: Chiaki.settings.placeboColorMappingEnabled
+                        title: qsTr("Preset")
+                        hint: qsTr("Custom")
 
-                            C.SettingRow {
-                                title: qsTr("Color Mapping Enabled")
-                                description: qsTr("Use Color Mapping Settings")
-                                hint: qsTr("(Checked)")
+                        C.Dropdown {
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("Colour mapping preset")
+                            lastInFocusChain: Chiaki.settings.placeboColorMappingPreset != 0
+                            model: [qsTr("Custom"), qsTr("Default"), qsTr("High quality")]
+                            currentIndex: Chiaki.settings.placeboColorMappingPreset
+                            onActivated: index => Chiaki.settings.placeboColorMappingPreset = index
+                        }
+                    }
 
-                                Item { Layout.fillWidth: true }
-                                C.CheckBox {
-                                    checked: Chiaki.settings.placeboColorMappingEnabled
-                                    onToggled: Chiaki.settings.placeboColorMappingEnabled = checked
-                                }
-                            }
+                    Setting {
+                        visible: Chiaki.settings.placeboColorMappingEnabled && Chiaki.settings.placeboColorMappingPreset == 0
+                        title: qsTr("Custom colour mapping")
+                        description: qsTr("Gamut and tone mapping, in a page of their own.")
 
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorMappingEnabled
-                                title: qsTr("Color Mapping Preset")
-                                hint: qsTr("(High Quality)")
-
-                                C.ComboBox {
-                                    Layout.fillWidth: true
-                                    model: [qsTr("Custom"), qsTr("Default"), qsTr("High Quality")]
-                                    currentIndex: Chiaki.settings.placeboColorMappingPreset
-                                    onActivated: index => Chiaki.settings.placeboColorMappingPreset = index
-                                    visible: Chiaki.settings.placeboColorMappingEnabled
-                                }
-                            }
-
-                            C.SettingRow {
-                                visible: Chiaki.settings.placeboColorMappingEnabled && Chiaki.settings.placeboColorMappingPreset == 0
-                                title: qsTr("Color Mapping Settings")
-
-                                Item { Layout.fillWidth: true }
-                                C.Button {
-                                    text: qsTr("Open")
-                                    onClicked: root.showPlaceboColorMappingDialog()
-                                    visible: Chiaki.settings.placeboColorMappingEnabled && Chiaki.settings.placeboColorMappingPreset == 0
-                                    Material.roundedScale: Material.SmallScale
-                                }
-                            }
+                        Item { Layout.fillWidth: true }
+                        C.PillButton {
+                            small: true
+                            lastInFocusChain: true
+                            text: qsTr("Open…")
+                            onClicked: root.showPlaceboColorMappingDialog()
                         }
                     }
                 }

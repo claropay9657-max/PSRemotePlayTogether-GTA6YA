@@ -1,57 +1,52 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
 
-// A group of settings on a card: a heading, an optional line about it, and its
-// rows (SettingRow) one under the other.
-Rectangle {
+// A group of settings in the older dialogs (the renderer's options, the display,
+// controller mapping), in the look of the settings window's SettingsGroup: a small
+// capital heading, maybe a line about it, and its rows (SettingRow) on one card.
+ColumnLayout {
     id: section
     property string title
     property string description
     default property alias content: rows.data
+    readonly property bool isSettingsGroup: true
 
     Layout.fillWidth: true
-    implicitHeight: column.implicitHeight + 34
-    radius: 16
-    color: Qt.rgba(1, 1, 1, 0.035)
-    border.width: 1
-    border.color: Qt.rgba(1, 1, 1, 0.07)
+    spacing: 8
 
-    ColumnLayout {
-        id: column
-        anchors {
-            left: parent.left
-            right: parent.right
-            top: parent.top
-            topMargin: 16
-            leftMargin: 22
-            rightMargin: 22
-        }
-        spacing: 3
+    SectionLabel {
+        visible: text.length > 0
+        text: section.title
+    }
 
-        Label {
-            visible: text.length > 0
-            text: section.title
-            font.pixelSize: 12
-            font.bold: true
-            font.letterSpacing: 1.3
-            font.capitalization: Font.AllUppercase
-            color: "#b18cff"
-        }
+    Text {
+        Layout.fillWidth: true
+        Layout.topMargin: -4
+        visible: text.length > 0
+        text: section.description
+        wrapMode: Text.WordWrap
+        color: Theme.textDim
+        font.pixelSize: 13
+    }
 
-        Label {
-            Layout.fillWidth: true
-            visible: text.length > 0
-            text: section.description
-            wrapMode: Text.WordWrap
-            opacity: 0.55
-            font.pixelSize: 13
-        }
+    Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: rows.implicitHeight + 4
+        radius: 18
+        color: Theme.card
+        border.width: 1
+        border.color: Theme.line
 
         ColumnLayout {
             id: rows
-            Layout.fillWidth: true
-            Layout.topMargin: 6
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                topMargin: 2
+                leftMargin: 18
+                rightMargin: 18
+            }
             spacing: 0
         }
     }

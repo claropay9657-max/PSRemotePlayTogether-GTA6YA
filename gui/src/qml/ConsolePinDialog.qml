@@ -1,12 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
-import QtQuick.Controls.Material
 
 import org.streetpea.chiaking
 
 import "controls" as C
 
+// The passcode of the user on a console, saved so that the app types it in on connecting.
 DialogView {
     property var consoleIndex
     title: qsTr("Console login PIN")
@@ -16,27 +15,34 @@ DialogView {
         Chiaki.setConsolePin(consoleIndex, pin.text.trim());
         stack.pop();
     }
+
     Item {
+        id: page
+
         C.FormCard {
             title: qsTr("Log in without typing")
             text: qsTr("If your user on the console is protected with a 4-digit passcode, the console asks for it every time you connect. Save it here and the app enters it for you.")
             footnote: qsTr("This is the passcode of your PlayStation user, not the 8-digit number used to register the console.")
 
-            GridLayout {
-                columns: 2
-                rowSpacing: 10
-                columnSpacing: 20
+            ColumnLayout {
+                width: Math.min(512, page.width - 80)
+                spacing: 6
 
-                Label {
-                    Layout.alignment: Qt.AlignRight
-                    text: qsTr("Login PIN (4 digits):")
+                Text {
+                    text: qsTr("Login PIN")
+                    color: C.Theme.textSoft
+                    font.pixelSize: 13
+                    font.weight: Font.Bold
                 }
 
-                C.TextField {
+                C.Field {
                     id: pin
+                    Layout.fillWidth: true
+                    Accessible.name: qsTr("Login PIN")
+                    hint: qsTr("4 digits")
                     validator: RegularExpressionValidator { regularExpression: /[0-9]{4}/ }
+                    inputMethodHints: Qt.ImhDigitsOnly
                     echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                    Layout.preferredWidth: 400
                     firstInFocusChain: true
                     lastInFocusChain: true
                 }

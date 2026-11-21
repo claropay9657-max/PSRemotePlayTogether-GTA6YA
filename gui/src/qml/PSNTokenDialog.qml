@@ -1,24 +1,25 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls as QQC
 
 import org.streetpea.chiaking
 
 import "controls" as C
 
+// Logging in to PSN for playing via PSN. On Sony's page inside the app where the app
+// has a web view (Windows); otherwise, and always on macOS and Linux, in the browser,
+// with the address the browser lands on pasted back here. What happens then shows in
+// a note over the page.
 DialogView {
     id: dialog
     property var psnurl
     property var expired
     property bool closing: false
-    title: {
-        if(expired)
-            qsTr("Credentials Expired: Refresh PSN Remote Connection")
-        else
-            qsTr("Setup Automatic PSN Remote Connection")
-    }
-    buttonText: qsTr("Setup")
+    /** "web": Sony's page in the app; "browser": in the web browser. Empty until shown. */
+    property string mode
+    title: expired ? qsTr("Log in to PSN again") : qsTr("Log in to PSN")
+    header: expired ? qsTr("Your PSN log-in has run out.") : ""
+    buttonText: qsTr("Finish")
     buttonEnabled: url.text.trim()
     buttonVisible: false
     onAccepted: {
@@ -31,16 +32,18 @@ DialogView {
             else
             {
                 logArea.text += msg + "\n";
-                logDialog.standardButtons = Dialog.Close;
+                logDialog.allDone = true;
             }
         });
     }
-    StackView.onActivated: {
+    QQC.StackView.onActivated: {
         Chiaki.settings.remotePlayAsk = true;
-        nativeTokenForm.visible = true;
-        nativeTokenForm.forceActiveFocus(Qt.TabFocusReason);
+        if (!mode) {
+            mode = "web";
+            nativeTokenForm.forceActiveFocus(Qt.TabFocusReason);
+        }
         if(Qt.platform.os == "linux" || Qt.platform.os == "osx")
-            extBrowserButton.clicked();
+            useBrowser();
     }
     function close() {
         if(webView.web)
@@ -54,11 +57,35 @@ DialogView {
         else
             root.closeDialog();
     }
+    /** Opens Sony's page in the browser, once, and waits for the address pasted back. */
+    function useBrowser() {
+        if (mode !== "browser") {
+            mode = "browser";
+            dialog.buttonVisible = true;
+            psnurl = Chiaki.openPsnLink();
+            if(psnurl)
+            {
+                openurl.selectAll();
+                openurl.copy();
+            }
+        }
+        pasteUrl.forceActiveFocus(Qt.TabFocusReason);
+    }
+
+    component FieldLabel: Text {
+        color: C.Theme.textSoft
+        font.pixelSize: 13
+        font.weight: Font.Bold
+    }
 
     Item {
+        id: page
+        readonly property int gutter: width < 600 ? 16 : 32
+
+        // ------------------------------------------------ Sony's page in the app
         Item {
             id: nativeTokenForm
-            visible: false
+            visible: dialog.mode === "web"
             Keys.onPressed: (event) => {
                 if (event.modifiers)
                     return;
@@ -74,85 +101,57 @@ DialogView {
                 }
             }
             anchors.fill: parent
-            ToolBar {
+
+            // L1 and R1 (Page Up, Page Down) press these
+            Item {
                 id: psnTokenToolbar
                 anchors {
                     top: parent.top
                     left: parent.left
                     right: parent.right
                 }
-                height: 80
+                height: 64
 
                 RowLayout {
                     anchors {
                         fill: parent
-                        leftMargin: 10
-                        rightMargin: 10
+                        leftMargin: page.gutter
+                        rightMargin: page.gutter
                     }
-                    Button {
+                    spacing: 16
+
+                    C.GlyphButton {
                         id: reloadButton
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 350
-                        flat: true
-                        text: "reload + clear cookies"
-                        Image {
-                            anchors {
-                                left: parent.left
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: 12
-                            }
-                            width: 28
-                            height: 28
-                            sourceSize: Qt.size(width, height)
-                            source: "qrc:/icons/l1.svg"
-                        }
+                        glyph: Chiaki.controllers.length > 0 ? "qrc:/icons/l1.svg" : ""
+                        text: qsTr("Clear and reload")
                         onClicked: reloadTimer.start()
-                        Material.roundedScale: Material.SmallScale
-                        focusPolicy: Qt.NoFocus
                     }
-                    ProgressBar {
-                        id: browserProgresss
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 300
-                        from: 0
-                        to: 100
-                        value: webView.web.loadProgress
-                        Material.roundedScale: Material.SmallScale
-                        focusPolicy: Qt.NoFocus
+
+                    // How far the page has loaded
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 4
+                        radius: 2
+                        color: Qt.rgba(1, 1, 1, 0.08)
+                        opacity: webView.web && webView.web.loadProgress < 100 ? 1 : 0.4
+
+                        Rectangle {
+                            width: parent.width * (webView.web ? webView.web.loadProgress : 0) / 100
+                            height: parent.height
+                            radius: 2
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: C.Theme.brandFrom }
+                                GradientStop { position: 1.0; color: C.Theme.brandTo }
+                            }
+                        }
                     }
-                    Button {
+
+                    C.GlyphButton {
                         id: extBrowserButton
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 300
-                        flat: true
-                        Image {
-                            anchors {
-                                left: parent.left
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: 12
-                            }
-                            width: 28
-                            height: 28
-                            sourceSize: Qt.size(width, height)
-                            source: "qrc:/icons/r1.svg"
-                        }
-                        focusPolicy: Qt.NoFocus
-                        text: "Use external browser"
-                        onClicked: {
-                            nativeTokenForm.visible = false;
-                            psnTokenToolbar.visible = false;
-                            nativeErrorGrid.visible = false;
-                            webView.visible = false;
-                            linkgrid.visible = true;
-                            dialog.buttonVisible = true;
-                            psnurl = Chiaki.openPsnLink();
-                            if(psnurl)
-                            {
-                                openurl.selectAll();
-                                openurl.copy();
-                            }
-                            pasteUrl.forceActiveFocus(Qt.TabFocusReason);
-                        }
+                        glyph: Chiaki.controllers.length > 0 ? "qrc:/icons/r1.svg" : ""
+                        text: qsTr("Use my browser instead")
+                        onClicked: dialog.useBrowser()
                     }
                 }
             }
@@ -175,81 +174,6 @@ DialogView {
                 }
             }
 
-            // A card behind the form
-
-            Rectangle {
-
-                visible: nativeErrorGrid.visible
-
-                anchors {
-
-                    fill: nativeErrorGrid
-
-                    margins: -28
-
-                }
-
-                radius: 18
-
-                color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.72)
-
-                border.width: 1
-
-                border.color: Qt.rgba(1, 1, 1, 0.09)
-
-            }
-
-
-            GridLayout {
-                id: nativeErrorGrid
-                visible: false
-                anchors {
-                    top: psnTokenToolbar.bottom
-                    left: parent.left
-                    right: parent.right
-                    topMargin: 50
-                }
-                columns: 2
-                rowSpacing: 18
-                columnSpacing: 20
-                Label {
-                    id: nativeErrorHeader
-                    text: "Retrieving PSN account ID failed with error: "
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: 400
-                    Layout.leftMargin: 20
-                }
-
-                Label {
-                    id: nativeErrorLabel
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: 400
-                    Layout.leftMargin: 20
-                }
-
-                Label {
-                    id: retryButton
-                    text: "Retry process"
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: 300
-                    Layout.leftMargin: 20
-                }
-                C.Button {
-                    firstInFocusChain: true
-                    lastInFocusChain: true
-                    text: "Retry"
-                    onClicked: {
-                        nativeErrorGrid.visible = false;
-                        nativeErrorLabel.text = "";
-                        nativeErrorLabel.visible = false;
-                        webView.visible = true;
-                        webView.web.url = Chiaki.psnLoginUrl();
-                    }
-                    Layout.preferredWidth: 200
-                    Layout.fillHeight: true
-                    Layout.leftMargin: 20
-                }
-            }
             Item {
                 id: webView
                 property Item web: null
@@ -258,8 +182,9 @@ DialogView {
                     bottom: parent.bottom
                     left: parent.left
                     right: parent.right
-                    leftMargin: 10
-                    rightMargin: 10
+                    leftMargin: page.gutter
+                    rightMargin: page.gutter
+                    bottomMargin: 16
                 }
                 property bool started: false
                 Component.onCompleted: {
@@ -295,7 +220,7 @@ DialogView {
                                         else
                                         {
                                             logArea.text += msg + '\n';
-                                            logDialog.standardButtons = Dialog.Close;
+                                            logDialog.allDone = true;
                                         }
                                     });
                                     request.reject();
@@ -310,155 +235,186 @@ DialogView {
                         web.anchors.fill = webView;
                     } catch (error) {
                         console.error('Create webengine view failed with error:' + error);
-                        extBrowserButton.clicked();
+                        dialog.useBrowser();
                     }
                 }
             }
         }
-        // A card behind the form
-        Rectangle {
-            visible: linkgrid.visible
-            anchors {
-                fill: linkgrid
-                margins: -28
-            }
-            radius: 18
-            color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.72)
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.09)
-        }
 
-        GridLayout {
-            id: linkgrid
-            visible: false
-            anchors {
-                top: parent.top
-                horizontalCenter: parent.horizontalCenter
-                topMargin: 50
-            }
-            columns: 2
-            rowSpacing: 18
-            columnSpacing: 20
-
-            Label {
-                text: qsTr("The login address was copied: open it in your web browser")
-                visible: psnurl
-            }
-
-            TextField {
-                id: openurl
-                text: psnurl
-                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                visible: false
-                Layout.preferredWidth: 400
-            }
-
-            C.Button {
-                id: copyUrl
-                text: qsTr("Copy the address again")
-                onClicked: {
-                    openurl.selectAll()
-                    openurl.copy()
-                }
-                KeyNavigation.priority: KeyNavigation.BeforeItem
-                KeyNavigation.up: copyUrl
-                KeyNavigation.down: url
-                visible: psnurl
-            }
-
-            Label {
-                text: qsTr("Address you were sent to after logging in")
-            }
-
-            TextField {
-                id: url
-                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                Layout.preferredWidth: 400
-                KeyNavigation.priority: {
-                    if(readOnly)
-                        KeyNavigation.BeforeItem
-                    else
-                        KeyNavigation.AfterItem
-                }
-                KeyNavigation.up: {
-                    if(psnurl)
-                        copyUrl
-                    else
-                        url
-                }
-                KeyNavigation.down: url
-                KeyNavigation.right: pasteUrl
-                C.Button {
-                    id: pasteUrl
-                    text: qsTr("Paste")
-                    anchors {
-                        left: parent.right
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: 10
-                    }
-                    onClicked: url.paste()
-                    KeyNavigation.priority: KeyNavigation.BeforeItem
-                    KeyNavigation.left: url
-                    KeyNavigation.up: {
-                        if(psnurl)
-                            copyUrl
-                        else
-                            pasteUrl
-                    }
-                    KeyNavigation.down: pasteUrl
-                }
-            }
-        }
-
+        // ------------------------------------------------ in the browser
         Item {
-            Dialog {
-                id: logDialog
-                parent: Overlay.overlay
-                x: Math.round((root.width - width) / 2)
-                y: Math.round((root.height - height) / 2)
-                title: qsTr("Create PSN Automatic Remote Connection Token")
-                modal: true
-                closePolicy: Popup.NoAutoClose
-                standardButtons: Dialog.Cancel
-                Material.roundedScale: Material.MediumScale
-                onOpened: logArea.forceActiveFocus(Qt.TabFocusReason)
-                onClosed: root.showMainView();
+            id: linkForm
+            anchors.fill: parent
+            visible: dialog.mode === "browser"
 
-                Flickable {
-                    id: logFlick
-                    implicitWidth: 600
-                    implicitHeight: 400
-                    clip: true
-                    contentWidth: logArea.contentWidth
-                    contentHeight: logArea.contentHeight
-                    flickableDirection: Flickable.AutoFlickIfNeeded
-                    ScrollBar.vertical: ScrollBar {
-                        id: logScrollbar
-                        policy: ScrollBar.AlwaysOn
-                        visible: logFlick.contentHeight > logFlick.implicitHeight
-                    }
+            C.FormCard {
+                title: qsTr("Log in with your browser")
+                text: dialog.expired
+                      ? qsTr("Your PSN log-in has run out: log in once more on Sony's page in your browser. Afterwards the browser lands on a page whose address starts with remoteplay.dl.playstation.net. Copy that whole address and paste it here.")
+                      : qsTr("Log in on Sony's page in your browser. Afterwards the browser lands on a page whose address starts with remoteplay.dl.playstation.net. Copy that whole address and paste it here.")
+                footnote: qsTr("Then press “%1” at the top.").arg(dialog.buttonText)
 
-                    Label {
-                        id: logArea
-                        width: logFlick.width
-                        wrapMode: TextEdit.Wrap
-                        Keys.onReturnPressed: if (logDialog.standardButtons == Dialog.Close) logDialog.close()
-                        Keys.onEscapePressed: logDialog.close()
-                        Keys.onPressed: (event) => {
-                            switch (event.key) {
-                            case Qt.Key_Up:
-                                if(logScrollbar.position > 0.001)
-                                    logFlick.flick(0, 500);
-                                event.accepted = true;
-                                break;
-                            case Qt.Key_Down:
-                                if(logScrollbar.position < 1.0 - logScrollbar.size - 0.001)
-                                    logFlick.flick(0, -500);
-                                event.accepted = true;
-                                break;
+                ColumnLayout {
+                    width: Math.min(512, linkForm.width - 80)
+                    spacing: 6
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 10
+                        visible: !!dialog.psnurl
+                        spacing: 12
+
+                        C.Icon {
+                            Layout.alignment: Qt.AlignVCenter
+                            iconName: "browser"
+                            size: 18
+                            color: C.Theme.headingSoft
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Sony's page opened in your browser. If it did not, paste its address there: it is copied already.")
+                            wrapMode: Text.WordWrap
+                            lineHeight: 1.15
+                            color: C.Theme.textSoft
+                            font.pixelSize: 13
+                        }
+
+                        C.PillButton {
+                            id: copyUrl
+                            small: true
+                            iconName: "copy"
+                            text: qsTr("Copy again")
+                            Accessible.name: qsTr("Copy the address again")
+                            firstInFocusChain: true
+                            onClicked: {
+                                openurl.selectAll()
+                                openurl.copy()
                             }
                         }
                     }
+
+                    FieldLabel {
+                        text: qsTr("The address you land on after logging in")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        C.Field {
+                            id: url
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("The address you land on after logging in")
+                            hint: "https://remoteplay.dl.playstation.net/…"
+                            echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
+                            firstInFocusChain: !dialog.psnurl
+                            // Right goes to Paste while not typing
+                            KeyNavigation.priority: readOnly ? KeyNavigation.BeforeItem : KeyNavigation.AfterItem
+                            KeyNavigation.right: pasteUrl
+                        }
+
+                        C.PillButton {
+                            id: pasteUrl
+                            small: true
+                            text: qsTr("Paste")
+                            lastInFocusChain: true
+                            KeyNavigation.left: url
+                            // The field takes text only while it is being typed in
+                            onClicked: {
+                                const typing = !url.readOnly;
+                                url.readOnly = false;
+                                url.paste();
+                                url.readOnly = !typing;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Holds the login page's address for copying
+            TextInput {
+                id: openurl
+                visible: false
+                text: dialog.psnurl ? dialog.psnurl : ""
+                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
+            }
+        }
+
+        // What happens while logging in; Close (or Cancel) goes to the start page
+        C.PopupCard {
+            id: logDialog
+            property bool allDone: false
+            title: qsTr("Logging in to PSN")
+            closePolicy: QQC.Popup.NoAutoClose
+            onOpened: logArea.forceActiveFocus(Qt.TabFocusReason)
+            onClosed: root.showMainView();
+
+            ColumnLayout {
+                spacing: 18
+
+                Rectangle {
+                    Layout.preferredWidth: Math.min(600, (logDialog.parent ? logDialog.parent.width : 800) - 112)
+                    Layout.preferredHeight: Math.min(340, (logDialog.parent ? logDialog.parent.height : 600) - 200)
+                    radius: 12
+                    color: C.Theme.field
+                    border.width: 1
+                    border.color: C.Theme.line
+
+                    Flickable {
+                        id: logFlick
+                        anchors {
+                            fill: parent
+                            margins: 12
+                        }
+                        clip: true
+                        contentWidth: width
+                        contentHeight: logArea.implicitHeight
+                        flickableDirection: Flickable.AutoFlickIfNeeded
+                        QQC.ScrollBar.vertical: QQC.ScrollBar {
+                            id: logScrollbar
+                            policy: QQC.ScrollBar.AlwaysOn
+                            visible: logFlick.contentHeight > logFlick.height
+                            contentItem: Rectangle {
+                                implicitWidth: 4
+                                radius: 2
+                                color: Qt.rgba(1, 1, 1, 0.28)
+                            }
+                        }
+
+                        Text {
+                            id: logArea
+                            width: logFlick.width - 12
+                            wrapMode: Text.Wrap
+                            lineHeight: 1.2
+                            color: C.Theme.textSoft
+                            font.pixelSize: 13
+                            Keys.onReturnPressed: if (logDialog.allDone) logDialog.close()
+                            Keys.onEscapePressed: logDialog.close()
+                            Keys.onPressed: (event) => {
+                                switch (event.key) {
+                                case Qt.Key_Up:
+                                    if(logScrollbar.position > 0.001)
+                                        logFlick.flick(0, 500);
+                                    event.accepted = true;
+                                    break;
+                                case Qt.Key_Down:
+                                    if(logScrollbar.position < 1.0 - logScrollbar.size - 0.001)
+                                        logFlick.flick(0, -500);
+                                    event.accepted = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                C.GlyphButton {
+                    Layout.alignment: Qt.AlignRight
+                    text: logDialog.allDone ? qsTr("Close") : qsTr("Cancel")
+                    primary: logDialog.allDone
+                    glyph: root.controllerButton(logDialog.allDone ? "cross" : "moon")
+                    onClicked: logDialog.close()
                 }
             }
         }

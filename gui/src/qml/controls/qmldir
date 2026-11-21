@@ -10,6 +10,7 @@ Field 1.0 Field.qml
 singleton FocusChain 1.0 FocusChain.qml
 FormCard 1.0 FormCard.qml
 GlassBar 1.0 GlassBar.qml
+GlyphButton 1.0 GlyphButton.qml
 GradientText 1.0 GradientText.qml
 Icon 1.0 Icon.qml
 IconButton 1.0 IconButton.qml
@@ -19,6 +20,7 @@ Menu 1.0 Menu.qml
 NovaBackground 1.0 NovaBackground.qml
 PadView 1.0 PadView.qml
 PillButton 1.0 PillButton.qml
+PopupCard 1.0 PopupCard.qml
 RadioButton 1.0 RadioButton.qml
 SectionLabel 1.0 SectionLabel.qml
 Segmented 1.0 Segmented.qml

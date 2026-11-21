@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
 
-// A glass card near the top of a page, for a form with a handful of fields:
-// a heading, a sentence that says what the form is for, then the fields.
+// A card near the top of a page, for a form with a handful of fields: a heading, a
+// sentence that says what the form is for, then the fields, and maybe a note under
+// them (where to find the value asked for). In the look of the settings window.
 Rectangle {
     id: card
     default property alias content: body.data
@@ -17,12 +17,12 @@ Rectangle {
         horizontalCenter: parent ? parent.horizontalCenter : undefined
         topMargin: 28
     }
-    width: Math.min(parent ? parent.width - 40 : 640, Math.max(body.implicitWidth + 64, 600))
-    height: column.implicitHeight + 56
-    radius: 18
-    color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.72)
+    width: Math.min(parent ? parent.width - 32 : 640, Math.max(body.implicitWidth + 48, 560))
+    height: column.implicitHeight + 44
+    radius: 20
+    color: Theme.card
     border.width: 1
-    border.color: Qt.rgba(1, 1, 1, 0.09)
+    border.color: Theme.line
 
     ColumnLayout {
         id: column
@@ -30,46 +30,49 @@ Rectangle {
             left: parent.left
             right: parent.right
             top: parent.top
-            margins: 28
-            leftMargin: 32
-            rightMargin: 32
+            margins: 22
+            leftMargin: 24
+            rightMargin: 24
         }
-        spacing: 14
+        spacing: 12
 
-        GradientText {
+        Text {
+            Layout.fillWidth: true
             visible: card.title.length > 0
             text: card.title
-            font.pixelSize: 22
-            font.bold: true
-            to: "#7c86ff"
+            wrapMode: Text.WordWrap
+            color: Theme.text
+            font.pixelSize: 20
+            font.weight: Font.ExtraBold
         }
 
-        Label {
+        Text {
             Layout.fillWidth: true
-            Layout.bottomMargin: 6
+            Layout.topMargin: card.title.length > 0 ? -6 : 0
+            Layout.bottomMargin: 4
             visible: card.text.length > 0
             wrapMode: Text.WordWrap
-            opacity: 0.7
-            font.pixelSize: 15
             lineHeight: 1.15
+            color: Theme.textSoft
+            font.pixelSize: 14
             text: card.text
         }
 
         Item {
             id: body
-            Layout.alignment: Qt.AlignHCenter
+            Layout.fillWidth: true
             implicitWidth: childrenRect.width
             implicitHeight: childrenRect.height
         }
 
-        Label {
+        Text {
             Layout.fillWidth: true
-            Layout.topMargin: 6
+            Layout.topMargin: 4
             visible: card.footnote.length > 0
             wrapMode: Text.WordWrap
-            opacity: 0.55
-            font.pixelSize: 13
             lineHeight: 1.15
+            color: Theme.textDim
+            font.pixelSize: 13
             text: card.footnote
         }
     }

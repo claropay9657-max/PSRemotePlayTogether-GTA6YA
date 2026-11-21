@@ -1,17 +1,19 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls as QQC
 
 import org.streetpea.chiaking
 
 import "controls" as C
 
+// Adds the app to Steam as a non-Steam game; what happens shows in a note over the page.
 DialogView {
     id: dialog
     property bool opening: false
     property bool succeeded: false
     property bool fromReminder
+    /** Where Steam is, when chosen; empty: found by itself. */
+    property var steamBasePath: ""
     title: qsTr("Steam shortcut")
     buttonText: qsTr("Create")
     buttonEnabled: name.text.trim() && !opening
@@ -39,156 +41,221 @@ DialogView {
             else
             {
                 logArea.text += msg + "\n";
-                logDialog.standardButtons = Dialog.Close;
+                logDialog.allDone = true;
                 opening = false;
             }
-        }, shortcutGrid.steamBasePath);
+        }, dialog.steamBasePath);
     }
 
     Item {
+        id: page
+
         C.FormCard {
             title: qsTr("Start from Steam")
             text: qsTr("Adds PSRemotePlayTogether to Steam as a non-Steam game, with artwork and a controller layout. Steam has to be restarted afterwards.")
 
-        GridLayout {
-            id: shortcutGrid
-            columns: 2
-            rowSpacing: 18
-            columnSpacing: 20
-            property var steamBasePath: ""
+            ColumnLayout {
+                width: Math.min(512, page.width - 80)
+                spacing: 6
 
-            Label {
-                Layout.alignment: Qt.AlignRight
-                text: qsTr("Name in Steam")
-            }
-
-            C.TextField {
-                id: name
-                Layout.preferredWidth: 400
-                text: Chiaki.settings.currentProfile ? qsTr("PSRemotePlayTogether ") + Chiaki.settings.currentProfile: qsTr("PSRemotePlayTogether")
-                firstInFocusChain: true
-            }
-
-            Label {
-                Layout.alignment: Qt.AlignRight
-                text: qsTr("Launch options (optional)")
-            }
-
-            C.TextField {
-                id: options
-                text: Chiaki.settings.currentProfile ? qsTr("--profile=") + Chiaki.settings.currentProfile : ""
-                Layout.preferredWidth: 400
-            }
-
-            Label {
-                Layout.alignment: Qt.AlignRight
-                text: qsTr("Steam folder (optional)")
-            }
-
-            Label {
-                Layout.preferredWidth: 400
-                elide: Text.ElideMiddle
-                opacity: 0.7
-                text: shortcutGrid.steamBasePath ? shortcutGrid.steamBasePath : qsTr("Found by itself")
-            }
-
-            Label {
-            }
-
-            C.Button {
-                id: choosePathButton
-                text: qsTr("Choose another Steam folder")
-                onClicked: {
-                    shortcutGrid.steamBasePath = Chiaki.settings.chooseSteamBasePath();
+                Text {
+                    text: qsTr("Name in Steam")
+                    color: C.Theme.textSoft
+                    font.pixelSize: 13
+                    font.weight: Font.Bold
                 }
-                Material.roundedScale: Material.SmallScale
-            }
-        }
-        }
 
-        Item {
-            Dialog {
-                id: logDialog
-                parent: Overlay.overlay
-                x: Math.round((root.width - width) / 2)
-                y: Math.round((root.height - height) / 2)
-                title: qsTr("Create non-Steam game")
-                modal: true
-                closePolicy: Popup.NoAutoClose
-                standardButtons: Dialog.Cancel
-                Material.roundedScale: Material.MediumScale
-                onOpened: logArea.forceActiveFocus(Qt.TabFocusReason)
-                onClosed: if(succeeded) { restartDialog.open(); }
+                C.Field {
+                    id: name
+                    Layout.fillWidth: true
+                    Accessible.name: qsTr("Name in Steam")
+                    text: Chiaki.settings.currentProfile ? qsTr("PSRemotePlayTogether ") + Chiaki.settings.currentProfile: qsTr("PSRemotePlayTogether")
+                    firstInFocusChain: true
+                }
 
-                Flickable {
-                    id: logFlick
-                    implicitWidth: 600
-                    implicitHeight: 400
-                    clip: true
-                    contentWidth: logArea.contentWidth
-                    contentHeight: logArea.contentHeight
-                    flickableDirection: Flickable.AutoFlickIfNeeded
-                    ScrollBar.vertical: ScrollBar {
-                        id: logScrollbar
-                        policy: ScrollBar.AlwaysOn
-                        visible: logFlick.contentHeight > logFlick.implicitHeight
+                Text {
+                    Layout.topMargin: 10
+                    text: qsTr("Launch options (optional)")
+                    color: C.Theme.textSoft
+                    font.pixelSize: 13
+                    font.weight: Font.Bold
+                }
+
+                C.Field {
+                    id: options
+                    Layout.fillWidth: true
+                    Accessible.name: qsTr("Launch options")
+                    hint: qsTr("None")
+                    text: Chiaki.settings.currentProfile ? qsTr("--profile=") + Chiaki.settings.currentProfile : ""
+                }
+
+                Text {
+                    Layout.topMargin: 10
+                    text: qsTr("Steam folder")
+                    color: C.Theme.textSoft
+                    font.pixelSize: 13
+                    font.weight: Font.Bold
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    // Where Steam is: shown, not typed
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 40
+                        radius: C.Theme.radiusField
+                        color: Qt.rgba(1, 1, 1, 0.03)
+                        border.width: 1
+                        border.color: C.Theme.line
+
+                        C.Icon {
+                            id: folderIcon
+                            x: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            iconName: "folder"
+                            size: 16
+                            color: C.Theme.textSoft
+                        }
+
+                        Text {
+                            anchors {
+                                left: folderIcon.right
+                                right: parent.right
+                                verticalCenter: parent.verticalCenter
+                                leftMargin: 8
+                                rightMargin: 12
+                            }
+                            elide: Text.ElideMiddle
+                            text: dialog.steamBasePath ? dialog.steamBasePath : qsTr("Found by itself")
+                            color: dialog.steamBasePath ? C.Theme.text : C.Theme.textSoft
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                        }
                     }
 
-                    Label {
-                        id: logArea
-                        width: logFlick.width
-                        height: logFlick.height
-                        wrapMode: Text.Wrap
-                        Keys.onReturnPressed: if (logDialog.standardButtons == Dialog.Close) logDialog.close()
-                        Keys.onEscapePressed: logDialog.close()
-                        Keys.onPressed: (event) => {
-                            switch (event.key) {
-                            case Qt.Key_Up:
-                                if(logScrollbar.position > 0.001)
-                                    logFlick.flick(0, 500);
-                                event.accepted = true;
-                                break;
-                            case Qt.Key_Down:
-                                if(logScrollbar.position < 1.0 - logScrollbar.size - 0.001)
-                                    logFlick.flick(0, -500);
-                                event.accepted = true;
-                                break;
-                            }
+                    C.PillButton {
+                        id: choosePathButton
+                        small: true
+                        text: qsTr("Choose another…")
+                        Accessible.name: qsTr("Choose another Steam folder")
+                        lastInFocusChain: true
+                        onClicked: {
+                            dialog.steamBasePath = Chiaki.settings.chooseSteamBasePath();
                         }
                     }
                 }
             }
         }
 
-        Dialog {
+        // What happens while the game is added; Close (or Cancel) leaves it
+        C.PopupCard {
+            id: logDialog
+            property bool allDone: false
+            title: qsTr("Adding to Steam")
+            closePolicy: QQC.Popup.NoAutoClose
+            onOpened: logArea.forceActiveFocus(Qt.TabFocusReason)
+            onClosed: if(succeeded) { restartDialog.open(); }
+
+            ColumnLayout {
+                spacing: 18
+
+                Rectangle {
+                    Layout.preferredWidth: Math.min(600, (logDialog.parent ? logDialog.parent.width : 800) - 112)
+                    Layout.preferredHeight: Math.min(340, (logDialog.parent ? logDialog.parent.height : 600) - 200)
+                    radius: 12
+                    color: C.Theme.field
+                    border.width: 1
+                    border.color: C.Theme.line
+
+                    Flickable {
+                        id: logFlick
+                        anchors {
+                            fill: parent
+                            margins: 12
+                        }
+                        clip: true
+                        contentWidth: width
+                        contentHeight: logArea.implicitHeight
+                        flickableDirection: Flickable.AutoFlickIfNeeded
+                        QQC.ScrollBar.vertical: QQC.ScrollBar {
+                            id: logScrollbar
+                            policy: QQC.ScrollBar.AlwaysOn
+                            visible: logFlick.contentHeight > logFlick.height
+                            contentItem: Rectangle {
+                                implicitWidth: 4
+                                radius: 2
+                                color: Qt.rgba(1, 1, 1, 0.28)
+                            }
+                        }
+
+                        Text {
+                            id: logArea
+                            width: logFlick.width - 12
+                            wrapMode: Text.Wrap
+                            lineHeight: 1.2
+                            color: C.Theme.textSoft
+                            font.pixelSize: 13
+                            Keys.onReturnPressed: if (logDialog.allDone) logDialog.close()
+                            Keys.onEscapePressed: logDialog.close()
+                            Keys.onPressed: (event) => {
+                                switch (event.key) {
+                                case Qt.Key_Up:
+                                    if(logScrollbar.position > 0.001)
+                                        logFlick.flick(0, 500);
+                                    event.accepted = true;
+                                    break;
+                                case Qt.Key_Down:
+                                    if(logScrollbar.position < 1.0 - logScrollbar.size - 0.001)
+                                        logFlick.flick(0, -500);
+                                    event.accepted = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                C.GlyphButton {
+                    Layout.alignment: Qt.AlignRight
+                    text: logDialog.allDone ? qsTr("Close") : qsTr("Cancel")
+                    primary: logDialog.allDone
+                    glyph: root.controllerButton(logDialog.allDone ? "cross" : "moon")
+                    onClicked: logDialog.close()
+                }
+            }
+        }
+
+        // Steam shows the game only after a restart
+        C.PopupCard {
             id: restartDialog
-            parent: Overlay.overlay
-            x: Math.round((root.width - width) / 2)
-            y: Math.round((root.height - height) / 2)
-            title: qsTr("Please Restart Steam")
-            modal: true
-            closePolicy: Popup.NoAutoClose
-            standardButtons: Dialog.Close
-            Material.roundedScale: Material.MediumScale
+            title: qsTr("Restart Steam")
+            closePolicy: QQC.Popup.NoAutoClose
             onOpened: restartArea.forceActiveFocus(Qt.TabFocusReason)
             onClosed: dialog.close()
 
-            Flickable {
-                id: restartFlick
-                implicitWidth: 600
-                implicitHeight: 50
-                clip: true
-                contentWidth: restartArea.contentWidth
-                contentHeight: restartArea.contentHeight
-                flickableDirection: Flickable.AutoFlickIfNeeded
-                ScrollIndicator.vertical: ScrollIndicator { }
+            ColumnLayout {
+                spacing: 20
 
-                Label {
+                Text {
                     id: restartArea
-                    text: "In order for " + name.text.trim() + " to appear in Steam,\nSteam must be restarted!"
+                    Layout.preferredWidth: Math.min(implicitWidth, 460)
+                    text: qsTr("%1 shows up in Steam once Steam has been restarted.").arg(name.text.trim())
                     wrapMode: Text.Wrap
-                    Keys.onReturnPressed: if (restartDialog.standardButtons == Dialog.Close) restartDialog.close()
+                    lineHeight: 1.2
+                    color: C.Theme.textSoft
+                    font.pixelSize: 14
+                    Keys.onReturnPressed: restartDialog.close()
                     Keys.onEscapePressed: restartDialog.close()
+                }
+
+                C.GlyphButton {
+                    Layout.alignment: Qt.AlignRight
+                    text: qsTr("Close")
+                    primary: true
+                    glyph: root.controllerButton("cross")
+                    onClicked: restartDialog.close()
                 }
             }
         }

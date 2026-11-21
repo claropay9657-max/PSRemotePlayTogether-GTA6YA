@@ -1,12 +1,15 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls as QQC
 
 import org.streetpea.chiaking
 
 import "controls" as C
 
+// The PSN account ID for registering a console (RegistDialog), handed to `callback`.
+// With `login`: by logging in to PSN, on Sony's page inside the app where the app has
+// a web view (Windows); otherwise, and always on macOS and Linux, in the browser, with
+// the address the browser lands on pasted back here. Without: looked up by the online ID.
 DialogView {
     id: dialog
     property var callback: null
@@ -14,25 +17,36 @@ DialogView {
     property bool submitting: false
     property bool closing: false
     property var psnurl: ""
-    title: qsTr("PSN Login")
+    /** "web": Sony's page in the app; "browser": in the web browser; "lookup": by the
+     *  online ID. Empty until shown. */
+    property string mode
+    /** Why getting the account ID failed, on Sony's page or in the browser. */
+    property string webError
+    property string browserError
+    /** Looking up an online ID; what went wrong with the last one. */
+    property bool looking: false
+    property string lookupError
+    title: login ? qsTr("Log in to PSN") : qsTr("Look up your account ID")
     buttonVisible: false
-    buttonText: qsTr("Get Account ID")
+    buttonText: qsTr("Get account ID")
     buttonEnabled: !submitting && url.text.trim()
     onAccepted: {
         submitting = true;
         Chiaki.handlePsnLoginRedirect(url.text.trim());
     }
-    StackView.onActivated: {
+    QQC.StackView.onActivated: {
         if(login)
         {
-            nativeLoginForm.visible = true;
-            nativeLoginForm.forceActiveFocus(Qt.TabFocusReason);
+            if (!mode) {
+                mode = "web";
+                nativeLoginForm.forceActiveFocus(Qt.TabFocusReason);
+            }
             if(Qt.platform.os == "linux" || Qt.platform.os == "osx")
-                extBrowserButton.clicked();
+                useBrowser();
         }
         else
         {
-            accountForm.visible = true
+            mode = "lookup";
             usernameField.forceActiveFocus(Qt.TabFocusReason)
             usernameField.readOnly = false;
             Qt.inputMethod.show();
@@ -50,8 +64,59 @@ DialogView {
         else
             root.closeDialog();
     }
+    /** Opens Sony's page in the browser, once, and waits for the address pasted back. */
+    function useBrowser() {
+        if (mode !== "browser") {
+            mode = "browser";
+            webError = "";
+            dialog.buttonVisible = true;
+            psnurl = Chiaki.openPsnLink();
+            if(psnurl)
+            {
+                openurl.selectAll();
+                openurl.copy();
+            }
+        }
+        pasteUrl.forceActiveFocus(Qt.TabFocusReason);
+    }
 
-   Item {
+    component FieldLabel: Text {
+        color: C.Theme.textSoft
+        font.pixelSize: 13
+        font.weight: Font.Bold
+    }
+
+    /** What went wrong, in red. */
+    component ErrorNote: Rectangle {
+        id: note
+        property alias text: noteText.text
+        Layout.fillWidth: true
+        implicitHeight: noteText.implicitHeight + 20
+        radius: 12
+        color: Qt.rgba(240 / 255, 70 / 255, 110 / 255, 0.12)
+        border.width: 1
+        border.color: Qt.rgba(240 / 255, 70 / 255, 110 / 255, 0.45)
+
+        Text {
+            id: noteText
+            anchors {
+                left: parent.left
+                right: parent.right
+                verticalCenter: parent.verticalCenter
+                leftMargin: 12
+                rightMargin: 12
+            }
+            wrapMode: Text.WordWrap
+            color: "#ffd3de"
+            font.pixelSize: 13
+        }
+    }
+
+    Item {
+        id: page
+        readonly property int gutter: width < 600 ? 16 : 32
+
+        // ------------------------------------------------ Sony's page in the app
         Item {
             id: nativeLoginForm
             Keys.onPressed: (event) => {
@@ -69,86 +134,58 @@ DialogView {
                 }
             }
             anchors.fill: parent
-            visible: false
-            ToolBar {
+            visible: dialog.mode === "web"
+
+            // L1 and R1 (Page Up, Page Down) press these
+            Item {
                 id: psnLoginToolbar
                 anchors {
                     top: parent.top
                     left: parent.left
                     right: parent.right
                 }
-                height: 80
+                height: 64
 
                 RowLayout {
                     anchors {
                         fill: parent
-                        leftMargin: 10
-                        rightMargin: 10
+                        leftMargin: page.gutter
+                        rightMargin: page.gutter
                     }
-                    Button {
+                    spacing: 16
+
+                    C.GlyphButton {
                         id: reloadButton
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 350
-                        flat: true
-                        text: "reload + clear cookies"
-                        Image {
-                            anchors {
-                                left: parent.left
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: 12
-                            }
-                            width: 28
-                            height: 28
-                            sourceSize: Qt.size(width, height)
-                            source: "qrc:/icons/l1.svg"
-                        }
+                        glyph: Chiaki.controllers.length > 0 ? "qrc:/icons/l1.svg" : ""
+                        text: qsTr("Clear and reload")
                         onClicked: reloadTimer.start()
-                        Material.roundedScale: Material.SmallScale
-                        focusPolicy: Qt.NoFocus
                     }
-                    ProgressBar {
-                        id: browserProgresss
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 300
-                        from: 0
-                        to: 100
-                        value: webView.web.loadProgress
-                        Material.roundedScale: Material.SmallScale
-                        focusPolicy: Qt.NoFocus
+
+                    // How far the page has loaded
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 4
+                        radius: 2
+                        color: Qt.rgba(1, 1, 1, 0.08)
+                        opacity: webView.web && webView.web.loadProgress < 100 ? 1 : 0.4
+
+                        Rectangle {
+                            width: parent.width * (webView.web ? webView.web.loadProgress : 0) / 100
+                            height: parent.height
+                            radius: 2
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: C.Theme.brandFrom }
+                                GradientStop { position: 1.0; color: C.Theme.brandTo }
+                            }
+                        }
                     }
-                    Button {
+
+                    C.GlyphButton {
                         id: extBrowserButton
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 300
-                        flat: true
-                        Image {
-                            anchors {
-                                left: parent.left
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: 12
-                            }
-                            width: 28
-                            height: 28
-                            sourceSize: Qt.size(width, height)
-                            source: "qrc:/icons/r1.svg"
-                        }
-                        focusPolicy: Qt.NoFocus
-                        text: "Use external browser"
-                        onClicked: {
-                            nativeLoginForm.visible = false;
-                            psnLoginToolbar.visible = false;
-                            nativeErrorGrid.visible = false;
-                            webView.visible = false;
-                            loginForm.visible = true;
-                            dialog.buttonVisible = true;
-                            psnurl = Chiaki.openPsnLink();
-                            if(psnurl)
-                            {
-                                openurl.selectAll();
-                                openurl.copy();
-                            }
-                            pasteUrl.forceActiveFocus(Qt.TabFocusReason);
-                        }
+                        glyph: Chiaki.controllers.length > 0 ? "qrc:/icons/r1.svg" : ""
+                        text: qsTr("Use my browser instead")
+                        onClicked: dialog.useBrowser()
                     }
                 }
             }
@@ -171,91 +208,46 @@ DialogView {
                 }
             }
 
-            // A card behind the form
-
-            Rectangle {
-
-                visible: nativeErrorGrid.visible
-
-                anchors {
-
-                    fill: nativeErrorGrid
-
-                    margins: -28
-
-                }
-
-                radius: 18
-
-                color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.72)
-
-                border.width: 1
-
-                border.color: Qt.rgba(1, 1, 1, 0.09)
-
-            }
-
-
-            GridLayout {
-                id: nativeErrorGrid
-                visible: false
-                anchors {
-                    top: psnLoginToolbar.bottom
-                    left: parent.left
-                    right: parent.right
-                    topMargin: 50
-                }
-                columns: 2
-                rowSpacing: 18
-                columnSpacing: 20
-                Label {
-                    id: nativeErrorHeader
-                    text: "Retrieving PSN account ID failed with error: "
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: 400
-                    Layout.leftMargin: 20
-                }
-
-                Label {
-                    id: nativeErrorLabel
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: 400
-                    Layout.leftMargin: 20
-                }
-
-                Label {
-                    id: retryButton
-                    text: "Retry process"
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: 300
-                    Layout.leftMargin: 20
-                }
-                C.Button {
-                    firstInFocusChain: true
-                    lastInFocusChain: true
-                    text: "Retry"
-                    onClicked: {
-                        nativeErrorGrid.visible = false;
-                        nativeErrorLabel.text = "";
-                        nativeErrorLabel.visible = false;
-                        webView.visible = true;
-                        webView.web.url = Chiaki.psnLoginUrl();
-                    }
-                    Layout.preferredWidth: 200
-                    Layout.fillHeight: true
-                    Layout.leftMargin: 20
-                }
-            }
+            // When Sony's page did not give the account ID
             Item {
-                id: webView
-                property Item web: null
                 anchors {
                     top: psnLoginToolbar.bottom
                     bottom: parent.bottom
                     left: parent.left
                     right: parent.right
-                    leftMargin: 10
-                    rightMargin: 10
+                }
+                visible: dialog.webError.length > 0
+
+                C.FormCard {
+                    title: qsTr("Getting your account ID did not work")
+                    text: dialog.webError
+
+                    C.PillButton {
+                        kind: "primary"
+                        iconName: "refresh"
+                        text: qsTr("Try again")
+                        firstInFocusChain: true
+                        lastInFocusChain: true
+                        onClicked: {
+                            dialog.webError = "";
+                            webView.web.url = Chiaki.psnLoginUrl();
+                        }
+                    }
+                }
+            }
+
+            Item {
+                id: webView
+                property Item web: null
+                visible: dialog.webError.length === 0
+                anchors {
+                    top: psnLoginToolbar.bottom
+                    bottom: parent.bottom
+                    left: parent.left
+                    right: parent.right
+                    leftMargin: page.gutter
+                    rightMargin: page.gutter
+                    bottomMargin: 16
                 }
                 Component.onCompleted: {
                     try {
@@ -294,171 +286,188 @@ DialogView {
                         web.anchors.fill = webView;
                     } catch (error) {
                         console.error('Create webengine view failed with error:' + error);
-                        extBrowserButton.clicked();
+                        // Looking up by the online ID needs no log-in
+                        if (dialog.login)
+                            dialog.useBrowser();
                     }
                 }
             }
         }
-        // A card behind the form
-        Rectangle {
-            visible: loginForm.visible
-            anchors {
-                fill: loginForm
-                margins: -28
-            }
-            radius: 18
-            color: Qt.rgba(16 / 255, 16 / 255, 24 / 255, 0.72)
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.09)
-        }
 
-        GridLayout {
+        // ------------------------------------------------ in the browser
+        Item {
             id: loginForm
-            anchors {
-                top: parent.top
-                horizontalCenter: parent.horizontalCenter
-                topMargin: 50
-            }
-            visible: false
-            columns: 2
-            rowSpacing: 18
-            columnSpacing: 20
+            anchors.fill: parent
+            visible: dialog.mode === "browser"
 
-            Label {
-                id: errorHeader
-                visible: false
-                text: "Retrieving PSN account ID failed with error"
-            }
+            C.FormCard {
+                title: qsTr("Log in with your browser")
+                text: qsTr("Log in on Sony's page in your browser. Afterwards the browser lands on a page whose address starts with remoteplay.dl.playstation.net. Copy that whole address and paste it here.")
+                footnote: qsTr("Then press “%1” at the top.").arg(dialog.buttonText)
 
-            Label {
-                id: errorLabel
-                visible: false
-            }
+                ColumnLayout {
+                    width: Math.min(512, loginForm.width - 80)
+                    spacing: 6
 
-            Label {
-                text: qsTr("The login address was copied: open it in your web browser")
-                visible: psnurl
-            }
-
-            TextField {
-                id: openurl
-                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                text: psnurl
-                visible: false
-                Layout.preferredWidth: 400
-            }
-
-            C.Button {
-                id: copyUrl
-                text: qsTr("Copy the address again")
-                onClicked: {
-                    openurl.selectAll()
-                    openurl.copy()
-                }
-                KeyNavigation.priority: KeyNavigation.BeforeItem
-                KeyNavigation.up: copyUrl
-                KeyNavigation.down: url
-                visible: psnurl
-            }
-
-            Label {
-                text: qsTr("Address you were sent to after logging in")
-            }
-
-            TextField {
-                id: url
-                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                Layout.preferredWidth: 400
-                KeyNavigation.priority: {
-                    if(readOnly)
-                        KeyNavigation.BeforeItem
-                    else
-                        KeyNavigation.AfterItem
-                }
-                KeyNavigation.up: {
-                    if(psnurl)
-                        copyUrl
-                    else
-                        url
-                }
-                KeyNavigation.down: url
-                KeyNavigation.right: pasteUrl
-                C.Button {
-                    id: pasteUrl
-                    text: qsTr("Paste")
-                    anchors {
-                        left: parent.right
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: 10
+                    ErrorNote {
+                        Layout.bottomMargin: 10
+                        visible: dialog.browserError.length > 0
+                        text: qsTr("Getting your account ID did not work: %1").arg(dialog.browserError)
                     }
-                    KeyNavigation.priority: KeyNavigation.BeforeItem
-                    onClicked: url.paste()
-                    KeyNavigation.left: url
-                    KeyNavigation.up: {
-                        if(psnurl)
-                            copyUrl
-                        else
-                            pasteUrl
-                    }
-                    KeyNavigation.down: pasteUrl
-                    lastInFocusChain: true
-                }
-            }
-        }
 
-        ColumnLayout {
-            id: accountForm
-            anchors {
-                top: parent.top
-                horizontalCenter: parent.horizontalCenter
-                topMargin: parent.height / 10
-            }
-            visible: false
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 10
+                        visible: !!dialog.psnurl
+                        spacing: 12
 
-            Label {
-                id: formLabel
-                Layout.alignment: Qt.AlignCenter
-                Layout.bottomMargin: 50
-                text: qsTr("This requires your PSN privacy settings to allow anyone to find you in your search")
-            }
+                        C.Icon {
+                            Layout.alignment: Qt.AlignVCenter
+                            iconName: "browser"
+                            size: 18
+                            color: C.Theme.headingSoft
+                        }
 
-            C.TextField {
-                id: usernameField
-                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
-                Layout.preferredWidth: 400
-                Layout.alignment: Qt.AlignCenter
-                firstInFocusChain: true
-                placeholderText: qsTr("Username")
-                onAccepted: submitButton.clicked()
-            }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Sony's page opened in your browser. If it did not, paste its address there: it is copied already.")
+                            wrapMode: Text.WordWrap
+                            lineHeight: 1.15
+                            color: C.Theme.textSoft
+                            font.pixelSize: 13
+                        }
 
-            C.Button {
-                id: submitButton
-                Layout.preferredWidth: 400
-                Layout.alignment: Qt.AlignCenter
-                lastInFocusChain: true
-                text: qsTr("Submit")
-                onClicked: {
-                    const username = usernameField.text.trim();
-                    if (!username.length || !enabled)
-                        return;
-                    const request = new XMLHttpRequest();
-                    request.onreadystatechange = function() {
-                        if (request.readyState === XMLHttpRequest.DONE) {
-                            const response = JSON.parse(request.response);
-                            const accountId = response["encoded_id"];
-                            if (accountId) {
-                                dialog.callback(accountId);
-                                dialog.close();
-                            } else {
-                                enabled = true;
-                                formLabel.text = qsTr("Error: %1!").arg(response["error"]);
+                        C.PillButton {
+                            id: copyUrl
+                            small: true
+                            iconName: "copy"
+                            text: qsTr("Copy again")
+                            Accessible.name: qsTr("Copy the address again")
+                            firstInFocusChain: true
+                            onClicked: {
+                                openurl.selectAll()
+                                openurl.copy()
                             }
                         }
                     }
-                    request.open("GET", "https://psn.flipscreen.games/search.php?username=%1".arg(encodeURIComponent(username)));
-                    request.send();
-                    enabled = false;
+
+                    FieldLabel {
+                        text: qsTr("The address you land on after logging in")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        C.Field {
+                            id: url
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("The address you land on after logging in")
+                            hint: "https://remoteplay.dl.playstation.net/…"
+                            echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
+                            firstInFocusChain: !dialog.psnurl
+                            // Right goes to Paste while not typing
+                            KeyNavigation.priority: readOnly ? KeyNavigation.BeforeItem : KeyNavigation.AfterItem
+                            KeyNavigation.right: pasteUrl
+                        }
+
+                        C.PillButton {
+                            id: pasteUrl
+                            small: true
+                            text: qsTr("Paste")
+                            lastInFocusChain: true
+                            KeyNavigation.left: url
+                            // The field takes text only while it is being typed in
+                            onClicked: {
+                                const typing = !url.readOnly;
+                                url.readOnly = false;
+                                url.paste();
+                                url.readOnly = !typing;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Holds the login page's address for copying
+            TextInput {
+                id: openurl
+                visible: false
+                text: dialog.psnurl ? dialog.psnurl : ""
+                echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
+            }
+        }
+
+        // ------------------------------------------------ by the online ID
+        Item {
+            id: accountForm
+            anchors.fill: parent
+            visible: dialog.mode === "lookup"
+
+            C.FormCard {
+                title: qsTr("By your PSN online ID")
+                text: qsTr("Looks up the account ID that belongs to a PSN online ID, without logging in. It works only if your PSN privacy settings let anyone find you when they search.")
+
+                ColumnLayout {
+                    width: Math.min(512, accountForm.width - 80)
+                    spacing: 6
+
+                    FieldLabel {
+                        text: qsTr("PSN online ID")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        C.Field {
+                            id: usernameField
+                            Layout.fillWidth: true
+                            Accessible.name: qsTr("PSN online ID")
+                            hint: qsTr("Your PSN name")
+                            echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
+                            firstInFocusChain: true
+                            onAccepted: submitButton.clicked()
+                        }
+
+                        C.PillButton {
+                            id: submitButton
+                            small: true
+                            kind: "primary"
+                            iconName: "search"
+                            text: qsTr("Look up")
+                            enabled: !dialog.looking
+                            lastInFocusChain: true
+                            onClicked: {
+                                const username = usernameField.text.trim();
+                                if (!username.length || dialog.looking)
+                                    return;
+                                const request = new XMLHttpRequest();
+                                request.onreadystatechange = function() {
+                                    if (request.readyState === XMLHttpRequest.DONE) {
+                                        const response = JSON.parse(request.response);
+                                        const accountId = response["encoded_id"];
+                                        if (accountId) {
+                                            dialog.callback(accountId);
+                                            dialog.close();
+                                        } else {
+                                            dialog.looking = false;
+                                            dialog.lookupError = String(response["error"]);
+                                        }
+                                    }
+                                }
+                                request.open("GET", "https://psn.flipscreen.games/search.php?username=%1".arg(encodeURIComponent(username)));
+                                request.send();
+                                dialog.looking = true;
+                            }
+                        }
+                    }
+
+                    ErrorNote {
+                        Layout.topMargin: 6
+                        visible: dialog.lookupError.length > 0
+                        text: qsTr("That did not work: %1").arg(dialog.lookupError)
+                    }
                 }
             }
         }
@@ -473,18 +482,11 @@ DialogView {
             }
 
             function onPsnLoginAccountIdError(error) {
-                if(nativeLoginForm.visible)
-                {
-                    webView.visible = false;
-                    nativeErrorLabel.text = error;
-                    nativeErrorLabel.visible = true;
-                    nativeErrorGrid.visible = true;
-                }
+                if(dialog.mode === "web")
+                    dialog.webError = error;
                 else
                 {
-                    errorHeader.visible = true;
-                    errorLabel.text = error;
-                    errorLabel.visible = true;
+                    dialog.browserError = error;
                     submitting = false;
                 }
             }
