@@ -123,8 +123,13 @@ class Client
 
 		/** Starts receiving. Call once, after Connect(). */
 		void Start(const ClientCallbacks &callbacks);
-		/** Says goodbye to the host and stops. */
-		void Stop();
+		/**
+		 * Says goodbye to the host and stops.
+		 * @param sleep_console also asks the host to put the console to sleep. Only for a guest
+		 *        whose entry in the session state has kParticipantMaySleep; a host that has not
+		 *        allowed it takes this as an ordinary goodbye.
+		 */
+		void Stop(bool sleep_console = false);
 
 		void SetInput(const PadState &state);
 		/** Changes which streams the host sends, for example to switch to controller-only. */

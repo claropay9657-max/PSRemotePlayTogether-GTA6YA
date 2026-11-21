@@ -1373,6 +1373,16 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
         emit error(tr("Play Together"), text);
     });
 
+    // A guest left and asked for the console to sleep, which the host has allowed: the same
+    // as the host choosing "Sleep" when leaving
+    connect(session, &StreamSession::CoPlaySleepRequested, this, [this, session_for_connections](const QString &name) {
+        if (session != session_for_connections)
+            return;
+        qCInfo(chiakiGui) << "Play Together:" << name << "put the console to sleep";
+        stopSession(true);
+        emit error(tr("Play Together"), tr("%1 left and put the console to sleep.").arg(name));
+    });
+
     connect(session, &StreamSession::AutoRegistSucceeded, this, &QmlBackend::finishAutoRegister);
 
     connect(session, &StreamSession::ConnectedChanged, this, [this, session_for_connections]() {
@@ -1436,7 +1446,16 @@ bool QmlBackend::closeRequested()
     }
 
     bool stop = true;
-    if (session->IsConnected()) {
+    if (session->IsCoPlayGuest()) {
+        // It is the host's console. A guest is only asked about its sleep where the host lets
+        // guests decide that, and never sends it to sleep without being asked: "always" in the
+        // settings is about one's own console.
+        if (session->IsConnected() && session->CoPlayGuestMaySleep()
+                && settings->GetDisconnectAction() != DisconnectAction::AlwaysNothing) {
+            stop = false;
+            emit sessionStopDialogRequested();
+        }
+    } else if (session->IsConnected()) {
         switch (settings->GetDisconnectAction()) {
         case DisconnectAction::Ask:
             stop = false;

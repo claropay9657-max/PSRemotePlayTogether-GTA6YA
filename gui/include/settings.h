@@ -276,6 +276,9 @@ class Settings : public QObject
 		void SetCoPlayMeetServer(const QString &s)	{ settings.setValue("coplay/meet_server", s); }
 		// Friends who join from a web browser, without the app (coplay/web.h). The page
 		// they open: empty is the built-in one.
+		/** Guests may put the console to sleep when they leave. Off: only the host decides that. */
+		bool GetCoPlayGuestsMaySleep() const		{ return settings.value("coplay/guests_may_sleep", false).toBool(); }
+		void SetCoPlayGuestsMaySleep(bool on)		{ settings.setValue("coplay/guests_may_sleep", on); }
 		bool GetCoPlayWebGuests() const			{ return settings.value("coplay/web_guests", true).toBool(); }
 		void SetCoPlayWebGuests(bool on)			{ settings.setValue("coplay/web_guests", on); }
 		/**

@@ -226,6 +226,8 @@ void Host::Fire(Deferred &d)
 		callbacks.on_guests_changed();
 	if(d.reach_changed && callbacks.on_reach_changed)
 		callbacks.on_reach_changed();
+	if(d.sleep_requested && callbacks.on_sleep_requested)
+		callbacks.on_sleep_requested(d.sleep_slot, d.sleep_name);
 	if(callbacks.on_voice)
 	{
 		for(const auto &v : d.voice)
@@ -694,8 +696,19 @@ bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, 
 			break;
 		}
 		case PacketType::Bye:
-			RemoveGuest(g.conn_id, d, "left");
+		{
+			// Only what this host allowed and told the guest it may ask for
+			bool sleep = config.guests_may_sleep && g.confirmed && size >= 1
+				&& payload[0] == static_cast<uint8_t>(ByeReason::Sleep);
+			if(sleep && !d.sleep_requested)
+			{
+				d.sleep_requested = true;
+				d.sleep_slot = g.slot;
+				d.sleep_name = g.name;
+			}
+			RemoveGuest(g.conn_id, d, sleep ? "left and asked for the console to sleep" : "left");
 			return false; // g is gone
+		}
 		default:
 			break;
 	}
@@ -981,7 +994,8 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 
 	Participant host;
 	host.slot = 0;
-	host.flags = static_cast<uint8_t>(kParticipantHost | kParticipantCanControl | (host_in_control ? kParticipantInControl : 0));
+	host.flags = static_cast<uint8_t>(kParticipantHost | kParticipantCanControl | kParticipantMaySleep
+		| (host_in_control ? kParticipantInControl : 0));
 	host.name = config.name;
 	host.avatar = own_avatar;
 	host.controller = config.controller;
@@ -995,7 +1009,8 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 			continue;
 		Participant p;
 		p.slot = other.slot;
-		p.flags = static_cast<uint8_t>((other.can_control ? kParticipantCanControl : 0) | (other.in_control ? kParticipantInControl : 0));
+		p.flags = static_cast<uint8_t>((other.can_control ? kParticipantCanControl : 0) | (other.in_control ? kParticipantInControl : 0)
+			| (config.guests_may_sleep ? kParticipantMaySleep : 0));
 		p.name = other.name;
 		p.controller = other.controller;
 		p.battery = other.battery;
@@ -1361,6 +1376,22 @@ void Host::SetBattery(uint8_t battery)
 	config.battery = battery;
 	state_seq++;
 	BroadcastState(NowMs());
+}
+
+void Host::SetGuestsMaySleep(bool allowed)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	if(config.guests_may_sleep == allowed)
+		return;
+	config.guests_may_sleep = allowed;
+	state_seq++;
+	BroadcastState(NowMs());
+}
+
+bool Host::GuestsMaySleep()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return config.guests_may_sleep;
 }
 
 void Host::SetMixMode(MixMode mode)

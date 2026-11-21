@@ -357,6 +357,7 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	this->coplay_address = settings->GetCoPlayAddress();
 	this->coplay_stun_server = settings->GetCoPlayStunServer();
 	this->coplay_meet_server = settings->GetCoPlayMeetServer();
+	this->coplay_guests_may_sleep = settings->GetCoPlayGuestsMaySleep();
 	this->coplay_web_guests = settings->GetCoPlayWebGuests();
 	this->coplay_web_url = settings->GetCoPlayWebUrl();
 	this->coplay_web_port = settings->GetCoPlayWebPort();
@@ -970,8 +971,9 @@ void StreamSession::GoToBed()
 	stop_requested = true;
 	if(IsCoPlayGuest())
 	{
-		// Only the host may put its console to sleep; a guest just leaves
-		CoPlayStopGuest();
+		// It is the host's console: a guest leaves, and asks for sleep only where the host
+		// lets guests do that
+		CoPlayStopGuest(true);
 		return;
 	}
 	chiaki_session_goto_bed(&session);

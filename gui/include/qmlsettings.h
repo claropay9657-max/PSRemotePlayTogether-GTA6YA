@@ -107,6 +107,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString coplayMeetDefault READ coplayMeetDefault CONSTANT)
     Q_PROPERTY(bool coplayWebSupported READ coplayWebSupported CONSTANT)
     Q_PROPERTY(bool coplayWebGuests READ coplayWebGuests WRITE setCoplayWebGuests NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayGuestsMaySleep READ coplayGuestsMaySleep WRITE setCoplayGuestsMaySleep NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayWebUrl READ coplayWebUrl WRITE setCoplayWebUrl NOTIFY coplayChanged)
     Q_PROPERTY(int coplayWebPort READ coplayWebPort WRITE setCoplayWebPort NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayWebDefault READ coplayWebDefault CONSTANT)
@@ -667,6 +668,9 @@ public:
     Q_INVOKABLE void coplayCopyInviteLan();
     Q_INVOKABLE void coplayCopyInvitePublic();
     Q_INVOKABLE void coplayCopyInviteIPv6();
+    /** Guests may put the console to sleep when they leave; otherwise only the host does. */
+    bool coplayGuestsMaySleep() const;
+    void setCoplayGuestsMaySleep(bool allowed);
     // Friends who join from a web browser, without the app
     /** Whether this build can take them at all. */
     bool coplayWebSupported() const;

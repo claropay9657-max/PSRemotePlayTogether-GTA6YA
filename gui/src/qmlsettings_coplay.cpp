@@ -288,6 +288,19 @@ bool QmlSettings::coplayWebSupported() const
     return coplay::WebGuestsSupported();
 }
 
+bool QmlSettings::coplayGuestsMaySleep() const
+{
+    return settings->GetCoPlayGuestsMaySleep();
+}
+
+void QmlSettings::setCoplayGuestsMaySleep(bool allowed)
+{
+    if (allowed == settings->GetCoPlayGuestsMaySleep())
+        return;
+    settings->SetCoPlayGuestsMaySleep(allowed);
+    emit coplayChanged();
+}
+
 bool QmlSettings::coplayWebGuests() const
 {
     return settings->GetCoPlayWebGuests();

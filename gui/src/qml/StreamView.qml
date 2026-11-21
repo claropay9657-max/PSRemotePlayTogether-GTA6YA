@@ -21,6 +21,15 @@ Item {
     // the setting behind it may have changed since it started and does not apply to guests.
     readonly property bool pictureOff: !!Chiaki.session && Chiaki.session.pictureOff
     readonly property bool soundOff: !!Chiaki.session && Chiaki.session.soundOff
+    // What leaving asks. A guest only gets to see it where the host lets guests decide about
+    // its console, and is told what it means for the others.
+    readonly property string sleepQuestion: {
+        const s = Chiaki.session;
+        if (!s || !s.coplayGuest)
+            return qsTr("Do you want the Console to go into sleep mode?");
+        const host = (s.coplayPlayers || []).find((p) => p.host);
+        return qsTr("Put %1's console into sleep mode?\nThat ends the session for everybody.").arg(host && host.name ? host.name : qsTr("the host"));
+    }
     /** The same as pictureOff, for handlers that run before that binding has caught up. */
     function sessionPictureOff() {
         return !!Chiaki.session && Chiaki.session.pictureOff;
@@ -771,7 +780,8 @@ Item {
             Label {
                 Layout.topMargin: 10
                 Layout.alignment: Qt.AlignCenter
-                text: qsTr("Do you want the Console to go into sleep mode?")
+                horizontalAlignment: Text.AlignHCenter
+                text: view.sleepQuestion
                 font.pixelSize: 20
             }
 
@@ -870,7 +880,8 @@ Item {
             Label {
                 Layout.topMargin: 10
                 Layout.alignment: Qt.AlignCenter
-                text: qsTr("Do you want the Console to go into sleep mode?")
+                horizontalAlignment: Text.AlignHCenter
+                text: view.sleepQuestion
                 font.pixelSize: 20
             }
 

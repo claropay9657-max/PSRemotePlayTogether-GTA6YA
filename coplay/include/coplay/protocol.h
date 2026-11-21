@@ -125,7 +125,13 @@ enum class ByeReason : uint8_t
 	Kicked = 1,   // host removed the guest
 	HostEnded = 2, // the host's console session ended
 	/** The host lost its console and is getting it back: keep trying to join again. */
-	Reconnecting = 3
+	Reconnecting = 3,
+	/**
+	 * A guest left and asks the host to put the console to sleep. Only a guest whose
+	 * entry in the session state has kParticipantMaySleep sends it, and only a host that
+	 * gave that flag acts on it; to every other host it is a guest that left.
+	 */
+	Sleep = 4
 };
 
 /**
@@ -383,7 +389,9 @@ enum ParticipantFlags : uint8_t
 {
 	kParticipantHost = 1 << 0,
 	kParticipantCanControl = 1 << 1,
-	kParticipantInControl = 1 << 2 // currently contributes input to the console
+	kParticipantInControl = 1 << 2, // currently contributes input to the console
+	/** May put the console to sleep when leaving (ByeReason::Sleep). The host always may. */
+	kParticipantMaySleep = 1 << 3
 };
 
 struct Participant

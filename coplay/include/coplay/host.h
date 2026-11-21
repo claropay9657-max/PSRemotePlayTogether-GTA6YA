@@ -44,6 +44,8 @@ struct HostConfig
 	/** on_keyframe_needed fires at most this often. */
 	uint32_t keyframe_min_interval_ms = 400;
 	InputMixer::Config mixer;
+	/** Guests may put the console to sleep when they leave; see Host::SetGuestsMaySleep(). */
+	bool guests_may_sleep = false;
 	/** Lets friends in without a forwarded port (meet.h). Off unless a URL and a way to ask it are given. */
 	MeetConfig meet;
 	/** Lets friends in who join from a web browser (web.h). Needs the meeting point. */
@@ -119,6 +121,11 @@ struct HostCallbacks
 	std::function<void(const BlobRef &)> on_chat_image;
 	/** What Host::Reach() says has changed. */
 	std::function<void()> on_reach_changed;
+	/**
+	 * A guest left and asked for the console to be put to sleep, and guests are allowed to.
+	 * The guest is gone from Guests() by now; nothing else has happened yet.
+	 */
+	std::function<void(uint8_t slot, const std::string &name)> on_sleep_requested;
 	std::function<void(const std::string &)> on_log;
 };
 
@@ -197,6 +204,12 @@ class Host
 		void SetMixMode(MixMode mode);
 		MixMode GetMixMode();
 		void SetGuestCanControl(uint8_t slot, bool allowed);
+		/**
+		 * Whether a guest that leaves may ask for the console to be put to sleep. Guests are
+		 * told, so that their app only offers it when it will work.
+		 */
+		void SetGuestsMaySleep(bool allowed);
+		bool GuestsMaySleep();
 		void KickGuest(uint8_t slot);
 		std::vector<GuestInfo> Guests();
 		/** Whether the host's own controllers currently reach the console (see MixMode). */
@@ -276,6 +289,10 @@ class Host
 			bool keyframe_needed = false;
 			bool guests_changed = false;
 			bool reach_changed = false;
+			/** A guest asked for the console to be put to sleep: its slot and name. */
+			bool sleep_requested = false;
+			uint8_t sleep_slot = 0;
+			std::string sleep_name;
 			std::vector<std::string> logs;
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, Opus frame
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture

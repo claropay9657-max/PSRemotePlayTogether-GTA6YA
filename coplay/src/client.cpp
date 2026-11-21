@@ -305,13 +305,13 @@ void Client::Start(const ClientCallbacks &cb)
 	thread = std::thread(&Client::ThreadMain, this);
 }
 
-void Client::Stop()
+void Client::Stop(bool sleep_console)
 {
 	if(connected && !lost)
 	{
 		std::vector<uint8_t> bye;
 		ByteWriter w(bye);
-		w.U8(static_cast<uint8_t>(ByeReason::Quit));
+		w.U8(static_cast<uint8_t>(sleep_console ? ByeReason::Sleep : ByeReason::Quit));
 		Send(PacketType::Bye, bye);
 		Send(PacketType::Bye, bye);
 	}

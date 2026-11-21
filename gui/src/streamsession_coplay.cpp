@@ -87,6 +87,8 @@ struct CoPlayState
 	std::shared_ptr<CoPlayRejoin> rejoin; // session's thread; set while joining again
 	QString rejoin_status;
 	std::atomic<bool> guest_quit_sent{false};
+	/** The host lets guests put the console to sleep when they leave (from the session state). */
+	std::atomic<bool> may_sleep{false};
 	std::atomic<bool> audio_ready{false};
 	coplay::Feedback applied_feedback;
 	bool applied_any = false;
@@ -363,6 +365,12 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	coplay->invite_meet = CoPlayMeet::InviteValue(connect_info.coplay_meet_server);
 	callbacks.on_reach_changed = [this] {
 		QMetaObject::invokeMethod(this, [this] { emit CoPlayChanged(); }, Qt::QueuedConnection);
+	};
+	// A guest that leaves may send the console to sleep, if the host has said so
+	config.guests_may_sleep = connect_info.coplay_guests_may_sleep;
+	callbacks.on_sleep_requested = [this](uint8_t, const std::string &name) {
+		QString who = QString::fromStdString(name);
+		QMetaObject::invokeMethod(this, [this, who] { emit CoPlaySleepRequested(who); }, Qt::QueuedConnection);
 	};
 	// Friends without the app join from a web browser; the meeting point leads them here
 	if(connect_info.coplay_web_guests && config.meet.Enabled() && coplay::WebGuestsSupported())
@@ -968,6 +976,9 @@ void StreamSession::CoPlayStartGuest()
 			m["you"] = p.slot == your_slot;
 			m["canControl"] = (p.flags & coplay::kParticipantCanControl) != 0;
 			m["inControl"] = (p.flags & coplay::kParticipantInControl) != 0;
+			m["maySleep"] = (p.flags & coplay::kParticipantMaySleep) != 0;
+			if(p.slot == your_slot)
+				coplay->may_sleep = (p.flags & coplay::kParticipantMaySleep) != 0;
 			m["controller"] = static_cast<int>(p.controller);
 			m["battery"] = static_cast<int>(p.battery);
 			// Only once the picture itself is here
@@ -1115,14 +1126,20 @@ void StreamSession::CoPlayStartGuest()
 	CoPlayStartMedia();
 }
 
-void StreamSession::CoPlayStopGuest()
+void StreamSession::CoPlayStopGuest(bool sleep_console)
 {
 	if(!IsCoPlayGuest())
 		return;
 	CoPlayCancelRejoin();
-	// Waits for the receiving thread; nothing from the host is processed after this
-	coplay->client->Stop();
+	// Waits for the receiving thread; nothing from the host is processed after this.
+	// The console only goes to sleep with it if the host lets guests decide that.
+	coplay->client->Stop(sleep_console && coplay->may_sleep);
 	CoPlayGuestQuit();
+}
+
+bool StreamSession::CoPlayGuestMaySleep() const
+{
+	return IsCoPlayGuest() && coplay->may_sleep;
 }
 
 void StreamSession::CoPlayGuestLost(coplay::DisconnectReason reason)

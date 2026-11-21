@@ -72,6 +72,8 @@ static void Usage()
 		"      --seconds N         stop after N seconds\n"
 		"      --voice             the host talks: a short tone every two seconds (needs Opus)\n"
 		"      --chat              the host writes in the chat now and then; prints what others write\n"
+		"      --guests-may-sleep  a guest that leaves may ask for the console to be put to sleep;\n"
+		"                          the host then stops, as a real one would with its console asleep\n"
 		"      --cam A.jpg,B.jpg   the host has a webcam: these pictures in turn, 8 per second\n"
 		"      --meet URL|default  let friends in without a forwarded port: leave a note at this\n"
 		"                          meeting point (see server/meeting-point). Needs curl.\n"
@@ -124,6 +126,7 @@ struct Options
 	bool press = false;
 	bool voice = false;
 	bool chat = false;
+	bool guests_may_sleep = false;
 	std::string cam;
 	std::string meet, stun;
 	/** The page for guests in a web browser; empty: no such guests. */
@@ -166,6 +169,7 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--no-address") o.no_address = true;
 		else if(a == "--voice") o.voice = true;
 		else if(a == "--chat") o.chat = true;
+		else if(a == "--guests-may-sleep") o.guests_may_sleep = true;
 		else if(a == "--no-video") o.no_video = true;
 		else if(a == "--press") o.press = true;
 		else if(!a.empty() && a[0] == '-') return false;
@@ -512,6 +516,15 @@ static int RunHost(const Options &o)
 		std::lock_guard<std::mutex> lock(print_mutex);
 		std::printf("[host] %s\n", line.c_str());
 		std::fflush(stdout);
+	};
+	config.guests_may_sleep = o.guests_may_sleep;
+	cb.on_sleep_requested = [&](uint8_t, const std::string &name) {
+		{
+			std::lock_guard<std::mutex> lock(print_mutex);
+			std::printf("[host] %s asked for the console to sleep: stopping, as with a console that went to sleep\n", name.c_str());
+			std::fflush(stdout);
+		}
+		g_quit = true;
 	};
 	cb.on_chat = [&](const ChatMessage &m) {
 		std::lock_guard<std::mutex> lock(print_mutex);

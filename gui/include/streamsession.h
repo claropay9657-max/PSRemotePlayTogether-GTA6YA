@@ -143,6 +143,8 @@ class SdeckHapticsWorker;
 		QString coplay_address;
 		QString coplay_stun_server;
 		QString coplay_meet_server;
+		/** Guests may put the console to sleep when they leave. */
+		bool coplay_guests_may_sleep = false;
 		/** Let friends in who join from a web browser, and the page they open (empty: the built-in one). */
 		bool coplay_web_guests = true;
 		QString coplay_web_url;
@@ -206,6 +208,8 @@ class StreamSession : public QObject
 	Q_PROPERTY(int framesLost READ GetFramesLost NOTIFY FramesLostChanged)
 	Q_PROPERTY(bool coplayGuest READ IsCoPlayGuest CONSTANT)
 	Q_PROPERTY(bool coplayHosting READ IsCoPlayHosting NOTIFY CoPlayChanged)
+	/** Guest: the host lets guests put the console to sleep when they leave. */
+	Q_PROPERTY(bool coplayMaySleep READ CoPlayGuestMaySleep NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInvite READ GetCoPlayInvite NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInviteLan READ GetCoPlayInviteLan NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInvitePublic READ GetCoPlayInvitePublic NOTIFY CoPlayChanged)
@@ -411,7 +415,7 @@ class StreamSession : public QObject
 		void CoPlayStopThreads();
 		void CoPlayFini();
 		void CoPlayStartGuest();
-		void CoPlayStopGuest();
+		void CoPlayStopGuest(bool sleep_console = false);
 		void CoPlayStopHost();
 		void CoPlayGuestLost(coplay::DisconnectReason reason);
 		void CoPlayGuestQuit();
@@ -498,6 +502,8 @@ class StreamSession : public QObject
 		void SetAudioVolume(int volume) { audio_volume = volume; }
 		bool GetCantDisplay()	{ return cant_display; }
 		bool IsCoPlayGuest() const;
+		/** A guest whose host lets guests put the console to sleep when they leave. */
+		bool CoPlayGuestMaySleep() const;
 		bool IsCoPlayHosting() const;
 		QString GetCoPlayInvite() const;
 		/** With this computer's address on the local network. */

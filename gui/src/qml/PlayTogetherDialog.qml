@@ -562,6 +562,26 @@ DialogView {
                         }
 
                         Label {
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("Console sleep:")
+                        }
+
+                        C.CheckBox {
+                            text: qsTr("Guests may put the console to sleep when they leave")
+                            checked: !!Chiaki.settings.coplayGuestsMaySleep
+                            onToggled: Chiaki.settings.coplayGuestsMaySleep = checked
+                        }
+
+                        Item { }
+
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            opacity: 0.7
+                            text: qsTr("Off: only you decide that, and guests are not asked when they leave. On: a guest who leaves is asked, like you are, and \"Sleep\" ends the session for everybody. Waking the console is always yours: a session only exists once your app is connected to it. Applies from the next session you share.")
+                        }
+
+                        Label {
                             visible: !!Chiaki.settings.coplayWebSupported
                             Layout.alignment: Qt.AlignRight
                             text: qsTr("Web browser:")

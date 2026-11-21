@@ -1046,7 +1046,9 @@ struct TestHost
 	std::atomic<int> keyframe_requests{0};
 	std::atomic<int> guest_changes{0};
 	std::atomic<int> reach_changes{0};
+	std::atomic<int> sleep_requests{0};
 	std::mutex mutex;
+	std::string sleep_name; // who asked for the console to sleep
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 	std::vector<ChatMessage> chats;
@@ -1069,6 +1071,13 @@ struct TestHost
 		cb.on_input_changed = [this] { input_changes++; };
 		cb.on_keyframe_needed = [this] { keyframe_requests++; };
 		cb.on_guests_changed = [this] { guest_changes++; };
+		cb.on_sleep_requested = [this](uint8_t, const std::string &name) {
+			{
+				std::lock_guard<std::mutex> lock(mutex);
+				sleep_name = name;
+			}
+			sleep_requests++;
+		};
 		cb.on_voice = [this](uint8_t slot, const uint8_t *d, size_t n) {
 			std::lock_guard<std::mutex> lock(mutex);
 			voice.emplace_back(slot, std::vector<uint8_t>(d, d + n));
@@ -1299,6 +1308,76 @@ TEST(net_handshake_and_roster)
 	// RTT gets measured on loopback
 	CHECK(WaitFor([&] { return g.client->Stats().packets_received > 3; }, 2000));
 	CHECK(g.client->Stats().rtt_ms < 50);
+}
+
+/** The flags of a player as a guest sees them, or 0 while that player is not in its state. */
+static uint8_t FlagsOf(TestGuest &g, uint8_t slot)
+{
+	for(const Participant &p : g.LastState().participants)
+	{
+		if(p.slot == slot)
+			return p.flags;
+	}
+	return 0;
+}
+
+TEST(net_guest_sends_the_console_to_sleep_only_where_the_host_allows)
+{
+	// By default only the host decides: a guest is told so, and asking changes nothing
+	{
+		TestHost h;
+		TestGuest g(h.MakeInvite(), "Friend");
+		CHECK(g.Connect());
+		CHECK(WaitFor([&] { return g.LastState().participants.size() == 2; }, 2000));
+		CHECK(FlagsOf(g, 0) & kParticipantMaySleep);
+		CHECK(!(FlagsOf(g, 1) & kParticipantMaySleep));
+		g.client->Stop(true);
+		// It left, like any guest
+		CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
+		std::this_thread::sleep_for(std::chrono::milliseconds(150));
+		CHECK(h.sleep_requests == 0);
+	}
+	// Allowed: the guests are told, and a guest that leaves that way is heard once
+	{
+		TestHost h(4, {}, [](HostConfig &c) { c.guests_may_sleep = true; });
+		CHECK(h.host->GuestsMaySleep());
+		TestGuest stays(h.MakeInvite(), "Stays");
+		TestGuest g(h.MakeInvite(), "Sleepy");
+		CHECK(stays.Connect());
+		CHECK(g.Connect());
+		CHECK(WaitFor([&] { return g.LastState().participants.size() == 3; }, 2000));
+		CHECK(FlagsOf(g, g.LastState().your_slot) & kParticipantMaySleep);
+		// A guest that just leaves does not put anything to sleep
+		stays.client->Stop();
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+		CHECK(h.sleep_requests == 0);
+		g.client->Stop(true);
+		CHECK(WaitFor([&] { return h.sleep_requests == 1; }, 2000));
+		CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
+		{
+			std::lock_guard<std::mutex> lock(h.mutex);
+			CHECK(h.sleep_name == "Sleepy");
+		}
+		// The goodbye goes out twice; the second one is nobody's
+		std::this_thread::sleep_for(std::chrono::milliseconds(150));
+		CHECK(h.sleep_requests == 1);
+	}
+	// Switched while guests are there: they are told at once
+	{
+		TestHost h;
+		TestGuest g(h.MakeInvite(), "Friend");
+		CHECK(g.Connect());
+		CHECK(WaitFor([&] { return g.LastState().participants.size() == 2; }, 2000));
+		CHECK(!(FlagsOf(g, 1) & kParticipantMaySleep));
+		h.host->SetGuestsMaySleep(true);
+		CHECK(WaitFor([&] { return (FlagsOf(g, 1) & kParticipantMaySleep) != 0; }, 2000));
+		h.host->SetGuestsMaySleep(false);
+		CHECK(WaitFor([&] { return (FlagsOf(g, 1) & kParticipantMaySleep) == 0; }, 2000));
+		g.client->Stop(true);
+		CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
+		std::this_thread::sleep_for(std::chrono::milliseconds(150));
+		CHECK(h.sleep_requests == 0);
+	}
 }
 
 TEST(net_wrong_secret_gets_no_answer)
