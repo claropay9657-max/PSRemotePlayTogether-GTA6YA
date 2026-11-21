@@ -910,6 +910,17 @@ h3 {
   background: #000000;
 }
 
+.cover img.cover-badge {
+  inset: auto;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  box-sizing: border-box;
+}
+
 .live-badge {
   position: absolute;
   left: 6px;

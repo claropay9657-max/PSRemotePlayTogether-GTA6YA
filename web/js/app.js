@@ -235,6 +235,15 @@ function roomCover(room) {
       badge.prepend(el('i'));
       cover.classList.add('live');
       cover.append(img, badge);
+      // Over the picture, the game's cover small in the corner: which game it is
+      if (room.cover) {
+        const small = el('img', 'cover-badge');
+        small.alt = '';
+        small.decoding = 'async';
+        small.addEventListener('error', () => small.remove());
+        small.src = room.cover;
+        cover.append(small);
+      }
     });
   }
   return cover;

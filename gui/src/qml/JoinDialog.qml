@@ -1232,6 +1232,37 @@ FocusScope {
                                     visible: tile.live || cover.status === Image.Ready
                                 }
 
+                                // Over the picture, the game's cover small in the corner: which game it is
+                                Rectangle {
+                                    id: coverBadge
+                                    visible: tile.live && cover.status === Image.Ready
+                                    anchors {
+                                        top: parent.top
+                                        right: parent.right
+                                        margins: 6
+                                    }
+                                    width: 26
+                                    height: 26
+                                    radius: 8
+                                    color: Qt.rgba(1, 1, 1, 0.75)
+
+                                    Rectangle {
+                                        id: coverBadgeMask
+                                        anchors.fill: parent
+                                        anchors.margins: 1.5
+                                        radius: 7
+                                        visible: false
+                                        layer.enabled: true
+                                    }
+
+                                    MultiEffect {
+                                        anchors.fill: coverBadgeMask
+                                        source: cover
+                                        maskEnabled: true
+                                        maskSource: coverBadgeMask
+                                    }
+                                }
+
                                 // The picture is the game as it is now
                                 Rectangle {
                                     visible: tile.live
