@@ -2,19 +2,28 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import QtQuick.Window
 
 import org.streetpea.chiaking
 
-// The stream menu (⌘O / Ctrl+O, or the controller combo): the connection, Play Together,
-// sound, picture and quality, on one floating sheet. Shown inside the stream window, or
-// with Vulkan in a window of its own (StreamMenuWindow). Every control can be reached
-// with the arrow keys / D-pad; Escape goes back to the game.
+import "controls" as C
+
+// The stream menu (⌘O / Ctrl+O, or the controller combo), laid over the game picture:
+// the connection and the two ways out along the top, Play Together in a panel at the
+// side (PlayTogetherBar), and sound, picture, quality and overlays in a dock along the
+// bottom. Shown inside the stream window, or with some renderers in a window of its own
+// that covers the game picture (StreamMenuWindow). Every control can be reached with the
+// arrow keys / D-pad; Escape or Circle goes back to the game.
 FocusScope {
-    id: menu
+    id: streamMenu
 
     /** Gets the focus when the menu opens. */
     readonly property Item initialFocusItem: resumeButton
+    /** Bind to whether the menu is open: it slides in and out by itself. */
+    property bool shown: false
 
+    /** The menu has slid out after `shown` went false. */
+    signal hidden()
     signal closeRequested()
     signal displaySettingsRequested()
     signal placeboSettingsRequested()
@@ -24,29 +33,40 @@ FocusScope {
     /** Drag the things on the game picture into place. */
     signal arrangeRequested()
 
-    readonly property color accent: "#8c52ff"
-    readonly property color pink: "#f0469b"
-    readonly property color cyan: "#00f2ff"
-    readonly property color green: "#34d399"
-    readonly property color amber: "#fbbf24"
-    readonly property color red: "#f0466e"
-
     readonly property var session: Chiaki.session
     readonly property bool connected: !!session && session.connected
     readonly property bool guest: !!session && session.coplayGuest
     readonly property bool together: !!session && session.coplayActive
-    /** Where the up key goes from the bottom row. */
-    readonly property Item upFromControls: menu.together ? coplayBar.firstItem : resumeButton
-    /**
-     * How tall the menu wants to be. The controls at the bottom take a second row when the
-     * window is too narrow for one, and the menu grows with them instead of cutting them off.
-     */
-    readonly property int wantedHeight: Math.ceil(sheetColumn.implicitHeight)
-        + sheet.anchors.topMargin + sheet.anchors.bottomMargin
-        + sheetColumn.anchors.topMargin + sheetColumn.anchors.bottomMargin
+    readonly property bool hosting: together && session.coplayHosting
+    readonly property bool padConnected: Chiaki.controllers.length > 0
 
-    Keys.onEscapePressed: closeRequested()
-    Keys.onMenuPressed: closeRequested()
+    // ------------------------------------------------------------ where things go
+
+    readonly property int margin: 16
+    /** Too narrow for the panel beside the game: it takes the width between top bar and dock. */
+    readonly property bool narrow: width < 800
+    readonly property bool panelShown: !!session
+    readonly property int panelWidth: narrow ? width - 2 * margin : Math.round(Math.max(368, Math.min(420, width * 0.2875)))
+    /** What the panel takes from the width of the top bar and the dock. */
+    readonly property int sideWidth: panelShown && !narrow ? panelWidth + margin : 0
+
+    // Slides in and out
+    property real reveal: shown ? 1 : 0
+    Behavior on reveal {
+        NumberAnimation {
+            duration: 220
+            easing.type: Easing.OutCubic
+            onRunningChanged: {
+                if (!running && !streamMenu.shown)
+                    streamMenu.hidden();
+            }
+        }
+    }
+
+    onShownChanged: {
+        if (!shown)
+            closeMenus();
+    }
 
     function setVolume(v) {
         Chiaki.settings.audioVolume = Math.max(0, Math.min(128, Math.round(v)));
@@ -65,558 +85,805 @@ FocusScope {
             mainViewRequested();
     }
 
+    function closeMenus() {
+        panel.closeMenus();
+        overlaysMenu.close();
+        qualityCombo.popup.close();
+    }
+
+    // ------------------------------------------------------------ keys and controller
+    //
+    // Up and Down move along the focus chain (each control does that itself, see
+    // controls/FocusChain.qml), and so do Left and Right where a control leaves them to us.
+    // The chain runs: End session, Back to game, the panel from top to bottom, the dock from
+    // left to right. Back to game gets the focus first; Down from it goes into the panel and
+    // Right to End session, so that the way out is never one key away by accident.
+
+    property point lastFocusPoint: Qt.point(0, 0)
+    property bool lastFocusRing: false
+    /** What had the focus last: when it goes away, the focus goes to what is closest. */
+    property Item lastFocusItem: null
+
+    function contains(item) {
+        for (let p = item; p; p = p.parent) {
+            if (p === streamMenu)
+                return true;
+        }
+        return false;
+    }
+
+    /** The window's root, or something else the menu sits in: the focus fell out of the menu. */
+    function isAbove(item) {
+        for (let p = streamMenu.parent; p; p = p.parent) {
+            if (p === item)
+                return true;
+        }
+        return false;
+    }
+
+    function focusItem(item) {
+        if (item)
+            item.forceActiveFocus(Qt.TabFocusReason);
+    }
+
+    function step(item, forward) {
+        const next = item.nextItemInFocusChain(forward);
+        if (next && next !== leaveButton && contains(next))
+            focusItem(next);
+    }
+
+    /**
+     * The focus is on something that went away (a button that hid, a knock that was
+     * answered), or it fell out of the menu when one of its lists closed: it goes to
+     * whatever is closest to where it was, with the ring if the ring was showing.
+     */
+    function recoverFocus() {
+        const w = streamMenu.Window.window;
+        if (!shown || !w)
+            return;
+        const now = w.activeFocusItem;
+        if (now && now !== streamMenu && !isAbove(now) && now.visible)
+            return;
+        let best = null;
+        let bestDistance = Infinity;
+        let item = leaveButton;
+        for (let i = 0; i < 300 && item; ++i) {
+            if (contains(item) && item.visible && item.enabled) {
+                const c = item.mapToItem(streamMenu, item.width / 2, item.height / 2);
+                const d = Math.pow(c.x - lastFocusPoint.x, 2) + Math.pow(c.y - lastFocusPoint.y, 2);
+                if (d < bestDistance) {
+                    best = item;
+                    bestDistance = d;
+                }
+            }
+            item = item.nextItemInFocusChain(true);
+            if (item === leaveButton)
+                break;
+        }
+        const target = best || resumeButton;
+        target.forceActiveFocus(lastFocusRing ? Qt.TabFocusReason : Qt.OtherFocusReason);
+    }
+
+    function focusMoved() {
+        const w = streamMenu.Window.window;
+        if (!shown || !w)
+            return;
+        const item = w.activeFocusItem;
+        if (item && item !== streamMenu && contains(item)) {
+            lastFocusItem = item;
+            lastFocusPoint = item.mapToItem(streamMenu, item.width / 2, item.height / 2);
+            lastFocusRing = item.visualFocus === true;
+            panel.ensureVisible(item);
+        } else if (!item || item === streamMenu || isAbove(item)) {
+            recoverTimer.restart();
+        }
+    }
+
+    // After the layouts have caught up with what came and went, so that "closest" is right
+    Timer {
+        id: recoverTimer
+        interval: 50
+        onTriggered: streamMenu.recoverFocus()
+    }
+
+    Connections {
+        target: streamMenu.Window.window
+        ignoreUnknownSignals: true
+        function onActiveFocusItemChanged() { streamMenu.focusMoved(); }
+    }
+
+    // Qt leaves the focus on a button that hides: it would go on from there unseen
+    Connections {
+        target: streamMenu.lastFocusItem
+        ignoreUnknownSignals: true
+        function onVisibleChanged() {
+            if (streamMenu.lastFocusItem && !streamMenu.lastFocusItem.visible)
+                recoverTimer.restart();
+        }
+    }
+
+    Keys.onPressed: (event) => {
+        const key = event.key;
+        if (key === Qt.Key_Escape || key === Qt.Key_Menu) {
+            streamMenu.closeRequested();
+            event.accepted = true;
+            return;
+        }
+        if (key !== Qt.Key_Left && key !== Qt.Key_Right && key !== Qt.Key_Up && key !== Qt.Key_Down)
+            return;
+        event.accepted = true;
+        const w = streamMenu.Window.window;
+        const item = w ? w.activeFocusItem : null;
+        if (!item || item === streamMenu || !streamMenu.contains(item) || !item.visible) {
+            streamMenu.lastFocusRing = true;
+            streamMenu.recoverFocus();
+            return;
+        }
+        // Writing: the arrows move in the text
+        if (item.readOnly === false && item.cursorPosition !== undefined)
+            return;
+        if (item === resumeButton || item === leaveButton) {
+            if (key === Qt.Key_Right && item === resumeButton)
+                streamMenu.focusItem(leaveButton);
+            else if (key === Qt.Key_Left && item === leaveButton)
+                streamMenu.focusItem(resumeButton);
+            else if (key === Qt.Key_Down)
+                streamMenu.step(resumeButton, true);
+            return;
+        }
+        if (key === Qt.Key_Left || key === Qt.Key_Right)
+            streamMenu.step(item, key === Qt.Key_Right);
+    }
+
     // ------------------------------------------------------------ building blocks
 
-    component MenuButton: ToolButton {
-        id: mb
-        /** A colour that stands for a state: muted, live, leaving. */
-        property color tint: "transparent"
-        /** One option of a group that is the chosen one. */
-        property bool selected: false
-        padding: 8
-        leftPadding: 14
-        rightPadding: 14
-        font.pixelSize: 14
-        font.bold: true
+    /** A button of the dock: an icon, or a word with an icon, 36 px high. */
+    component DockButton: AbstractButton {
+        id: db
+        property string iconName
+        /** Says what it does in a tooltip and to screen readers. */
+        property string tip
+        // `checked` shows a switch that is on (the console's microphone); a click does not change it
+        /** Opens a list. */
+        property bool chevron: false
+        property bool firstInFocusChain: false
+        property bool lastInFocusChain: false
+
+        implicitHeight: 36
+        implicitWidth: text.length > 0 ? dbRow.implicitWidth + 22 : 36
+        hoverEnabled: true
         focusPolicy: Qt.StrongFocus
-        Keys.onReturnPressed: clicked()
-        Keys.onEnterPressed: clicked()
-        contentItem: Label {
-            text: mb.text
-            font: mb.font
-            color: "white"
-            opacity: mb.enabled ? 1 : 0.4
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
+        font.pixelSize: 13
+        font.weight: Font.Bold
+        opacity: enabled ? 1 : 0.45
+        Accessible.name: tip.length > 0 ? tip : text
+        ToolTip.visible: hovered && tip.length > 0
+        ToolTip.text: tip
+        ToolTip.delay: 600
+
+        Keys.onPressed: (event) => C.FocusChain.handle(db, event)
+
+        background: Item {
+            Rectangle {
+                anchors.fill: parent
+                radius: 10
+                color: db.checked ? Qt.rgba(122 / 255, 60 / 255, 245 / 255, db.hovered ? 0.45 : 0.35)
+                     : Qt.rgba(1, 1, 1, db.down ? 0.14 : db.hovered ? 0.11 : (db.text.length > 0 ? 0.05 : 0.07))
+                border.width: db.checked || db.text.length > 0 ? 1 : 0
+                border.color: db.checked ? Qt.rgba(140 / 255, 82 / 255, 1, 0.7) : Qt.rgba(1, 1, 1, 0.12)
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -4
+                radius: 14
+                color: "transparent"
+                border.width: 2
+                border.color: C.Theme.focus
+                visible: db.visualFocus
+            }
         }
-        background: Rectangle {
-            implicitHeight: 36
-            implicitWidth: 36
-            radius: 10
-            color: mb.selected ? menu.accent
-                 : mb.tint.a > 0 ? mb.tint
-                 : Qt.rgba(1, 1, 1, mb.down ? 0.24 : (mb.hovered || mb.activeFocus) ? 0.16 : 0.08)
-            border.width: mb.activeFocus ? 2 : 1
-            border.color: mb.activeFocus ? menu.cyan : (mb.selected ? Qt.lighter(menu.accent, 1.35) : Qt.rgba(1, 1, 1, 0.12))
+
+        contentItem: Item {
+            Row {
+                id: dbRow
+                anchors.centerIn: parent
+                spacing: 6
+
+                C.Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: db.iconName.length > 0
+                    iconName: db.iconName
+                    size: db.text.length > 0 ? 15 : 17
+                    color: db.checked ? "#ffffff" : db.text.length > 0 ? "#cdb6ff" : "#d9d5f2"
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: text.length > 0
+                    text: db.text
+                    font: db.font
+                    color: C.Theme.text
+                }
+
+                C.Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: db.chevron
+                    iconName: "chevron-down"
+                    size: 14
+                    color: C.Theme.textSoft
+                }
+            }
         }
     }
 
-    component Card: Rectangle {
-        id: card
-        default property alias content: body.data
-        property string title
-        radius: 14
-        color: Qt.rgba(1, 1, 1, 0.045)
-        border.color: Qt.rgba(1, 1, 1, 0.09)
-        implicitWidth: Math.max(body.implicitWidth, cardTitle.implicitWidth) + 28
-        implicitHeight: cardTitle.implicitHeight + body.implicitHeight + 28
+    /** A thin upright line between the groups of the dock. */
+    component DockLine: Item {
+        implicitWidth: 3
+        implicitHeight: 36
 
-        Label {
-            id: cardTitle
-            x: 14
-            y: 10
-            text: card.title
-            font.pixelSize: 11
-            font.bold: true
-            font.letterSpacing: 1.4
-            opacity: 0.55
-        }
-
-        RowLayout {
-            id: body
-            x: 14
-            anchors.top: cardTitle.bottom
-            anchors.topMargin: 8
-            spacing: 8
-        }
-    }
-
-    component Chip: Rectangle {
-        id: chip
-        property alias text: chipLabel.text
-        property color tone: Qt.rgba(1, 1, 1, 0.8)
-        radius: height / 2
-        implicitHeight: 24
-        implicitWidth: chipLabel.implicitWidth + 18
-        color: Qt.rgba(1, 1, 1, 0.07)
-        border.color: Qt.rgba(1, 1, 1, 0.1)
-
-        Label {
-            id: chipLabel
+        Rectangle {
             anchors.centerIn: parent
-            font.pixelSize: 12
-            font.bold: true
-            color: chip.tone
+            width: 1
+            height: 26
+            color: Qt.rgba(1, 1, 1, 0.12)
         }
     }
 
-    component Bar: Slider {
-        id: bs
-        // Mouse only: the buttons beside it are for the keys and the controller
+    /** A bar to drag, for the mouse: the buttons beside it are for the keys and the controller. */
+    component DockSlider: C.Slider {
+        id: ds
         focusPolicy: Qt.NoFocus
-        Layout.preferredWidth: 140
+        implicitWidth: 88
+        implicitHeight: 36
+        padding: 0
+
         background: Rectangle {
-            x: bs.leftPadding
-            y: bs.topPadding + bs.availableHeight / 2 - height / 2
-            width: bs.availableWidth
+            x: ds.leftPadding
+            y: ds.topPadding + ds.availableHeight / 2 - height / 2
+            width: ds.availableWidth
             height: 6
             radius: 3
             color: Qt.rgba(1, 1, 1, 0.14)
 
             Rectangle {
-                width: bs.visualPosition * parent.width
+                width: ds.visualPosition * parent.width
                 height: parent.height
                 radius: 3
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: menu.accent }
-                    GradientStop { position: 1.0; color: menu.pink }
+                    GradientStop { position: 0.0; color: C.Theme.brandFrom }
+                    GradientStop { position: 1.0; color: C.Theme.brandTo }
                 }
             }
         }
+
         handle: Rectangle {
-            x: bs.leftPadding + bs.visualPosition * (bs.availableWidth - width)
-            y: bs.topPadding + bs.availableHeight / 2 - height / 2
-            width: 16
-            height: 16
-            radius: 8
-            color: "white"
-            border.color: menu.accent
-            border.width: bs.pressed ? 4 : 2
+            x: ds.leftPadding + ds.visualPosition * (ds.availableWidth - width)
+            y: ds.topPadding + ds.availableHeight / 2 - height / 2
+            width: 14
+            height: 14
+            radius: 7
+            color: "#ffffff"
+            border.color: C.Theme.brandFrom
+            border.width: ds.pressed ? 4 : 2
         }
     }
 
-    // ------------------------------------------------------------ the sheet
+    // ------------------------------------------------------------ the game, dimmed
 
     Rectangle {
-        id: sheet
-        anchors {
-            fill: parent
-            leftMargin: 16
-            rightMargin: 16
-            topMargin: 6
-            bottomMargin: 14
+        anchors.fill: parent
+        opacity: streamMenu.reveal
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: Qt.rgba(6 / 255, 4 / 255, 16 / 255, 0.30) }
+            GradientStop { position: 0.55; color: Qt.rgba(6 / 255, 4 / 255, 16 / 255, 0.45) }
+            GradientStop { position: 1.0; color: Qt.rgba(6 / 255, 4 / 255, 16 / 255, streamMenu.panelShown && !streamMenu.narrow ? 0.78 : 0.45) }
         }
-        radius: 22
-        color: Qt.rgba(13 / 255, 11 / 255, 31 / 255, 0.97)
-        border.color: Qt.rgba(1, 1, 1, 0.12)
+    }
 
-        // A soft accent line along the top edge
+    // ------------------------------------------------------------ top: the connection, and the ways out
+
+    Item {
+        id: topBar
+        x: streamMenu.margin
+        y: streamMenu.margin
+        width: streamMenu.width - 2 * streamMenu.margin - streamMenu.sideWidth
+        readonly property bool oneRow: connection.implicitWidth + 10 + exits.implicitWidth <= width
+        height: oneRow ? 44 : 96
+        opacity: streamMenu.reveal
+        transform: Translate { y: (1 - streamMenu.reveal) * -16 }
+
         Rectangle {
-            anchors {
-                top: parent.top
-                left: parent.left
-                right: parent.right
-                leftMargin: 22
-                rightMargin: 22
-            }
-            height: 2
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 0.3; color: Qt.rgba(140 / 255, 82 / 255, 1, 0.8) }
-                GradientStop { position: 0.7; color: Qt.rgba(240 / 255, 70 / 255, 155 / 255, 0.8) }
-                GradientStop { position: 1.0; color: "transparent" }
-            }
-        }
+            id: connection
+            width: Math.min(implicitWidth, topBar.width)
+            height: 44
+            implicitWidth: Math.ceil(connectionRow.implicitWidth) + 24
+            radius: 22
+            color: Qt.rgba(14 / 255, 11 / 255, 30 / 255, 0.88)
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.10)
 
-        ColumnLayout {
-            id: sheetColumn
-            anchors {
-                fill: parent
-                leftMargin: 18
-                rightMargin: 18
-                topMargin: 14
-                bottomMargin: 16
-            }
-            spacing: 12
-
-            // ---------------------------------------- connection and leaving
             RowLayout {
-                Layout.fillWidth: true
+                id: connectionRow
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    verticalCenter: parent.verticalCenter
+                    leftMargin: 14
+                    rightMargin: 8
+                }
                 spacing: 10
 
-                Rectangle {
-                    Layout.alignment: Qt.AlignVCenter
-                    Layout.preferredWidth: 10
-                    Layout.preferredHeight: 10
-                    radius: 5
-                    color: Chiaki.reconnecting || !menu.connected ? menu.amber : menu.green
+                Item {
+                    id: stateDot
+                    readonly property bool waiting: Chiaki.reconnecting || !streamMenu.connected
+                    Layout.preferredWidth: 17
+                    Layout.preferredHeight: 17
 
-                    SequentialAnimation on opacity {
-                        running: Chiaki.reconnecting || (!!menu.session && !menu.connected)
-                        loops: Animation.Infinite
-                        alwaysRunToEnd: true
-                        NumberAnimation { to: 0.3; duration: 600 }
-                        NumberAnimation { to: 1.0; duration: 600 }
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: width / 2
+                        color: stateDot.waiting ? Qt.rgba(245 / 255, 185 / 255, 66 / 255, 0.18) : Qt.rgba(52 / 255, 211 / 255, 153 / 255, 0.18)
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 9
+                        height: 9
+                        radius: 4.5
+                        color: stateDot.waiting ? C.Theme.wait : C.Theme.good
+
+                        SequentialAnimation on opacity {
+                            running: Chiaki.reconnecting || (!!streamMenu.session && !streamMenu.connected)
+                            loops: Animation.Infinite
+                            alwaysRunToEnd: true
+                            NumberAnimation { to: 0.3; duration: 600 }
+                            NumberAnimation { to: 1.0; duration: 600 }
+                        }
                     }
                 }
 
-                Label {
-                    Layout.maximumWidth: 420
+                Text {
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: implicitWidth
                     elide: Text.ElideRight
-                    font.pixelSize: 16
-                    font.bold: true
-                    textFormat: Text.StyledText
+                    font.pixelSize: 14
+                    font.weight: Font.ExtraBold
+                    color: C.Theme.text
+                    textFormat: Text.PlainText
                     text: {
-                        if (!menu.session)
+                        if (!streamMenu.session)
                             return qsTr("Not connected");
                         if (Chiaki.reconnecting)
                             return Chiaki.reconnectStatus;
-                        const where = Chiaki.settings.streamerMode ? qsTr("hidden") : menu.session.host;
-                        if (menu.guest)
-                            return menu.connected ? qsTr("Playing at %1").arg(where) : qsTr("Joining %1…").arg(where);
-                        return menu.connected ? qsTr("Connected to %1").arg(where) : qsTr("Connecting to %1…").arg(where);
+                        const where = Chiaki.settings.streamerMode ? qsTr("hidden") : streamMenu.session.host;
+                        if (streamMenu.guest)
+                            return streamMenu.connected ? qsTr("Playing at %1").arg(where) : qsTr("Joining %1…").arg(where);
+                        if (streamMenu.hosting && streamMenu.connected)
+                            return qsTr("Hosting on %1").arg(where);
+                        return streamMenu.connected ? qsTr("Connected to %1").arg(where) : qsTr("Connecting to %1…").arg(where);
                     }
                 }
 
-                Chip {
-                    visible: menu.connected
-                    tone: menu.cyan
-                    text: qsTr("%1 Mbps").arg(menu.connected ? menu.session.measuredBitrate.toFixed(1) : "0")
+                C.Badge {
+                    visible: streamMenu.connected
+                    tone: "play"
+                    text: qsTr("%1 Mbps").arg(streamMenu.connected ? streamMenu.session.measuredBitrate.toFixed(1) : "0")
                 }
 
-                Chip {
-                    readonly property real loss: menu.connected && isFinite(menu.session.averagePacketLoss) ? menu.session.averagePacketLoss * 100 : 0
-                    visible: menu.connected
-                    tone: loss >= 1 ? menu.red : Qt.rgba(1, 1, 1, 0.8)
+                C.Badge {
+                    readonly property real loss: streamMenu.connected && isFinite(streamMenu.session.averagePacketLoss) ? streamMenu.session.averagePacketLoss * 100 : 0
+                    visible: streamMenu.connected
+                    tone: loss >= 1 ? "bad" : "neutral"
                     text: qsTr("%1 % loss").arg(loss.toFixed(1))
                 }
 
-                Chip {
-                    visible: menu.connected && Chiaki.window.droppedFrames > 0
-                    tone: menu.red
+                C.Badge {
+                    visible: streamMenu.connected && Chiaki.window.droppedFrames > 0
+                    tone: "bad"
                     text: qsTr("%1 dropped").arg(Chiaki.window.droppedFrames)
                 }
+            }
+        }
 
-                Item { Layout.fillWidth: true }
+        // End session first in the focus chain, but on the right: see the keys above
+        Row {
+            id: exits
+            x: topBar.width - width
+            y: topBar.oneRow ? 0 : 52
+            spacing: 10
+            layoutDirection: Qt.RightToLeft
 
-                MenuButton {
-                    id: chatButton
-                    visible: !!menu.session && menu.session.coplayActive
-                    readonly property int unread: menu.session ? menu.session.coplayChatUnread : 0
-                    text: qsTr("Chat")
-                    onClicked: menu.chatRequested()
-                    KeyNavigation.right: resumeButton
-                    KeyNavigation.down: menu.upFromControls === resumeButton ? volDown : menu.upFromControls
+            C.PillButton {
+                id: leaveButton
+                kind: "danger"
+                iconName: "leave"
+                font.pixelSize: 14
+                firstInFocusChain: true
+                lastInFocusChain: true
+                text: streamMenu.session ? (streamMenu.guest ? qsTr("Leave") : qsTr("End session")) : qsTr("Main screen")
+                onClicked: streamMenu.leave()
+            }
+
+            AbstractButton {
+                id: resumeButton
+                readonly property bool firstInFocusChain: true
+                readonly property bool lastInFocusChain: true
+                implicitHeight: C.Theme.touch
+                implicitWidth: resumeRow.implicitWidth + 26
+                hoverEnabled: true
+                focusPolicy: Qt.StrongFocus
+                text: qsTr("Back to game")
+                font.pixelSize: 14
+                font.weight: Font.ExtraBold
+                Accessible.name: text
+
+                Keys.onPressed: (event) => C.FocusChain.handle(resumeButton, event)
+                onClicked: streamMenu.closeRequested()
+
+                background: Item {
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: height / 2
+                        color: C.Theme.text
+                    }
 
                     Rectangle {
-                        visible: chatButton.unread > 0
-                        anchors {
-                            right: parent.right
-                            top: parent.top
-                            rightMargin: -6
-                            topMargin: -6
-                        }
-                        width: Math.max(20, unreadLabel.implicitWidth + 10)
-                        height: 20
-                        radius: 10
-                        color: menu.pink
-                        Label {
-                            id: unreadLabel
-                            anchors.centerIn: parent
-                            font.pixelSize: 11
-                            font.bold: true
-                            text: chatButton.unread > 99 ? "99+" : chatButton.unread
-                        }
+                        anchors.fill: parent
+                        radius: height / 2
+                        color: "#000000"
+                        opacity: resumeButton.down ? 0.14 : resumeButton.hovered ? 0.07 : 0
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        radius: height / 2
+                        color: "transparent"
+                        border.width: 2
+                        border.color: C.Theme.focus
+                        visible: resumeButton.visualFocus
                     }
                 }
 
-                MenuButton {
-                    id: resumeButton
-                    text: qsTr("Back to game")
-                    onClicked: menu.closeRequested()
-                    KeyNavigation.left: chatButton.visible ? chatButton : null
-                    KeyNavigation.right: leaveButton
-                    KeyNavigation.down: menu.upFromControls === resumeButton ? volDown : menu.upFromControls
-                }
+                contentItem: Item {
+                    Row {
+                        id: resumeRow
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 18
+                        spacing: 8
 
-                MenuButton {
-                    id: leaveButton
-                    text: menu.session ? (menu.guest ? qsTr("Leave") : qsTr("End session")) : qsTr("Main screen")
-                    tint: Qt.rgba(0.94, 0.27, 0.43, 0.55)
-                    onClicked: menu.leave()
-                    KeyNavigation.left: resumeButton
-                    KeyNavigation.down: menu.upFromControls === resumeButton ? volDown : menu.upFromControls
-                }
-            }
-
-            // ---------------------------------------- Play Together
-            Rectangle {
-                Layout.fillWidth: true
-                // Without Play Together in this session there is only a line of text in it
-                // Taller while the host has more to answer (who knocks on a public room)
-                Layout.preferredHeight: menu.together ? Math.max(166, coplayBar.implicitHeight + 42) : 84
-                // Not coplayBar.visible: that is false while this is hidden, and it would never show again
-                visible: !!menu.session
-                radius: 14
-                color: Qt.rgba(1, 1, 1, 0.045)
-                border.color: Qt.rgba(1, 1, 1, 0.09)
-
-                Label {
-                    id: togetherTitle
-                    x: 14
-                    y: 10
-                    // Says whose microphone this is: the one below, under Sound, talks to the console
-                    text: menu.together ? qsTr("PLAY TOGETHER  ·  VOICE AND WEBCAM WITH YOUR FRIENDS") : qsTr("PLAY TOGETHER")
-                    font.pixelSize: 11
-                    font.bold: true
-                    font.letterSpacing: 1.4
-                    opacity: 0.55
-                }
-
-                PlayTogetherBar {
-                    id: coplayBar
-                    anchors {
-                        fill: parent
-                        margins: 10
-                        topMargin: 32
-                    }
-                    upItem: resumeButton
-                    downItem: volDown
-                    onCloseRequested: menu.closeRequested()
-                }
-            }
-
-            // ---------------------------------------- sound, picture, quality, overlays
-            // One row in a wide window, two in a narrow one: see wantedHeight
-            Item {
-                Layout.fillWidth: true
-                Layout.preferredHeight: controls.implicitHeight
-                implicitHeight: controls.implicitHeight
-
-                Flow {
-                    id: controls
-                    width: parent.width
-                    spacing: 12
-
-                    Card {
-                        title: qsTr("SOUND")
-
-                        MenuButton {
-                            id: volDown
-                            text: "−"
-                            onClicked: menu.setVolume(Chiaki.settings.audioVolume - 8)
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.right: volUp
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: resumeButton.text
+                            font: resumeButton.font
+                            color: C.Theme.textOnLight
                         }
 
-                        Bar {
-                            Layout.preferredWidth: 110
-                            from: 0
-                            to: 128
-                            stepSize: 1
-                            value: Chiaki.settings.audioVolume
-                            onMoved: Chiaki.settings.audioVolume = value
-                        }
-
-                        MenuButton {
-                            id: volUp
-                            text: "+"
-                            onClicked: menu.setVolume(Chiaki.settings.audioVolume + 8)
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: volDown
-                            KeyNavigation.right: muteButton.visible ? muteButton : fitButton
-                        }
-
-                        Label {
-                            Layout.preferredWidth: 44
-                            horizontalAlignment: Text.AlignRight
-                            font.pixelSize: 14
-                            font.bold: true
-                            text: Math.round(Chiaki.settings.audioVolume / 128 * 100) + " %"
-                        }
-
-                        MenuButton {
-                            id: muteButton
-                            // The console's own microphone; voice chat has its own switch above
-                            visible: !menu.guest
-                            enabled: menu.connected
-                            text: menu.session && !menu.session.muted ? qsTr("Console mic on") : qsTr("Console mic off")
-                            selected: menu.connected && !menu.session.muted
-                            onClicked: menu.session.muted = !menu.session.muted
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: volUp
-                            KeyNavigation.right: fitButton
-                        }
-                    }
-
-                    Card {
-                        title: qsTr("PICTURE")
-
-                        MenuButton {
-                            id: fitButton
-                            text: qsTr("Fit")
-                            selected: Chiaki.window.videoMode == ChiakiWindow.VideoMode.Normal
-                            onClicked: Chiaki.window.videoMode = ChiakiWindow.VideoMode.Normal
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: muteButton.visible ? muteButton : volUp
-                            KeyNavigation.right: zoomButton
-                        }
-
-                        MenuButton {
-                            id: zoomButton
-                            text: qsTr("Zoom")
-                            selected: Chiaki.window.videoMode == ChiakiWindow.VideoMode.Zoom
-                            onClicked: Chiaki.window.videoMode = ChiakiWindow.VideoMode.Zoom
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: fitButton
-                            KeyNavigation.right: stretchButton
-                        }
-
-                        MenuButton {
-                            id: stretchButton
-                            text: qsTr("Stretch")
-                            selected: Chiaki.window.videoMode == ChiakiWindow.VideoMode.Stretch
-                            onClicked: Chiaki.window.videoMode = ChiakiWindow.VideoMode.Stretch
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: zoomButton
-                            KeyNavigation.right: zoomOut.visible ? zoomOut : qualityCombo
-                        }
-
+                        // What also goes back: Escape, or Circle on the controller
                         Rectangle {
-                            visible: zoomOut.visible
-                            Layout.leftMargin: 4
-                            Layout.rightMargin: 4
-                            Layout.preferredWidth: 1
-                            Layout.preferredHeight: 24
-                            color: Qt.rgba(1, 1, 1, 0.15)
-                        }
+                            anchors.verticalCenter: parent.verticalCenter
+                            implicitWidth: streamMenu.padConnected ? 24 : escText.implicitWidth + 14
+                            implicitHeight: 22
+                            radius: 7
+                            color: Qt.rgba(42 / 255, 19 / 255, 102 / 255, 0.12)
 
-                        MenuButton {
-                            id: zoomOut
-                            visible: Chiaki.window.videoMode == ChiakiWindow.VideoMode.Zoom
-                            text: "−"
-                            onClicked: menu.setZoom(Chiaki.window.ZoomFactor - 0.1)
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: stretchButton
-                            KeyNavigation.right: zoomIn
-                        }
+                            Text {
+                                id: escText
+                                anchors.centerIn: parent
+                                visible: !streamMenu.padConnected
+                                font.pixelSize: 11
+                                font.weight: Font.ExtraBold
+                                color: C.Theme.textOnLight
+                                text: qsTr("Esc")
+                            }
 
-                        Bar {
-                            visible: zoomOut.visible
-                            Layout.preferredWidth: 110
-                            from: -1
-                            to: 4
-                            stepSize: 0.01
-                            value: Chiaki.window.ZoomFactor
-                            onMoved: menu.setZoom(value)
-                        }
-
-                        MenuButton {
-                            id: zoomIn
-                            visible: zoomOut.visible
-                            text: "+"
-                            onClicked: menu.setZoom(Chiaki.window.ZoomFactor + 0.1)
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: zoomOut
-                            KeyNavigation.right: qualityCombo
-                        }
-
-                        Label {
-                            visible: zoomOut.visible
-                            Layout.preferredWidth: 96
-                            font.pixelSize: 13
-                            font.bold: true
-                            text: {
-                                const z = Chiaki.window.ZoomFactor;
-                                if (z === -1)
-                                    return qsTr("No black bars");
-                                return (z >= 0 ? z + 1 : z).toFixed(2) + " ×";
+                            Image {
+                                anchors.centerIn: parent
+                                visible: streamMenu.padConnected
+                                width: 16
+                                height: 16
+                                sourceSize: Qt.size(32, 32)
+                                source: streamMenu.padConnected && typeof root !== "undefined" && root.controllerButton ? root.controllerButton("moon") : ""
                             }
                         }
                     }
+                }
+            }
+        }
+    }
 
-                    Card {
-                        title: qsTr("QUALITY")
+    // ------------------------------------------------------------ the side: Play Together
 
-                        ComboBox {
-                            // The opened list is never cut off: as wide as its longest entry, and inside the window
-                            implicitContentWidthPolicy: ComboBox.WidestText
-                            popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
-                            popup.margins: 8
-                            id: qualityCombo
-                            Layout.preferredWidth: 190
-                            Layout.preferredHeight: 40
-                            font.pixelSize: 14
-                            // VideoPreset: Fast (not offered), Default, HighQuality, HighQualitySpatial,
-                            // HighQualityAdvancedSpatial, Custom
-                            model: [qsTr("Default"), qsTr("High quality"), qsTr("HQ + spatial"),
-                                    qsTr("HQ + advanced spatial"), qsTr("Custom")]
-                            currentIndex: Math.max(0, Chiaki.window.videoPreset - 1)
-                            onActivated: (index) => {
-                                Chiaki.window.videoPreset = index + 1;
-                                Chiaki.settings.videoPreset = index + 1;
-                            }
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: zoomIn.visible ? zoomIn : stretchButton
-                            KeyNavigation.right: displaySettingsButton
-                        }
+    PlayTogetherBar {
+        id: panel
+        visible: streamMenu.panelShown
+        x: streamMenu.narrow ? streamMenu.margin : streamMenu.width - streamMenu.margin - width
+        y: streamMenu.narrow ? topBar.y + topBar.height + 12 : streamMenu.margin
+        width: streamMenu.panelWidth
+        readonly property int room: Math.max(120, (streamMenu.narrow ? dock.y - 12 : streamMenu.height - streamMenu.margin) - y)
+        height: active ? room : Math.min(room, wantedHeight)
+        tileColumns: Math.max(2, Math.floor((width - 2 * inset + 8) / 168))
+        opacity: streamMenu.reveal
+        transform: Translate { x: streamMenu.narrow ? 0 : (1 - streamMenu.reveal) * 40; y: streamMenu.narrow ? (1 - streamMenu.reveal) * 16 : 0 }
+        onChatRequested: streamMenu.chatRequested()
+    }
 
-                        MenuButton {
-                            id: displaySettingsButton
-                            text: qsTr("Display…")
-                            onClicked: menu.displaySettingsRequested()
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: qualityCombo
-                            KeyNavigation.right: placeboButton.visible ? placeboButton : hudPresetCombo
-                        }
+    // ------------------------------------------------------------ bottom: sound, picture, quality, overlays
 
-                        MenuButton {
-                            id: placeboButton
-                            visible: Chiaki.window.videoPreset == ChiakiWindow.VideoPreset.Custom
-                            text: qsTr("Placebo…")
-                            onClicked: menu.placeboSettingsRequested()
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: displaySettingsButton
-                            KeyNavigation.right: hudPresetCombo
-                        }
+    Rectangle {
+        id: dock
+        x: streamMenu.margin
+        y: streamMenu.height - streamMenu.margin - height
+        readonly property int room: streamMenu.width - 2 * streamMenu.margin - streamMenu.sideWidth
+        width: Math.min(room, Math.ceil(dockFlow.lineWidth) + 21)
+        height: dockFlow.height + 16
+        radius: 18
+        color: Qt.rgba(14 / 255, 11 / 255, 30 / 255, 0.92)
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.10)
+        opacity: streamMenu.reveal
+        transform: Translate { y: (1 - streamMenu.reveal) * 24 }
+
+        Flow {
+            id: dockFlow
+            x: 10
+            y: 8
+            width: dock.width - 20
+            spacing: 6
+            /** The width of the dock on one line, with the lines between the groups. */
+            readonly property real lineWidth: soundGroup.implicitWidth + pictureGroup.implicitWidth
+                + (zoomGroup.visible ? zoomGroup.implicitWidth + spacing : 0)
+                + qualityGroup.implicitWidth + moreGroup.implicitWidth + 3 * 3 + 6 * spacing
+            /** It wraps: no lines between the groups then. */
+            readonly property bool wrapped: lineWidth > width + 0.5
+
+            // Sound: the game's volume
+            Row {
+                id: soundGroup
+                spacing: 4
+
+                DockButton {
+                    id: volDown
+                    iconName: "minus"
+                    tip: qsTr("Quieter")
+                    onClicked: streamMenu.setVolume(Chiaki.settings.audioVolume - 8)
+                }
+
+                DockSlider {
+                    anchors.verticalCenter: parent.verticalCenter
+                    from: 0
+                    to: 128
+                    stepSize: 1
+                    value: Chiaki.settings.audioVolume
+                    onMoved: Chiaki.settings.audioVolume = value
+                }
+
+                DockButton {
+                    id: volUp
+                    iconName: "plus"
+                    tip: qsTr("Louder")
+                    onClicked: streamMenu.setVolume(Chiaki.settings.audioVolume + 8)
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 42
+                    horizontalAlignment: Text.AlignRight
+                    rightPadding: 2
+                    font.pixelSize: 13
+                    font.weight: Font.ExtraBold
+                    color: C.Theme.text
+                    text: Math.round(Chiaki.settings.audioVolume / 128 * 100) + " %"
+                }
+            }
+
+            DockLine {
+                visible: !dockFlow.wrapped
+            }
+
+            // Picture: fit, zoom or stretch
+            Row {
+                id: pictureGroup
+
+                C.Segmented {
+                    id: pictureMode
+                    implicitHeight: 36
+                    readonly property var modes: [ChiakiWindow.VideoMode.Normal, ChiakiWindow.VideoMode.Zoom, ChiakiWindow.VideoMode.Stretch]
+                    model: [qsTr("Fit"), qsTr("Zoom"), qsTr("Stretch")]
+                    currentIndex: Math.max(0, modes.indexOf(Chiaki.window.videoMode))
+                    onActivated: (index) => Chiaki.window.videoMode = modes[index]
+                }
+            }
+
+            // How far to zoom in, while zooming
+            Row {
+                id: zoomGroup
+                visible: Chiaki.window.videoMode == ChiakiWindow.VideoMode.Zoom
+                spacing: 6
+
+                DockButton {
+                    id: zoomOut
+                    iconName: "minus"
+                    tip: qsTr("Zoom out")
+                    onClicked: streamMenu.setZoom(Chiaki.window.ZoomFactor - 0.1)
+                }
+
+                DockSlider {
+                    anchors.verticalCenter: parent.verticalCenter
+                    from: -1
+                    to: 4
+                    stepSize: 0.01
+                    value: Chiaki.window.ZoomFactor
+                    onMoved: streamMenu.setZoom(value)
+                }
+
+                DockButton {
+                    id: zoomIn
+                    iconName: "plus"
+                    tip: qsTr("Zoom in")
+                    onClicked: streamMenu.setZoom(Chiaki.window.ZoomFactor + 0.1)
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.pixelSize: 13
+                    font.weight: Font.ExtraBold
+                    color: C.Theme.text
+                    text: {
+                        const z = Chiaki.window.ZoomFactor;
+                        if (z === -1)
+                            return qsTr("No black bars");
+                        return (z >= 0 ? z + 1 : z).toFixed(2) + " ×";
                     }
+                }
+            }
 
-                    Card {
-                        title: qsTr("OVERLAYS")
+            DockLine {
+                visible: !dockFlow.wrapped
+            }
+
+            // Quality, and what is shown on the game picture
+            Row {
+                id: qualityGroup
+                spacing: 6
+
+                C.ComboBox {
+                    id: qualityCombo
+                    // As wide as what is chosen; the list stays as wide as its longest entry
+                    implicitWidth: Math.ceil(qualityMetrics.advanceWidth(displayText)) + 56
+                    implicitHeight: 36
+                    font.pixelSize: 13
+                    font.weight: Font.Bold
+                    // The text field inside brings its own 12 px on the left
+                    leftPadding: 0
+                    rightPadding: 30
+                    topInset: 0
+                    bottomInset: 0
+                    Accessible.name: qsTr("Quality")
+                    // VideoPreset: Fast (not offered), Default, HighQuality, HighQualitySpatial,
+                    // HighQualityAdvancedSpatial, Custom
+                    model: [qsTr("Default"), qsTr("High quality"), qsTr("HQ + spatial"),
+                            qsTr("HQ + advanced spatial"), qsTr("Custom")]
+                    currentIndex: Math.max(0, Chiaki.window.videoPreset - 1)
+                    onActivated: (index) => {
+                        Chiaki.window.videoPreset = index + 1;
+                        Chiaki.settings.videoPreset = index + 1;
+                    }
+                    // The dock is at the bottom: the list opens upwards, inside the window
+                    popup.y: -popup.height - 6
+
+                    background: Rectangle {
+                        implicitWidth: 100
+                        implicitHeight: 36
+                        radius: 10
+                        color: Qt.rgba(1, 1, 1, qualityCombo.hovered ? 0.09 : 0.05)
+                        border.width: qualityCombo.visualFocus ? 2 : 1
+                        border.color: qualityCombo.visualFocus ? C.Theme.focus : Qt.rgba(1, 1, 1, 0.12)
+                    }
+                    indicator: C.Icon {
+                        x: qualityCombo.width - width - 10
+                        y: (qualityCombo.height - height) / 2
+                        iconName: "chevron-down"
+                        size: 14
+                        color: C.Theme.textSoft
+                    }
+                    FontMetrics {
+                        id: qualityMetrics
+                        font: qualityCombo.font
+                    }
+                    popup.background: Rectangle {
+                        radius: 12
+                        color: C.Theme.popup
+                        border.width: 1
+                        border.color: C.Theme.lineStrong
+                    }
+                }
+
+                DockButton {
+                    id: placeboButton
+                    visible: Chiaki.window.videoPreset == ChiakiWindow.VideoPreset.Custom
+                    text: qsTr("Placebo…")
+                    onClicked: streamMenu.placeboSettingsRequested()
+                }
+
+                DockButton {
+                    id: overlaysButton
+                    iconName: "layers"
+                    text: qsTr("Overlays")
+                    chevron: true
+                    onClicked: panel.openMenu(overlaysMenu, overlaysButton, "above", streamMenu)
+
+                    C.Menu {
+                        id: overlaysMenu
+                        property var placement: null
+                        onAboutToShow: if (placement) placement()
+                        padding: 6
+                        font.pixelSize: 14
+                        background: PlayTogetherBar.MenuGround {}
 
                         // What is shown on the game picture: switch between the saved arrangements
-                        ComboBox {
-                            // The opened list is never cut off: as wide as its longest entry, and inside the window
-                            implicitContentWidthPolicy: ComboBox.WidestText
-                            popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
-                            popup.margins: 8
-                            id: hudPresetCombo
-                            Layout.preferredWidth: 230
-                            Layout.preferredHeight: 40
-                            font.pixelSize: 14
+                        Instantiator {
                             model: Chiaki.hud ? Chiaki.hud.presets : []
-                            currentIndex: Chiaki.hud ? Chiaki.hud.active : 0
-                            onActivated: (index) => Chiaki.hud.active = index
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: placeboButton.visible ? placeboButton : displaySettingsButton
-                            KeyNavigation.right: arrangeButton
+                            delegate: PlayTogetherBar.MenuEntry {
+                                required property int index
+                                required property string modelData
+                                text: modelData
+                                chosen: !!Chiaki.hud && Chiaki.hud.active === index
+                                onTriggered: Chiaki.hud.active = index
+                            }
+                            onObjectAdded: (index, object) => overlaysMenu.insertItem(index, object)
+                            onObjectRemoved: (index, object) => overlaysMenu.removeItem(object)
                         }
 
-                        MenuButton {
-                            id: arrangeButton
+                        PlayTogetherBar.MenuLine {}
+
+                        PlayTogetherBar.MenuEntry {
+                            iconName: "layers"
                             text: qsTr("Arrange")
-                            onClicked: menu.arrangeRequested()
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: hudPresetCombo
-                            KeyNavigation.right: overlayMoreButton
+                            onTriggered: streamMenu.arrangeRequested()
                         }
 
-                        MenuButton {
-                            id: overlayMoreButton
+                        PlayTogetherBar.MenuEntry {
                             // What is shown at all, on the game picture and in OBS
+                            iconName: "sliders"
                             text: qsTr("Options…")
-                            onClicked: menu.displayPanelRequested()
-                            KeyNavigation.up: menu.upFromControls
-                            KeyNavigation.left: arrangeButton
+                            onTriggered: streamMenu.displayPanelRequested()
                         }
                     }
                 }
             }
 
-            Item { Layout.fillHeight: true }
+            DockLine {
+                visible: !dockFlow.wrapped
+            }
+
+            // The console's microphone, and how the stream is shown on this screen
+            Row {
+                id: moreGroup
+                spacing: 6
+
+                DockButton {
+                    id: muteButton
+                    // The console's own microphone; voice chat has its own switch in the panel
+                    visible: !streamMenu.guest
+                    enabled: streamMenu.connected
+                    checked: streamMenu.connected && !streamMenu.session.muted
+                    iconName: checked ? "mic" : "mic-off"
+                    tip: checked ? qsTr("Console mic on") : qsTr("Console mic off")
+                    onClicked: streamMenu.session.muted = !streamMenu.session.muted
+                }
+
+                DockButton {
+                    id: displaySettingsButton
+                    iconName: "sliders"
+                    tip: qsTr("Display settings")
+                    lastInFocusChain: true
+                    onClicked: streamMenu.displaySettingsRequested()
+                }
+            }
         }
     }
 }

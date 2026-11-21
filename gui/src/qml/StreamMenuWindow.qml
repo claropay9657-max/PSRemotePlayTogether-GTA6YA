@@ -6,6 +6,9 @@ import QtQuick.Window
 
 import org.streetpea.chiaking
 
+// The stream menu in a window of its own, for the renderers where it cannot be part of the
+// stream window's scene. It covers the whole game picture, so that the menu's lists and the
+// player menu open inside it wherever there is room; the menu slides in and out inside it.
 Window {
     id: streamMenuWindow
 
@@ -20,9 +23,6 @@ Window {
     signal chatRequested()
     signal arrangeRequested()
     signal closeAnimationFinished()
-
-    /** See StreamMenuContent.wantedHeight. */
-    readonly property int wantedHeight: content.wantedHeight
 
     visible: open || closing
     flags: Qt.Tool | Qt.FramelessWindowHint
@@ -57,15 +57,11 @@ Window {
         }
     }
 
-    Behavior on y {
-        NumberAnimation {
-            id: menuAnimation
-            duration: 250
-            onRunningChanged: {
-                if (!running && !streamMenuWindow.open)
-                    streamMenuWindow.closeAnimationFinished();
-            }
-        }
+    // The big chat, as in the stream window (the panel's chat says so)
+    Shortcut {
+        sequence: "Ctrl+T"
+        enabled: streamMenuWindow.open && !!Chiaki.session && Chiaki.session.coplayActive
+        onActivated: streamMenuWindow.chatRequested()
     }
 
     Timer {
@@ -82,6 +78,8 @@ Window {
         id: content
         anchors.fill: parent
         focus: true
+        shown: streamMenuWindow.open
+        onHidden: streamMenuWindow.closeAnimationFinished()
         onCloseRequested: streamMenuWindow.closeRequested()
         onDisplaySettingsRequested: streamMenuWindow.displaySettingsRequested()
         onPlaceboSettingsRequested: streamMenuWindow.placeboSettingsRequested()

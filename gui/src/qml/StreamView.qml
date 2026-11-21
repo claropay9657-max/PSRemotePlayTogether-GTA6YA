@@ -34,26 +34,11 @@ Item {
     function sessionPictureOff() {
         return !!Chiaki.session && Chiaki.session.pictureOff;
     }
-    // As tall as the menu needs: more with a session (the Play Together card), and more
-    // again in a narrow window, where its controls take a second row
-    readonly property int menuWantedHeight: useSeparateMenuWindow ? separateMenuWindow.wantedHeight
-        : (inlineMenuContent.item ? inlineMenuContent.item.wantedHeight : 0)
-    // Set a moment after the menu has measured itself, not bound to it: the menu's own
-    // window takes its height and place from this
-    property int streamMenuHeight: 350
-    onMenuWantedHeightChanged: Qt.callLater(updateMenuHeight)
-
-    function updateMenuHeight() {
-        const h = Math.max(200, menuWantedHeight);
-        if (h === streamMenuHeight)
-            return;
-        streamMenuHeight = h;
-        updateSeparateMenuGeometry();
-    }
     readonly property bool streamStatsVisible: Chiaki.settings.showStreamStats && Chiaki.session && !(menuController.open || menuController.closing) && !sessionLoading && !sessionError && !view.pictureOff
     property int separateMenuX: 0
     property int separateMenuY: 0
     property int separateMenuWidth: 0
+    property int separateMenuHeight: 0
     property int separateStatsX: 0
     property int separateStatsY: 0
     property int separateStatsWidth: 0
@@ -92,9 +77,11 @@ Item {
         streamGlobalX = Math.round(topLeft.x);
         streamGlobalY = Math.round(topLeft.y);
         if (useSeparateMenuWindow) {
+            // The menu's window covers the game picture: the menu lays itself out inside it
             separateMenuX = Math.round(topLeft.x);
-            separateMenuY = Math.round(topLeft.y + view.height - streamMenuHeight);
+            separateMenuY = Math.round(topLeft.y);
             separateMenuWidth = Math.round(view.width);
+            separateMenuHeight = Math.round(view.height);
             separateStatsX = Math.round(topLeft.x);
             separateStatsY = Math.round(topLeft.y);
             separateStatsWidth = Math.round(view.width);
@@ -132,7 +119,6 @@ Item {
     StackView.onDeactivated: Chiaki.window.keepVideo = false
 
     Component.onCompleted: {
-        updateMenuHeight();
         updateSeparateMenuGeometry();
         updateOverlayInteractionActive();
         Chiaki.window.setStatsOverlayActive(streamStatsVisible);
@@ -508,6 +494,11 @@ Item {
 
         StreamMenuContent {
             anchors.fill: parent
+            shown: menuController.open
+            onHidden: {
+                menuController.closing = false;
+                view.updateOverlayInteractionActive();
+            }
             onCloseRequested: menuController.close()
             onDisplaySettingsRequested: {
                 menuController.close();
@@ -533,33 +524,16 @@ Item {
         }
     }
 
+    // The menu over the whole game picture: it slides its parts in and out by itself, and
+    // says when it is gone (onHidden above)
     Item {
         id: menuView
-        anchors {
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
-        }
-        height: streamMenuHeight
-        y: menuController.open ? parent.height - height : parent.height
+        anchors.fill: parent
         visible: !useSeparateMenuWindow && (menuController.open || menuController.closing)
         enabled: !useSeparateMenuWindow && menuController.open
         onVisibleChanged: {
             if (visible)
                 view.grabInput(inlineMenuContent.item ? inlineMenuContent.item.initialFocusItem : null);
-        }
-
-        Behavior on y {
-            NumberAnimation {
-                id: inlineMenuAnimation
-                duration: 250
-                onRunningChanged: {
-                    if (!running && !menuController.open) {
-                        menuController.closing = false;
-                        view.updateOverlayInteractionActive();
-                    }
-                }
-            }
         }
 
         Loader {
@@ -713,9 +687,9 @@ Item {
         id: separateMenuWindow
         transientParent: view.hostWindow
         x: separateMenuX
-        y: menuController.open ? separateMenuY : separateMenuY + streamMenuHeight
+        y: separateMenuY
         width: separateMenuWidth > 0 ? separateMenuWidth : view.width
-        height: streamMenuHeight
+        height: separateMenuHeight > 0 ? separateMenuHeight : view.height
         open: useSeparateMenuWindow && menuController.open
         closing: useSeparateMenuWindow && menuController.closing
         onCloseRequested: menuController.close()
