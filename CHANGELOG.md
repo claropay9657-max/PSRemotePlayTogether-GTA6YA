@@ -3,6 +3,11 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.4.3
+
+- **The app starts again on Windows and Linux.** 0.4.0 to 0.4.2 closed right after starting, without a word: one line of the stream scenes used a word that the Qt version of those builds does not allow there, so the app's window could not be made. On a Mac it worked.
+- **If the window ever cannot be made again, the app says why** in a message, instead of closing quietly.
+
 ## 0.4.2
 
 - **New: viewer actions.** Your viewers press a button in the game: with channel points, bits (from a minimum), a sub, a follow or a raid. **Settings → Viewer actions**: each action is a button (✕, ○, □, △, L1 to R3, Options, the d-pad or a stick direction), how long it is held, and what triggers it; a channel point action becomes a reward on your channel that the app makes and keeps up to date, and **Try** presses it once for you. It is your own controller, for a moment, one after the other, at most so many a minute; off until you switch it on, and **Stop all** (also in the stream menu, under Alerts) lets every button go. A redemption that cannot run gets its points back.

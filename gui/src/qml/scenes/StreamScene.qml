@@ -958,7 +958,7 @@ Item {
                             Repeater {
                                 model: [
                                     { text: root.d.mixText || "", fill: Qt.rgba(0, 242 / 255, 1, 0.12), ink: "#b8f9ff", on: true },
-                                    { text: root.d.policyText || "", fill: Qt.rgba(140 / 255, 82 / 255, 1, 0.2), ink: "#ddd0ff", on: !!root.d.public },
+                                    { text: root.d.policyText || "", fill: Qt.rgba(140 / 255, 82 / 255, 1, 0.2), ink: "#ddd0ff", on: !!root.d["public"] }, // "public" is a reserved word for Qt before 6.10: .public breaks the whole file there
                                     { text: qsTr("Browsers welcome"), fill: Qt.rgba(52 / 255, 211 / 255, 153 / 255, 0.14), ink: "#c6f6e2", on: !!root.d.browsers }
                                 ].filter((c) => c.on && c.text)
 

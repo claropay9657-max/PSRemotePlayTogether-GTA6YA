@@ -35,6 +35,7 @@ extern "C" {
 #include <QFile>
 #include <QWidget>
 #include <QLabel>
+#include <QMessageBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFrame>
@@ -2919,6 +2920,12 @@ void QmlMainWindow::show()
     QQmlComponent component(qml_engine, QUrl(QStringLiteral("qrc:/Main.qml")));
     if (!component.isReady()) {
         qCCritical(chiakiGui) << "Component not ready\n" << component.errors();
+        // Say why instead of closing without a word (0.4.0 to 0.4.2 on Windows and Linux)
+        QString why;
+        for (const QQmlError &error : component.errors())
+            why += error.toString() + QLatin1Char('\n');
+        QMessageBox::critical(nullptr, QStringLiteral("PSRemotePlayTogether"),
+            QStringLiteral("PSRemotePlayTogether could not open its window. Please report this, with the text below:\n\n") + why.left(4000));
         QMetaObject::invokeMethod(QGuiApplication::instance(), &QGuiApplication::quit, Qt::QueuedConnection);
         return;
     }
