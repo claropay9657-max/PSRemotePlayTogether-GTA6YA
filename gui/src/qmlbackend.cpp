@@ -419,6 +419,13 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
         if (s)
             connect(s, &StreamSession::coplayChatMessage, live_alerts, &LiveAlerts::OnRoomChat, Qt::UniqueConnection);
     });
+    // Public rooms say when their host is live on Twitch, if the host wants that
+    auto room_stream = [this]() {
+        if (session)
+            session->SetCoPlayRoomStream(twitch->RoomStream());
+    };
+    connect(twitch, &TwitchClient::changed, this, room_stream);
+    connect(this, &QmlBackend::sessionChanged, this, room_stream);
     twitch_elements = new TwitchElements(settings, twitch, live_controller, live_alerts, this);
     connect(twitch, &TwitchClient::Event, twitch_elements, &TwitchElements::OnTwitchEvent);
     // With the saved login, a moment after start (it reads the password store)

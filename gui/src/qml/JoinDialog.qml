@@ -140,6 +140,7 @@ FocusScope {
         rooms.language = "";
         rooms.hideFull = false;
         rooms.openOnly = false;
+        rooms.twitchOnly = false;
     }
 
     function openFor(seconds) {
@@ -271,6 +272,8 @@ FocusScope {
         property bool hideFull: false
         /** Only rooms one gets into without waiting for the host. */
         property bool openOnly: false
+        /** Only rooms whose host is live on Twitch right now. */
+        property bool twitchOnly: false
         /** 0 most players, 1 most free places, 2 newest, 3 open longest */
         property int sort: 0
         readonly property var shown: {
@@ -282,6 +285,8 @@ FocusScope {
                 if (hideFull && r.full)
                     return false;
                 if (openOnly && r.policy === "ask")
+                    return false;
+                if (twitchOnly && !r.twitch)
                     return false;
                 const text = (r.title + " " + r.game + " " + r.host + " " + languageName(r.lang)).toLowerCase();
                 return words.every((w) => text.indexOf(w) >= 0);
@@ -899,6 +904,12 @@ FocusScope {
                             checked: rooms.openOnly
                             onClicked: rooms.openOnly = checked
                         }
+
+                        FilterCheck {
+                            text: qsTr("Only rooms streaming on Twitch")
+                            checked: rooms.twitchOnly
+                            onClicked: rooms.twitchOnly = checked
+                        }
                     }
                 }
             }
@@ -1337,6 +1348,37 @@ FocusScope {
                                     Layout.topMargin: 3
                                     spacing: 5
 
+                                    // The host is live on Twitch: a different thing than the "Live" picture of the game
+                                    Rectangle {
+                                        visible: !!roomCard.modelData.twitch
+                                        width: twitchRow.implicitWidth + 14
+                                        height: 20
+                                        radius: 10
+                                        color: "#7c3aed"
+
+                                        Row {
+                                            id: twitchRow
+                                            anchors.centerIn: parent
+                                            spacing: 5
+
+                                            Rectangle {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 6
+                                                height: 6
+                                                radius: 3
+                                                color: "#ffffff"
+                                            }
+
+                                            Text {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: qsTr("On Twitch")
+                                                color: "#ffffff"
+                                                font.pixelSize: 11
+                                                font.weight: Font.ExtraBold
+                                            }
+                                        }
+                                    }
+
                                     C.Badge {
                                         small: true
                                         text: rooms.languageName(roomCard.modelData.lang)
@@ -1497,6 +1539,17 @@ FocusScope {
                                     enabled: roomCard.joinable && !dialog.joining
                                     Accessible.description: roomCard.modelData.title
                                     onClicked: dialog.join(roomCard.modelData.invite, roomCard.modelData.title, true)
+                                }
+
+                                // Only a channel name comes from the list; the address is made here
+                                C.PillButton {
+                                    Layout.alignment: Qt.AlignRight
+                                    visible: !!roomCard.modelData.twitch
+                                    small: true
+                                    kind: "ghost"
+                                    text: qsTr("Watch on Twitch")
+                                    Accessible.description: roomCard.modelData.title
+                                    onClicked: Qt.openUrlExternally("https://www.twitch.tv/" + roomCard.modelData.twitch)
                                 }
 
                                 Text {

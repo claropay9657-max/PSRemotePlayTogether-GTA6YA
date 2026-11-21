@@ -100,6 +100,26 @@ QByteArray Form(std::initializer_list<std::pair<const char *, QString>> fields)
 
 } // namespace
 
+bool TwitchClient::showInRooms() const
+{
+	return settings->GetValue(QStringLiteral("twitch/show_in_rooms"), false).toBool();
+}
+
+void TwitchClient::setShowInRooms(bool show)
+{
+	if(show == showInRooms())
+		return;
+	settings->SetValue(QStringLiteral("twitch/show_in_rooms"), show);
+	emit changed();
+}
+
+QString TwitchClient::RoomStream() const
+{
+	if(!channel_live || user_login.isEmpty() || !showInRooms())
+		return QString();
+	return user_login.toLower();
+}
+
 TwitchClient::TwitchClient(Settings *settings, QObject *parent)
 	: QObject(parent), settings(settings), network(new QNetworkAccessManager(this))
 {

@@ -522,6 +522,7 @@ void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info
 	room.web = !coplay->web_page.empty();
 	room.players = 1;
 	room.initials = RoomInitial(coplay->host_name);
+	room.twitch = coplay_room_twitch;
 	room.max = static_cast<int>(max_guests) + 1;
 	room.proto = coplay::kProtocolVersion;
 	coplay->room->Update(room);
@@ -610,6 +611,15 @@ void StreamSession::SetCoPlayRoomGame(const QString &game, const QString &title_
 	if(other_game)
 		CoPlayFindCover();
 	emit CoPlayChanged();
+}
+
+void StreamSession::SetCoPlayRoomStream(const QString &twitch_login)
+{
+	coplay_room_twitch = twitch_login;
+	if(!coplay || !coplay->room || coplay->room_info.twitch == twitch_login)
+		return;
+	coplay->room_info.twitch = twitch_login;
+	CoPlayUpdateRoom();
 }
 
 /** The game's picture for the list, from Sony's catalog (no login), once it is known. */

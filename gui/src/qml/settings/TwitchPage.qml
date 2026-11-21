@@ -164,6 +164,19 @@ C.SettingsPage {
             }
         }
 
+        C.SettingsRow {
+            title: qsTr("Show my stream in the room list")
+            subtitle: qsTr("While you are live, your public room says so, and people browsing the rooms can watch you on Twitch.")
+            keywords: qsTr("twitch public room list live badge")
+            textMinimum: 200
+
+            C.Toggle {
+                Accessible.name: qsTr("Show my stream in the room list")
+                checked: !!(page.twitch && page.twitch.showInRooms)
+                onToggled: page.twitch.showInRooms = checked
+            }
+        }
+
         Repeater {
             model: page.twitch ? page.twitch.subscriptions : []
 

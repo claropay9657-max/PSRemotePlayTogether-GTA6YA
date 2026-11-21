@@ -48,6 +48,8 @@ class TwitchClient : public QObject
 	Q_PROPERTY(QVariantList subscriptions READ subscriptions NOTIFY changed)
 	/** The channel is live on Twitch (stream.online / stream.offline). */
 	Q_PROPERTY(bool channelLive READ channelLive NOTIFY changed)
+	/** "Show my stream in the room list": public rooms say when the host is live on Twitch. */
+	Q_PROPERTY(bool showInRooms READ showInRooms WRITE setShowInRooms NOTIFY changed)
 
 	public:
 		TwitchClient(Settings *settings, QObject *parent = nullptr);
@@ -61,6 +63,10 @@ class TwitchClient : public QObject
 		QString error() const { return last_error; }
 		QVariantList subscriptions() const { return subs; }
 		bool channelLive() const { return channel_live; }
+		bool showInRooms() const;
+		void setShowInRooms(bool show);
+		/** The login to show in the public room list now: live, logged in and switched on; else empty. */
+		QString RoomStream() const;
 		QString UserId() const { return user_id; }
 		QString ClientId() const { return client_id; }
 

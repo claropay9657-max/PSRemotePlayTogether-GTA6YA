@@ -105,6 +105,8 @@ class CoPlayRoomAnnouncer : public QObject
 			QString invite;
 			/** One letter for each player, the host first ("?" without a name): only initials, no names. */
 			QString initials;
+			/** The host's Twitch login while they stream there and want it shown, else empty. */
+			QString twitch;
 			int players = 1;
 			int max = 5;
 			bool web = false;
@@ -114,7 +116,7 @@ class CoPlayRoomAnnouncer : public QObject
 			{
 				return title == o.title && lang == o.lang && game == o.game && host == o.host && policy == o.policy
 					&& control == o.control && title_id == o.title_id && cover == o.cover
-					&& invite == o.invite && initials == o.initials && players == o.players && max == o.max
+					&& invite == o.invite && initials == o.initials && twitch == o.twitch && players == o.players && max == o.max
 					&& web == o.web && proto == o.proto;
 			}
 		};

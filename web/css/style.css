@@ -599,6 +599,49 @@ h3 {
   color: #9ff0cc;
 }
 
+.badge.twitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #7c3aed;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.badge.twitch i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+/* A link that looks like the page's ghost pill, a little smaller */
+.room-action .watch-twitch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid rgba(145, 70, 255, 0.55);
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.16);
+  color: #e2d6ff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.room-action .watch-twitch:hover {
+  background: rgba(124, 58, 237, 0.28);
+  color: #ffffff;
+}
+
+.room-action .watch-twitch:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* ---------------------------------------------------------------- the landing: a link from a friend */
 
 /* Like the app's Join door: dark, with a soft light in the corner */

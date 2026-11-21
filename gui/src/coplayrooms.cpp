@@ -296,6 +296,10 @@ void CoPlayRoomList::Refresh(const QString &setting)
 			m[QStringLiteral("compatible")] = proto == coplay::kProtocolVersion;
 			m[QStringLiteral("since")] = r.value(QStringLiteral("since")).toInt();
 			m[QStringLiteral("titleId")] = r.value(QStringLiteral("title_id")).toString().left(9);
+			// Streaming on Twitch: a channel name only, the link to it is built here
+			static const QRegularExpression twitch_login(QStringLiteral("^[a-z0-9_]{3,25}$"));
+			const QString twitch = r.value(QStringLiteral("twitch")).toString();
+			m[QStringLiteral("twitch")] = twitch_login.match(twitch).hasMatch() ? twitch : QString();
 			// Only a picture on Sony's image server, as the list itself demands
 			const QString cover = r.value(QStringLiteral("cover")).toString();
 			m[QStringLiteral("cover")] = CoPlayRooms::IsCover(cover) ? cover : QString();
@@ -532,6 +536,7 @@ void CoPlayRoomAnnouncer::Announce()
 	form.addQueryItem(QStringLiteral("title_id"), room.title_id);
 	form.addQueryItem(QStringLiteral("cover"), room.cover);
 	form.addQueryItem(QStringLiteral("initials"), room.initials);
+	form.addQueryItem(QStringLiteral("twitch"), room.twitch);
 	QNetworkRequest request = Request(QUrl(url));
 	request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
 	// Characters such as "+" and "&" in a title must arrive as they are

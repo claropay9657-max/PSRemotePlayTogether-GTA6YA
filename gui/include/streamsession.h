@@ -448,6 +448,8 @@ class StreamSession : public QObject
 		void CoPlayFindCover();
 		/** Set when the list of public rooms wants a picture of the game; the frame thread takes it. */
 		QAtomicInteger<int> room_picture_wanted = 0;
+		/** The Twitch channel for the public room list, kept for a room that starts later. */
+		QString coplay_room_twitch;
 		void CoPlayUpdatePending();
 		void CoPlayGuestLost(coplay::DisconnectReason reason);
 		void CoPlayGuestQuit();
@@ -600,6 +602,8 @@ class StreamSession : public QObject
 		QVariantList GetCoPlayPending() const;
 		/** The game the console runs, for the list of public rooms. */
 		void SetCoPlayRoomGame(const QString &game, const QString &title_id);
+		/** The host's Twitch channel for the public room list, or empty: not streaming, or not shown. */
+		void SetCoPlayRoomStream(const QString &twitch_login);
 		/** True once for each picture of the game the list of public rooms wants (any thread). */
 		bool TakeRoomPictureRequest() { return room_picture_wanted.fetchAndStoreRelaxed(0) != 0; }
 		/** A picture of the game (a small JPEG) for the list of public rooms. */

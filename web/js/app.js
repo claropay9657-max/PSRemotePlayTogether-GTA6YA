@@ -314,6 +314,12 @@ function fillBadges(badges, room) {
     el('span', 'badge play', CONTROL[room.control]),
     el('span', 'badge door', POLICY[room.policy]));
   if (room.web) badges.append(el('span', 'badge web', 'Browsers welcome'));
+  // The host is live on Twitch: not the same as the "Live" picture of the game
+  if (room.twitch) {
+    const live = el('span', 'badge twitch', 'On Twitch');
+    live.prepend(el('i'));
+    badges.prepend(live);
+  }
   return badges;
 }
 
@@ -348,6 +354,14 @@ function roomCard(room) {
   join.dataset.room = room.invite;
   join.setAttribute('aria-label', `${room.full ? 'Full' : 'Join'}: ${room.title}`);
   action.append(join);
+  if (room.twitch) {
+    const watch = el('a', 'btn ghost small watch-twitch', 'Watch on Twitch');
+    watch.href = `https://www.twitch.tv/${room.twitch}`;
+    watch.target = '_blank';
+    watch.rel = 'noopener noreferrer';
+    watch.setAttribute('aria-label', `Watch on Twitch: ${room.title}`);
+    action.append(watch);
+  }
   if (!room.compatible || !room.web) {
     action.append(el('small', 'room-note', !room.compatible ? 'Needs another version of the app' : 'App only'));
   }
@@ -363,6 +377,7 @@ function showAllRooms() {
   $('rooms-lang').value = '';
   $('rooms-hide-full').checked = false;
   $('rooms-open-only').checked = false;
+  $('rooms-twitch-only').checked = false;
   renderRooms();
   $('rooms-search').focus();
 }
@@ -374,6 +389,7 @@ function renderRooms() {
     lang: $('rooms-lang').value,
     hideFull: $('rooms-hide-full').checked,
     openOnly: $('rooms-open-only').checked,
+    twitchOnly: $('rooms-twitch-only').checked,
   };
   // Nothing new: the cards stay. Leaving the search field says "change" once more, and a list
   // drawn anew under the pointer would swallow the click on one of its buttons.
@@ -1656,7 +1672,7 @@ function start() {
       return option;
     }));
   $('rooms-lang').firstElementChild.value = '';
-  for (const id of ['rooms-search', 'rooms-lang', 'rooms-hide-full', 'rooms-open-only']) {
+  for (const id of ['rooms-search', 'rooms-lang', 'rooms-hide-full', 'rooms-open-only', 'rooms-twitch-only']) {
     $(id).addEventListener('input', renderRooms);
     $(id).addEventListener('change', renderRooms);
   }
