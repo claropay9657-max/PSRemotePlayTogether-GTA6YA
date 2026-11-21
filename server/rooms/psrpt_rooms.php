@@ -255,8 +255,9 @@ if ($method !== 'POST') {
             || (isset($_GET['face']) && (!is_string($name) || !preg_match('/^[0-9a-f]{16}$/', $name)))) {
             psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed request']);
         }
-        $room_path = $dir . DIRECTORY_SEPARATOR . hash('sha256', $id) . '.room';
-        $picture = isset($_GET['face']) ? psrpt_rooms_face_path($room_path, $name) : psrpt_rooms_picture_path($room_path);
+        // basename(): what a request sends never names a folder (a hash, and 16 checked hex digits, cannot either)
+        $room_path = $dir . DIRECTORY_SEPARATOR . basename(hash('sha256', $id)) . '.room';
+        $picture = isset($_GET['face']) ? psrpt_rooms_face_path($room_path, basename($name)) : psrpt_rooms_picture_path($room_path);
         $data = (is_file($room_path) && filemtime($room_path) >= time() - $ttl && is_file($picture))
             ? @file_get_contents($picture) : false;
         if ($data === false || $data === '') {
@@ -270,7 +271,7 @@ if ($method !== 'POST') {
         header("Content-Security-Policy: default-src 'none'");
         header('X-Robots-Tag: noindex, nofollow');
         psrpt_rooms_cors();
-        echo $data;
+        echo $data; // nosemgrep: php.lang.security.injection.echoed-request.echoed-request - a stored JPEG, checked when it came, served as image/jpeg with nosniff and default-src 'none'
         exit;
     }
     $now = time();
@@ -320,7 +321,7 @@ if ($version !== '1') {
 }
 
 // Named after a hash: nothing a client sends becomes part of a path
-$path = $dir . DIRECTORY_SEPARATOR . hash('sha256', $id) . '.room';
+$path = $dir . DIRECTORY_SEPARATOR . basename(hash('sha256', $id)) . '.room';
 $token_hash = hash('sha256', $token);
 $existing = null;
 if (is_file($path)) {
@@ -364,13 +365,13 @@ if ($action === 'faces') {
         if (!psrpt_rooms_jpeg($data, $face_max, 128, 128)) {
             psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed pictures']);
         }
-        $name = substr(hash('sha256', $data), 0, 16);
+        $name = basename(substr(hash('sha256', $data), 0, 16));
         $names[] = $name;
         $pictures[$name] = $data;
     }
     // The new pictures, then which player has which, then away with the ones nobody has any more
     foreach ($pictures as $name => $data) {
-        $face = psrpt_rooms_face_path($path, $name);
+        $face = psrpt_rooms_face_path($path, basename($name));
         if (is_file($face)) {
             continue;
         }
@@ -405,7 +406,7 @@ if ($action === 'preview') {
     $picture = psrpt_rooms_picture_path($path);
     if (is_file($picture) && filemtime($picture) > time() - (int) floor($preview_ms / 2000)) {
         header('Retry-After: ' . (int) ceil($preview_ms / 2000));
-        psrpt_rooms_answer(429, ['ok' => false, 'error' => 'one picture at a time', 'poll' => $poll, 'preview' => $preview_ms]);
+        psrpt_rooms_answer(429, ['ok' => false, 'error' => 'one picture at a time', 'code' => 'rate_limited', 'poll' => $poll, 'preview' => $preview_ms]);
     }
     $encoded = $_POST['image'] ?? '';
     if (!is_string($encoded) || strlen($encoded) > (int) ceil($preview_max * 4 / 3) + 4
