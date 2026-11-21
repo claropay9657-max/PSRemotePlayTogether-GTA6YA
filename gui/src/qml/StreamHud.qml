@@ -670,7 +670,7 @@ Item {
 
     Connections {
         target: hud.session
-        function onCoPlayChatMessage(message) {
+        function onCoplayChatMessage(message) {
             if (!hud.cfg.chat || hud.chatOpen || hud.editing)
                 return;
             let player = null;

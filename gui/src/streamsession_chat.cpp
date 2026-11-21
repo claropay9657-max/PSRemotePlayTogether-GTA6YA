@@ -209,7 +209,7 @@ void StreamSession::CoPlayChatAdd(const QVariantMap &entry, bool notify)
 		coplay_chat->unread++;
 	emit CoPlayChatChanged();
 	if(notify)
-		emit CoPlayChatMessage(entry);
+		emit coplayChatMessage(entry);
 }
 
 void StreamSession::coplaySendChat(const QString &raw_text)

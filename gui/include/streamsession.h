@@ -637,10 +637,17 @@ class StreamSession : public QObject
 		void CoPlayCamChanged();
 		void CoPlayReconnectingChanged();
 		void CoPlayChatChanged();
-		/** Somebody else wrote something new (not what was said before we came). */
-		void CoPlayChatMessage(const QVariantMap &message);
+		/**
+		 * Somebody else wrote something new (not what was said before we came). Named like a QML
+		 * signal on purpose: a handler in QML ("onCoplayChatMessage") only finds a signal whose name
+		 * starts with a small letter, and the notes on the game picture were never shown while this
+		 * was "CoPlayChatMessage".
+		 */
+		void coplayChatMessage(const QVariantMap &message);
 		/** Something the user should be told, e.g. that the port for sharing is taken. */
 		void CoPlayNotice(const QString &text);
+		/** Host: a guest left and asked for the console to be put to sleep, and guests may. */
+		void CoPlaySleepRequested(const QString &name);
 
 	private slots:
 		void UpdateGamepads();
