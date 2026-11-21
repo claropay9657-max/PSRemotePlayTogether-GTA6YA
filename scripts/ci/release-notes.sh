@@ -57,7 +57,7 @@ row "Linux x86_64" "PSRemotePlayTogether-$VERSION-linux-x86_64.AppImage" "\`chmo
 row "Linux arm64" "PSRemotePlayTogether-$VERSION-linux-aarch64.AppImage" "\`chmod +x\`, then run it" "$@"
 cat <<'NOTES'
 
-Every file has a `.sha256` next to it. Everybody who uses the app needs the same version. A friend who only wants to join needs no download: the host can send a link that opens in a web browser.
+Every file has a `.sha256` next to it. Everybody who uses the app needs the same version. A friend who only wants to join needs no download: the host can send a link that opens in a web browser, and anybody can join a public room at **[crypto90.github.io/PSRemotePlayTogether](https://crypto90.github.io/PSRemotePlayTogether/)**.
 
 The builds are not signed with a paid developer certificate. On macOS the first start is blocked: open **System Settings → Privacy & Security** and choose **Open Anyway**. On Windows, choose **More info → Run anyway** if SmartScreen asks.
 
