@@ -161,6 +161,8 @@ public:
      * whose picture is laid over the game picture of the stream; null for none.
      */
     Q_INVOKABLE void setLiveOverlay(QQuickItem *item);
+    /** A stream scene covers the stream's picture: the game is left out of it. */
+    Q_INVOKABLE void setLiveScene(bool active) { live_scene_active.storeRelease(active ? 1 : 0); }
     void armVerbosePlaceboQuietWindow();
     bool startupWarmupFrameActive() const { return startup_warmup_frame_active; }
 
@@ -474,6 +476,7 @@ private:
     VkSemaphore live_overlay_sem = VK_NULL_HANDLE;
     uint64_t live_overlay_sem_value = 0;
     bool live_overlay_wait = false;
+    QAtomicInteger<int> live_scene_active = 0;
     bool quick_frame = false;
     QAtomicInteger<int> quick_need_sync = 0;
     QAtomicInteger<int> quick_need_render = 0;

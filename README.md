@@ -303,6 +303,8 @@ What viewers see is what you see, without the stream menu, the chat or invites. 
 
 The stream key is kept in the macOS keychain, the Windows Credential Manager or the system keyring on Linux, never in the settings file. More in [docs/live-streaming.md](docs/live-streaming.md).
 
+**Stream scenes.** For the moments that are not the game: **Starting soon** (countdown), **Lobby** (everybody's webcams), **Be right back**, **Play with us** (the room and a QR code to join), **Technical difficulties** and **Thanks for watching**. Pick one under **Scenes** in the stream menu and it takes the place of the game picture in your stream; the app fills in the players, the game, the room and the times. **Settings → Stream scenes** takes your channel, the next stream and the texts. In OBS each scene is a Browser Source of the overlay server (`http://localhost:9412/scene/starting`, …; `/scene/current` follows the stream menu). More in [docs/stream-scenes.md](docs/stream-scenes.md).
+
 ## 🎥 Streaming with OBS
 
 You do not need friends in the session to use this for your stream.
@@ -467,7 +469,7 @@ If PSRemotePlayTogether gives you and your friends a good evening, or makes your
 
 ## 📄 Credits and licence
 
-PSRemotePlayTogether is built on [chiaki-ng](https://github.com/streetpea/chiaki-ng) by Street Pea and contributors, which continues [Chiaki](https://git.sr.ht/~thestr4ng3r/chiaki) by Florian Märkl. The controller skins of the overlay are from [CryptoPad](https://github.com/Crypto90/CryptoPad). Guests in a web browser reach the host through [libdatachannel](https://github.com/paullouisageneau/libdatachannel) by Paul-Louis Ageneau (MPL 2.0), with libjuice and usrsctp.
+PSRemotePlayTogether is built on [chiaki-ng](https://github.com/streetpea/chiaki-ng) by Street Pea and contributors, which continues [Chiaki](https://git.sr.ht/~thestr4ng3r/chiaki) by Florian Märkl. The controller skins of the overlay are from [CryptoPad](https://github.com/Crypto90/CryptoPad). Guests in a web browser reach the host through [libdatachannel](https://github.com/paullouisageneau/libdatachannel) by Paul-Louis Ageneau (MPL 2.0), with libjuice and usrsctp. The stream scenes use the font [Plus Jakarta Sans](https://github.com/tokotype/PlusJakartaSans) (SIL Open Font License, `gui/res/fonts/OFL.txt`) and Project Nayuki's [QR code generator](https://www.nayuki.io/page/qr-code-generator-library) (MIT, `third-party/qrcodegen`).
 
 Licensed under the [GNU Affero General Public License v3](COPYING) with the OpenSSL exception chiaki uses (see `LICENSES/`). The app is free, and so is its source code: it is all in this repository.
 

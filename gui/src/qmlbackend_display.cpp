@@ -5,6 +5,7 @@
 
 #include "qmlbackend.h"
 #include "livecontroller.h"
+#include "livescenes.h"
 #include "overlayserver.h"
 #include "presetsettings.h"
 
@@ -141,6 +142,11 @@ QObject *QmlBackend::hudSettings() const
 QObject *QmlBackend::liveController() const
 {
     return live_controller;
+}
+
+QObject *QmlBackend::liveScenes() const
+{
+    return live_scenes;
 }
 
 QObject *QmlBackend::overlayLayoutSettings() const

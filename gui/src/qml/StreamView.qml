@@ -7,6 +7,7 @@ import QtQuick.Window
 import org.streetpea.chiaking
 
 import "controls" as C
+import "scenes"
 
 Item {
     id: view
@@ -591,26 +592,43 @@ Item {
     Loader {
         id: liveOverlayLoader
         anchors.fill: parent
-        active: Chiaki.live.live && !!Chiaki.live.values.overlays && !useSeparateMenuWindow
+        /** A stream scene (Starting soon, Be right back, ...) takes the place of the game picture. */
+        readonly property bool sceneUp: !!Chiaki.scenes && Chiaki.scenes.shown !== "game"
+        active: Chiaki.live.live && !useSeparateMenuWindow && (!!Chiaki.live.values.overlays || sceneUp)
+        onSceneUpChanged: if (active) Chiaki.window.setLiveScene(sceneUp)
+        onActiveChanged: Chiaki.window.setLiveScene(active && sceneUp)
         sourceComponent: Component {
             Item {
                 id: liveOverlay
 
-                StreamHud {
-                    id: liveHud
+                Item {
+                    id: liveCanvas
                     // The same size on screen as the display the player sees, as wide as 16:9 makes it
                     height: Math.max(360, view.height)
                     width: Math.round(height * 16 / 9)
-                    view: liveOverlayLoader.parent
-                    broadcast: true
-                    allowed: true
-                    // Never takes a click or a key
-                    enabled: false
+
+                    StreamHud {
+                        id: liveHud
+                        anchors.fill: parent
+                        view: liveOverlayLoader.parent
+                        broadcast: true
+                        allowed: !!Chiaki.live.values.overlays && !liveOverlayLoader.sceneUp
+                        // Never takes a click or a key
+                        enabled: false
+                    }
+
+                    StreamScene {
+                        visible: liveOverlayLoader.sceneUp
+                        scene: Chiaki.scenes ? Chiaki.scenes.shown : ""
+                        scale: liveCanvas.height / 1080
+                        transformOrigin: Item.TopLeft
+                        enabled: false
+                    }
                 }
 
                 ShaderEffectSource {
                     id: liveTexture
-                    sourceItem: liveHud
+                    sourceItem: liveCanvas
                     hideSource: true
                     live: true
                     recursive: false
@@ -625,6 +643,34 @@ Item {
                     Component.onCompleted: Chiaki.window.setLiveOverlay(liveTexture)
                     Component.onDestruction: Chiaki.window.setLiveOverlay(null)
                 }
+            }
+        }
+    }
+
+    // While a scene is on the stream, the streamer sees which one (the game goes on here)
+    Rectangle {
+        // Not over the stream menu, whose Scenes button says it there
+        visible: liveOverlayLoader.active && liveOverlayLoader.sceneUp && !menuController.open && !menuController.closing
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: 16
+        height: 40
+        width: sceneNote.implicitWidth + 40
+        radius: 20
+        color: Qt.rgba(14 / 255, 11 / 255, 30 / 255, 0.88)
+        border.width: 1
+        border.color: Qt.rgba(245 / 255, 185 / 255, 66 / 255, 0.55)
+
+        Text {
+            id: sceneNote
+            anchors.centerIn: parent
+            color: "#fde4a8"
+            font.pixelSize: 14
+            font.bold: true
+            text: {
+                const id = Chiaki.scenes ? Chiaki.scenes.shown : "";
+                const list = Chiaki.scenes ? Chiaki.scenes.scenes : [];
+                const found = list.find((s) => s.id === id);
+                return qsTr("Viewers see: %1").arg(found ? found.name : id);
             }
         }
     }

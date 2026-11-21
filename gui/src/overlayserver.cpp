@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
 #include "overlayserver.h"
+#include "livescenes.h"
 #include "settings.h"
 #include "streamsession.h"
 
@@ -175,6 +176,8 @@ void OverlayServer::OnNewConnection()
 		connect(socket, &QTcpSocket::disconnected, this, [this, socket] {
 			pending.remove(socket);
 			event_clients.removeAll(socket);
+			if(scene_clients.removeAll(socket) && scenes)
+				scenes->SetPageClients(static_cast<int>(scene_clients.size()));
 			cam_clients.remove(socket);
 			if(voice_clients.removeAll(socket))
 				UpdateVoiceTap();
@@ -255,6 +258,40 @@ void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const Q
 
 	if(path == "/" || path == "/index.html")
 		ServeResource(socket, "/index.html", false);
+	// The stream scenes: /scene/starting, /scene/brb, ..., or /scene/current for the one
+	// chosen in the stream menu. One page that reads which one from its address.
+	else if(path == "/scene.css" || path == "/scene.js")
+		ServeResource(socket, path, false);
+	else if(path == "/scene/data")
+		Respond(socket, 200, "application/json", scenes ? scenes->PageJson() : QByteArray("{}"));
+	else if(path == "/scene/qr.svg")
+	{
+		QByteArray svg = scenes ? (query == QLatin1String("demo=1") ? LiveScenes::DemoQrSvg() : scenes->QrSvg()) : QByteArray();
+		if(svg.isEmpty())
+			Respond(socket, 404, "text/plain", "Not found");
+		else
+			Respond(socket, 200, "image/svg+xml", svg);
+	}
+	else if(path == "/scene/game.jpg")
+	{
+		QByteArray jpeg = scenes ? scenes->GamePicture() : QByteArray();
+		if(jpeg.isEmpty())
+			Respond(socket, 404, "text/plain", "Not found");
+		else
+			Respond(socket, 200, "image/jpeg", jpeg);
+	}
+	else if(path == "/scene/logo.svg")
+		ServeFile(socket, ":/icons/ui/app-icon.svg", "image/svg+xml");
+	else if(path == "/fonts/PlusJakartaSans.ttf")
+		ServeFile(socket, ":/fonts/PlusJakartaSans.ttf", "font/ttf");
+	else if(path.startsWith("/scene/"))
+	{
+		static const QStringList known = { "starting", "lobby", "brb", "play", "difficulties", "ending", "current" };
+		if(known.contains(path.mid(7)))
+			ServeResource(socket, "/scene.html", false);
+		else
+			Respond(socket, 404, "text/plain", "Not found");
+	}
 	else if(path == "/overlay.css" || path == "/overlay.js" || path == "/pad.js")
 		ServeResource(socket, path, false);
 	else if(path == "/favicon.ico")
@@ -286,7 +323,7 @@ void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const Q
 	else if(path == "/state")
 		Respond(socket, 200, "application/json", StateJson());
 	else if(path == "/events")
-		StartEvents(socket);
+		StartEvents(socket, query.split('&').contains(QStringLiteral("scene=1")));
 	else if(path == "/voice")
 		StartVoice(socket);
 	else if(path.startsWith("/cam/"))
@@ -390,7 +427,23 @@ void OverlayServer::Respond(QTcpSocket *socket, int status, const QByteArray &co
 	socket->disconnectFromHost();
 }
 
-void OverlayServer::StartEvents(QTcpSocket *socket)
+void OverlayServer::SetScenes(LiveScenes *new_scenes)
+{
+	scenes = new_scenes;
+}
+
+void OverlayServer::ServeFile(QTcpSocket *socket, const QString &path, const QByteArray &type)
+{
+	QFile file(path);
+	if(!file.open(QIODevice::ReadOnly))
+	{
+		Respond(socket, 404, "text/plain", "Not found");
+		return;
+	}
+	Respond(socket, 200, type, file.readAll(), true);
+}
+
+void OverlayServer::StartEvents(QTcpSocket *socket, bool scene_page)
 {
 	socket->write("HTTP/1.1 200 OK\r\n"
 		"Content-Type: text/event-stream\r\n"
@@ -401,6 +454,12 @@ void OverlayServer::StartEvents(QTcpSocket *socket)
 	SendEvent(socket, "config", ConfigJson());
 	SendEvent(socket, "state", StateJson());
 	SendEvent(socket, "chat", ChatJson());
+	if(scene_page && scenes)
+	{
+		scene_clients.append(socket);
+		scenes->SetPageClients(static_cast<int>(scene_clients.size()));
+		SendEvent(socket, "scene", scenes->PageJson());
+	}
 	UpdateTimer();
 }
 
@@ -466,6 +525,21 @@ void OverlayServer::Tick()
 
 	if(event_clients.isEmpty())
 		return;
+	// The scenes' data, a few times a second at most: countdowns, who talks
+	if(!scene_clients.isEmpty() && scenes && ++scene_tick * kTickMs >= 250)
+	{
+		scene_tick = 0;
+		QByteArray scene = scenes->PageJson();
+		if(scene != last_scene)
+		{
+			last_scene = scene;
+			for(QTcpSocket *socket : std::as_const(scene_clients))
+			{
+				if(socket->bytesToWrite() < 256 * 1024)
+					SendEvent(socket, "scene", scene);
+			}
+		}
+	}
 	// The chat on its own: it changes seldom, the controllers all the time
 	QByteArray chat = ChatJson();
 	if(chat != last_chat)

@@ -933,6 +933,50 @@ FocusScope {
                         }
                     }
                 }
+
+                // Stream scenes: what viewers see instead of the game (Starting soon, Be right
+                // back, ...), in the app's own live stream and in OBS (/scene/current)
+                DockButton {
+                    id: sceneButton
+                    readonly property string shownId: Chiaki.scenes ? Chiaki.scenes.current : "game"
+                    visible: !!Chiaki.scenes && (Chiaki.live.live || !!Chiaki.settings.overlayEnabled)
+                    iconName: "broadcast"
+                    // Lit while a scene is up; which one, the menu and the note at the top say
+                    text: qsTr("Scenes")
+                    checked: shownId !== "game"
+                    chevron: true
+                    onClicked: panel.openMenu(scenesMenu, sceneButton, "above", streamMenu)
+
+                    C.Menu {
+                        id: scenesMenu
+                        property var placement: null
+                        onAboutToShow: if (placement) placement()
+                        padding: 6
+                        font.pixelSize: 14
+                        background: PlayTogetherBar.MenuGround {}
+
+                        Instantiator {
+                            model: Chiaki.scenes ? Chiaki.scenes.scenes : []
+                            delegate: PlayTogetherBar.MenuEntry {
+                                required property int index
+                                required property var modelData
+                                text: modelData.name
+                                chosen: !!Chiaki.scenes && Chiaki.scenes.current === modelData.id
+                                onTriggered: Chiaki.scenes.show(modelData.id)
+                            }
+                            onObjectAdded: (index, object) => scenesMenu.insertItem(index, object)
+                            onObjectRemoved: (index, object) => scenesMenu.removeItem(object)
+                        }
+
+                        PlayTogetherBar.MenuLine {}
+
+                        PlayTogetherBar.MenuEntry {
+                            iconName: "refresh"
+                            text: qsTr("Start the countdown again")
+                            onTriggered: Chiaki.scenes.restartCountdown()
+                        }
+                    }
+                }
             }
 
             DockLine {

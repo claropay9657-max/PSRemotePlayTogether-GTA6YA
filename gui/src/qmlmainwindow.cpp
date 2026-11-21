@@ -7552,6 +7552,8 @@ void QmlMainWindow::render()
                 logLatencyStats("render_work", render_after_us - render_entry_us_local);
         }
         close_started_frame(true);
+        // No game picture yet (or none any more): the stream still gets its scene or display
+        captureLiveFrame(nullptr);
         bool scheduled_pending = finalize_render();
         if (!scheduled_pending)
             schedulePostRenderWork();
@@ -7868,6 +7870,9 @@ void QmlMainWindow::captureLiveFrame(const struct pl_frame *image)
     collectLiveReadbacks(false);
     if (!engine.WantsFrame(static_cast<int64_t>(chiaki_time_now_monotonic_us())))
         return;
+    // A scene (Be right back, ...) covers everything: no need to draw the game under it
+    if (live_scene_active.loadAcquire() != 0)
+        image = nullptr;
 
     pl_gpu gpu = placeboGpu();
     const int width = engine.Width();

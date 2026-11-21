@@ -1,4 +1,7 @@
 <RCC>
+  <qresource prefix="/fonts">
+    <file alias="PlusJakartaSans.ttf">fonts/PlusJakartaSans.ttf</file>
+  </qresource>
   <qresource prefix="/icons">
     <file>settings-20px.svg</file>
     <file>add-24px.svg</file>
@@ -52,6 +55,9 @@
     <file alias="ui/mic-off.svg">ui/mic-off.svg</file>
     <file alias="ui/minus.svg">ui/minus.svg</file>
     <file alias="ui/moon.svg">ui/moon.svg</file>
+    <file alias="ui/clock.svg">ui/clock.svg</file>
+    <file alias="ui/wifi.svg">ui/wifi.svg</file>
+    <file alias="ui/calendar.svg">ui/calendar.svg</file>
     <file alias="ui/more.svg">ui/more.svg</file>
     <file alias="ui/people.svg">ui/people.svg</file>
     <file alias="ui/play.svg">ui/play.svg</file>

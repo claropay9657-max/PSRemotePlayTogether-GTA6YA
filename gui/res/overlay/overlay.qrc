@@ -148,6 +148,9 @@
     <file>overlay.css</file>
     <file>overlay.js</file>
     <file>pad.js</file>
+    <file>scene.html</file>
+    <file>scene.css</file>
+    <file>scene.js</file>
     <file>cryptopad/static/images/PS5 (nova pink)/base.png</file>
     <file>cryptopad/static/images/PS5 (nova pink)/button.png</file>
     <file>cryptopad/static/ps5-nova-pink-controller.css</file>

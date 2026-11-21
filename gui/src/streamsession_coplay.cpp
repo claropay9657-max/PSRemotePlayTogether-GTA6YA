@@ -649,6 +649,18 @@ QString StreamSession::GetCoPlayRoomGame() const
 	return coplay ? coplay->room_info.game : QString();
 }
 
+QString StreamSession::GetCoPlayWebPage() const
+{
+	if(!IsCoPlayHosting() || coplay->web_page.empty())
+		return QString();
+	return QString::fromStdString(coplay->web_page);
+}
+
+bool StreamSession::GetCoPlayWebGuestsOn() const
+{
+	return IsCoPlayHosting() && !coplay->web_page.empty() && coplay->host->WebGuestsOn();
+}
+
 int StreamSession::GetCoPlayJoinPolicy() const
 {
 	return coplay ? coplay->join_policy : 0;

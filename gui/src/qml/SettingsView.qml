@@ -43,6 +43,7 @@ DialogView {
         { key: "voice", group: qsTr("Play Together"), title: qsTr("Voice & webcam"), icon: "mic", file: "VoicePage.qml" },
         { key: "overlays", group: qsTr("Play Together"), title: qsTr("Overlays & OBS"), icon: "layers", file: "OverlaysPage.qml" },
         { key: "live", group: qsTr("Play Together"), title: qsTr("Live streaming"), icon: "broadcast", file: "StreamingPage.qml" },
+        { key: "scenes", group: qsTr("Play Together"), title: qsTr("Stream scenes"), icon: "monitor", file: "ScenesPage.qml" },
         { key: "network", group: qsTr("Play Together"), title: qsTr("Network & invites"), icon: "globe", file: "NetworkPage.qml" },
         { key: "consoles", group: qsTr("Consoles"), title: qsTr("Your consoles"), icon: "console", file: "ConsolesPage.qml" },
         { key: "psn", group: qsTr("Consoles"), title: qsTr("Away from home (PSN)"), icon: "cloud", file: "PsnPage.qml" },

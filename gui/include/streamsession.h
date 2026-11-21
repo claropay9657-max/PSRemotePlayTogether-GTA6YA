@@ -588,6 +588,10 @@ class StreamSession : public QObject
 		bool GetCoPlayPublic() const;
 		QString GetCoPlayRoomTitle() const;
 		QString GetCoPlayRoomGame() const;
+		/** The page for browsers (no invite in it); empty when we do not host. */
+		QString GetCoPlayWebPage() const;
+		/** We host and friends may join from a web browser. */
+		bool GetCoPlayWebGuestsOn() const;
 		QString GetCoPlayRoomProblem() const;
 		int GetCoPlayJoinPolicy() const;
 		void SetCoPlayJoinPolicy(int policy);

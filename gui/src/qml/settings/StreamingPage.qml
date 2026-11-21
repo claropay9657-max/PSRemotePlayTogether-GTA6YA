@@ -367,7 +367,7 @@ C.SettingsPage {
                 parts.push(qsTr("%1 kbit/s out").arg(stats.kbps || 0));
                 parts.push(qsTr("%1 pictures left out").arg(stats.dropped || 0));
                 if (stats.reconnects > 0)
-                    parts.push(qsTr("connected again %n time(s)", "", stats.reconnects));
+                    parts.push(stats.reconnects === 1 ? qsTr("connected again once") : qsTr("connected again %1 times").arg(stats.reconnects));
                 return parts.join(" · ");
             }
             textMinimum: 200

@@ -318,11 +318,24 @@ void LiveController::SetSession(StreamSession *new_session)
 	if(session == new_session)
 		return;
 	// The picture and the sound of this session are what goes out: no session, no stream
-	if(session && live())
-		stop();
+	if(!new_session)
+	{
+		if(live())
+			stop();
+		session = nullptr;
+		return;
+	}
+	// Another session in its place: the one that gets the console back after a lost
+	// connection. The stream goes on with it.
 	session = new_session;
 	told_session = false;
 	told_live = false;
+	if(live())
+	{
+		session->CoPlaySetLiveAudio(map.value("voices").toBool(), map.value("own_mic").toBool());
+		told_session = true;
+		Poll();
+	}
 
 	// For trying it out without clicking (like COPLAY_TEST_CAMERA): PSRPT_LIVE_START=N goes
 	// live a few seconds into a session and stops after N seconds (0: stays live)

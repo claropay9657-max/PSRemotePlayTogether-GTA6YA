@@ -1,5 +1,6 @@
 #include "qmlbackend.h"
 #include "livecontroller.h"
+#include "livescenes.h"
 
 #include <coplay/invite.h>
 #include "qmlsettings.h"
@@ -404,6 +405,9 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
 
     live_controller = new LiveController(settings, this);
     connect(this, &QmlBackend::sessionChanged, live_controller, &LiveController::SetSession);
+    live_scenes = new LiveScenes(settings, this);
+    connect(this, &QmlBackend::sessionChanged, live_scenes, &LiveScenes::SetSession);
+    connect(this, &QmlBackend::reconnectingChanged, live_scenes, [this]() { live_scenes->SetReconnecting(reconnecting()); });
 
     QObject *frame_obj = new QObject();
     frame_thread = new QThread(frame_obj);
@@ -1441,6 +1445,25 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
                         if (session == picture_session)
                             session->CoPlayRoomPicture(jpeg);
                     });
+                });
+            }
+        }
+
+        // A stream scene shows a picture of the game: the same, a little larger
+        if (live_scenes->TakeGamePictureRequest()) {
+            AVFrame *copy = av_frame_clone(frame.frame);
+            if (copy) {
+                QThreadPool::globalInstance()->start([this, copy]() mutable {
+                    const QImage rgb = room_picture_rgb(copy);
+                    av_frame_free(&copy);
+                    if (rgb.isNull())
+                        return;
+                    QByteArray jpeg;
+                    QBuffer buffer(&jpeg);
+                    buffer.open(QIODevice::WriteOnly);
+                    if (!rgb.scaled(640, 360, Qt::KeepAspectRatio, Qt::SmoothTransformation).save(&buffer, "JPG", 80))
+                        return;
+                    QMetaObject::invokeMethod(this, [this, jpeg]() { live_scenes->SetGamePicture(jpeg); });
                 });
             }
         }
@@ -2704,6 +2727,15 @@ void QmlBackend::controllerMappingApply()
 
 void QmlBackend::updateDiscoveryHosts()
 {
+    // The game on the console of the session, for the stream scenes
+    if (session) {
+        for (const auto &host : discovery_manager.GetHosts()) {
+            if (host.host_addr == session_info.host && host.state == CHIAKI_DISCOVERY_HOST_STATE_READY) {
+                live_scenes->SetGame(host.running_app_name);
+                break;
+            }
+        }
+    }
     // The game of a public room: what the console of the session says it runs
     if (session && session->GetCoPlayPublic()) {
         for (const auto &host : discovery_manager.GetHosts()) {

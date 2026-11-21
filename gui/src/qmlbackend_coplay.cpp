@@ -5,6 +5,7 @@
 #include "qmlbackend.h"
 #include "qmlmainwindow.h"
 #include "overlayserver.h"
+#include "livescenes.h"
 
 #include <coplay/client.h>
 #include <coplay/invite.h>
@@ -193,12 +194,15 @@ void QmlBackend::coplayCancelJoin()
 void QmlBackend::initOverlay()
 {
     overlay = new OverlayServer(settings, this);
+    overlay->SetScenes(live_scenes);
     connect(overlay, &OverlayServer::StateChanged, this, &QmlBackend::overlayStateChanged);
+    connect(overlay, &OverlayServer::StateChanged, this, [this]() { live_scenes->SetOverlayUrl(overlay->Url()); });
     connect(settings_qml, &QmlSettings::overlayChanged, overlay, &OverlayServer::ApplySettings);
     connect(this, &QmlBackend::sessionChanged, overlay, [this](StreamSession *s) {
         overlay->SetSession(s);
     });
     overlay->ApplySettings();
+    live_scenes->SetOverlayUrl(overlay->Url());
     initDisplays();
 }
 

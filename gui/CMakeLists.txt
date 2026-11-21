@@ -70,6 +70,9 @@ set(SOURCE_FILES
 	src/livecontroller.cpp
 	include/keystore.h
 	src/keystore.cpp
+	include/livescenes.h
+	src/livescenes.cpp
+	${CMAKE_SOURCE_DIR}/third-party/qrcodegen/qrcodegen.cpp
 	include/coplaycamera.h
 	src/coplaycamera.cpp
 	include/coplayaddress.h
@@ -124,6 +127,8 @@ add_executable(chiaki WIN32
 		${SOURCE_FILES}
 )
 target_include_directories(chiaki PRIVATE include)
+# Nayuki's QR code generator (MIT): the code to the room on the Play with us scene
+target_include_directories(chiaki PRIVATE ${CMAKE_SOURCE_DIR}/third-party/qrcodegen)
 
 add_library(placebo-libav-impl src/libav_impl.c)
 target_link_libraries(placebo-libav-impl PkgConfig::LIBPLACEBO FFMPEG::avcodec FFMPEG::avutil FFMPEG::avformat)
