@@ -97,8 +97,9 @@ static void Usage()
 		"                          finds it in Sony's catalog by the title id)\n"
 		"      --preview A.jpg     a picture of the game for the list (a JPEG of at most 640x360),\n"
 		"                          sent as often as the list asks, as the app sends a frame\n"
-		"      --face A.jpg        the host's picture for the list (a JPEG of at most 128x128);\n"
-		"                          guests show their initial there\n"
+		"      --face A.jpg        the host's picture for the list (a JPEG of at most 128x128); the\n"
+		"                          guests' own pictures go along where they are such JPEGs too,\n"
+		"                          the others show their initial there\n"
 		"      --policy ask|watch|open  who gets in (default open); \"ask\" lets each one in\n"
 		"                          after --admit-after seconds, or refuses with --refuse\n"
 		"      --admit-after N     seconds before a guest that knocks is let in (default 3)\n"
@@ -843,11 +844,27 @@ static int RunHost(const Options &o)
 		if(face_encoded.empty())
 			std::fprintf(stderr, "--face: cannot read %s\n", o.face.c_str());
 	}
-	// The host's picture first, nothing for the guests: sent when the players change
-	auto send_faces = [&](size_t players) {
+	// The host's picture first, then each guest's where it is a small JPEG (the list takes
+	// nothing else; the app makes one of any picture): sent when the players or their pictures change
+	auto guest_faces = [&]() {
+		std::vector<std::string> faces;
+		for(const GuestInfo &g : host.Guests())
+		{
+			BlobData data = g.avatar.Valid() ? host.Avatar(g.avatar.hash) : nullptr;
+			bool jpeg = data && data->size() >= 3 && data->size() <= 8 * 1024
+				&& (*data)[0] == 0xff && (*data)[1] == 0xd8 && (*data)[2] == 0xff;
+			faces.push_back(jpeg ? url64(*data) : std::string());
+		}
+		return faces;
+	};
+	std::string faces_sent;
+	auto send_faces = [&](size_t) {
 		std::string list = face_encoded;
-		for(size_t i = 1; i < players; i++)
-			list += ",";
+		for(const std::string &face : guest_faces())
+			list += "," + face;
+		if(list == faces_sent)
+			return;
+		faces_sent = list;
 		HttpRequest request;
 		request.url = o.rooms;
 		request.body = FormBody({ { "v", "1" }, { "action", "faces" }, { "id", room_id }, { "token", room_token },
@@ -895,6 +912,9 @@ static int RunHost(const Options &o)
 				if(changed && !face_encoded.empty())
 					send_faces(players);
 			}
+			// A guest's picture arrives a moment after the guest
+			if(!face_encoded.empty() && players > 1)
+				send_faces(players);
 			if(!preview_encoded.empty() && now >= next_preview)
 			{
 				next_preview = now + std::chrono::seconds(45);

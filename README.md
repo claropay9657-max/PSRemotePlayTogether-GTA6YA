@@ -139,12 +139,22 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
   </tr>
   <tr>
     <td width="50%">
-      <h3>🌍 Public rooms</h3>
-      Host privately for your friends, or list your session as a public room with a title, a language and the game that runs. Others search the list by title, game, host or language, in the app or in a browser, see who controls and how many play, and join.
+      <h3>🌍 Public rooms, live</h3>
+      Host privately for your friends, or list your session as a public room with a title, a language and the game that runs. The list shows a <b>live picture</b> of every game and <b>who plays</b>, with their pictures. Search it by title, game, host or language, in the app or in a browser, and join.
     </td>
     <td width="50%">
       <h3>🚦 You decide who gets in</h3>
       Let each player in yourself, let newcomers watch until you let them play, or open the door to everybody. Close the room to newcomers at any time, and remove a player, for good if you like.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>🎨 A new look</h3>
+      Two doors on the start page, <b>Host</b> and <b>Join</b>, each one page from start to finish. In the game, Play Together sits in a panel at the side. Everything works with a controller as well as with a mouse.
+    </td>
+    <td width="50%">
+      <h3>⚙️ One settings window</h3>
+      All settings in one place, in plain words, with a search that finds any of them. Your profile shows how the others see you.
     </td>
   </tr>
 </table>
@@ -171,7 +181,9 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
 When a guest leaves, the console stays as it is: only you send it to sleep, unless you switched on **Guests may put the console to sleep when they leave**, for example for a friend who plays on while you are away.
 
 <div align="center">
-  <img src="docs/images/screenshots/start-page.jpg" alt="The start page: your console, joining a friend, sharing your console and Controller only" width="820">
+  <img src="docs/images/screenshots/start-page.jpg" alt="The start page: Host and Join, and your consoles" width="820">
+  <br><br>
+  <img src="docs/images/screenshots/host.jpg" alt="The Host page: the console, private or public room, who gets in, players, how your room looks in the list, and the invites" width="820">
 </div>
 
 ### Does the host have to open a port?
@@ -182,7 +194,7 @@ Usually not.
 | :--- | :--- |
 | in the same network or the same VPN | Nothing. Send the **Same network** invite. |
 | somewhere on the internet | With most routers: nothing. Send the **Internet** invite. The two apps find each other through a small **meeting point** on the internet and then connect directly. |
-| somewhere on the internet, and it does not connect | Forward **UDP port 9410** to your computer in your router. That always works, and it is used by itself as soon as it is there. The port can be changed under Play Together. |
+| somewhere on the internet, and it does not connect | Forward **UDP port 9410** to your computer in your router. That always works, and it is used by itself as soon as it is there. The port can be changed under **Settings → Network & invites**. |
 | in a web browser, and it does not connect | Forward **UDP port 9411** as well: browsers come in on a port of their own, one above the sharing port. |
 
 Guests never open a port.
@@ -191,9 +203,9 @@ Guests never open a port.
 
 It works with ordinary home routers and over IPv6. It does not get through when a router gives every connection a new port ("symmetric NAT", common in mobile networks and with some fibre providers) and the router on the other side is strict as well. While you share, the stream menu says which case you are in. The details are in [docs/nat-traversal.md](docs/nat-traversal.md).
 
-For this the app asks a STUN server for your address on the internet (Google's by default) and uses the meeting point at gamernova.net. Both can be changed or switched off under **Play Together**, and the meeting point is one small PHP file that you can host yourself: [server/meeting-point](server/meeting-point).
+For this the app asks a STUN server for your address on the internet (Google's by default) and uses the meeting point at gamernova.net. Both can be changed or switched off under **Settings → Network & invites**, and the meeting point is one small PHP file that you can host yourself: [server/meeting-point](server/meeting-point).
 
-> 💡 **Still no way through?** Put everybody into one virtual network with a mesh VPN such as Tailscale or ZeroTier, enter your VPN address under **Play Together → Own internet address** and send that invite.
+> 💡 **Still no way through?** Put everybody into one virtual network with a mesh VPN such as Tailscale or ZeroTier, enter your VPN address under **Settings → Network & invites → Own internet address** and send that invite.
 
 ### Join a friend
 
@@ -218,20 +230,30 @@ On the game picture it looks and works like the app: the same display of players
 
 The connection goes straight from the browser to the host's computer (WebRTC), set up through the same meeting point the app uses; nothing of the session passes through a server. The key of the session stands behind the `#` of the link, which a browser never sends anywhere, and the page takes it out of the address bar as soon as it is opened.
 
-Where a browser falls short: the game's haptics arrive as plain rumble, and it adds a little delay compared to the app. The touchpad, the motion sensors, adaptive triggers and the light bar need a DualSense that the browser opens directly (Chrome and Edge only, **DualSense…** in the stream menu; this part is new and little tested). A PS5 streams H.265 by default, which Chrome, Edge and Safari play on most computers; if a friend's browser cannot, the host can switch to H.264 under **Settings → Video**. Like the app without a forwarded port, it does not get through every pair of routers (see above). A browser cannot use the sharing port; if a friend's browser cannot connect, the host forwards a second one for browsers, **UDP port 9411** (one above the sharing port, to be changed under Play Together).
+Where a browser falls short: the game's haptics arrive as plain rumble, and it adds a little delay compared to the app. The touchpad, the motion sensors, adaptive triggers and the light bar need a DualSense that the browser opens directly (Chrome and Edge only, **DualSense…** in the stream menu; this part is new and little tested). A PS5 streams H.265 by default, which Chrome, Edge and Safari play on most computers; if a friend's browser cannot, the host can switch to H.264 under **Settings → Stream quality**. Like the app without a forwarded port, it does not get through every pair of routers (see above). A browser cannot use the sharing port; if a friend's browser cannot connect, the host forwards a second one for browsers, **UDP port 9411** (one above the sharing port, to be changed under **Settings → Network & invites**).
 
-It can be switched off on the **Host…** page (**Friends without the app can join from a web browser**), and the page is a folder of static files (`web/`) that you can host yourself. More in [docs/web-guests.md](docs/web-guests.md).
+It can be switched off on the **Host…** page (**Browsers allowed**), and the page is a folder of static files (`web/`) that you can host yourself. More in [docs/web-guests.md](docs/web-guests.md).
+
+<div align="center">
+  <img src="docs/images/screenshots/web-rooms.jpg" alt="The page for web browsers: paste a link, or pick a public room" width="820">
+</div>
 
 ### Public rooms
 
 A session can be found by people you have never sent an invite to. Choose **Public** on the **Host…** page and give the room a title and a language; the game that runs on the console is shown by itself, with its picture from Sony's public catalog.
 
-- **Finding one:** **Join… → Public rooms** in the app, or the page for web browsers without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms where the host lets each player in; the app also sorts them by players, free places or age. Every room shows the game, how many play, who controls (everybody at once, one at a time, or only the host), and whether browsers are welcome.
+- **Finding one:** **Join… → Public rooms** in the app, or the page for web browsers without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms where the host lets each player in; the app also sorts them by players, free places or age. Every room shows the game, who plays and how many, who controls (everybody at once, one at a time, or only the host), and whether browsers are welcome.
+- **Live:** every 45 seconds the host's app sends a small picture of the game, so the list shows what is happening right now, with the game's cover in the corner. **Live picture in the list** on the Host page switches it off; in streamer mode it is always off.
+- **Who plays:** each player as a small circle, with the picture they chose in the app, or the first letter of their name. The list never gets the other players' names.
 - **Getting in** works like with an invite: straight to the host, nothing passes through the list. If the host lets each player in, you wait at the door until they do.
 - **As the host** you see who knocks, as a note on the game picture and in the stream menu, and press **Let in** or **No**. In the stream menu the room can be **Closed to newcomers** (it leaves the list; players who were in before can come back), and a click on a player removes them, with **Remove and block** for the rest of the session.
-- **What the list shows about you:** the room's title and language, the game, your name in the app, the number of players, and an invite: the room has a key of its own, new for every public session, and your private invites stay private. The invite names no address, but players connect to your computer directly, as with every invite, and so learn its internet address. In a public room that can be anybody who reads the list.
+- **What the list shows about you:** the room's title and language, the game and its live picture, your name in the app, the players' pictures or initials, and an invite: the room has a key of its own, new for every public session, and your private invites stay private. The invite names no address, but players connect to your computer directly, as with every invite, and so learn its internet address. In a public room that can be anybody who reads the list.
 
-The list is one small PHP file next to the meeting point, which you can host yourself: [server/rooms](server/rooms). **Play Together → Network → Public rooms** takes the address of your own, and **off** switches public rooms off.
+<div align="center">
+  <img src="docs/images/screenshots/public-rooms.jpg" alt="Join, public rooms: live pictures of the games, who plays, and how to get in" width="820">
+</div>
+
+The list is one small PHP file next to the meeting point, which you can host yourself: [server/rooms](server/rooms). **Settings → Network & invites → Servers** switches public rooms off, or takes the address of a list of your own.
 
 ### Your controller
 
@@ -239,10 +261,18 @@ Connect your controller **to your computer**, by Bluetooth or cable, not to the 
 
 ### While you play: the stream menu
 
-Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. It has the players, your microphone, the others' voices and your webcam, who may control, the invite, and the overlays. The host can click a player to mute them for everybody, let them only watch, or remove them (with **Remove and block**, for the rest of the session), answer who wants to join, and close the session to newcomers.
+Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. Play Together sits in a panel at the side: who knocks, who controls, the players with their webcams, your microphone, the others' voices and your webcam, and the chat. Sound, picture, quality and the overlays are in the bar at the bottom. The host can click a player to mute them for everybody, let them only watch, or remove them (with **Remove and block**, for the rest of the session), answer who wants to join, and close the session to newcomers.
 
 <div align="center">
-  <img src="docs/images/screenshots/stream-menu.jpg" alt="The stream menu on top of the game" width="820">
+  <img src="docs/images/screenshots/stream-menu.jpg" alt="The stream menu: the Play Together panel with the players, voice, webcam and chat, and the bar at the bottom" width="820">
+</div>
+
+### Settings
+
+Everything is in one window: **Playing** (general, picture, stream quality, sound, controllers, keyboard), **Play Together** (voice and webcam, overlays and OBS, network and invites), **Consoles** (yours, and away from home with PSN) and **App** (setting sets, updates and logs), with your profile on top. The search field finds any setting and lights it up on its page. With a controller, L1 and R1 change the page.
+
+<div align="center">
+  <img src="docs/images/screenshots/settings.jpg" alt="The settings window: a sidebar with all pages, here Overlays & OBS" width="820">
 </div>
 
 ---
@@ -257,7 +287,7 @@ You do not need friends in the session to use this for your stream.
 
 **Setting up the overlay**
 
-1. **Play Together → Overlays → OBS overlay → Overlay on**.
+1. **Settings → Overlays & OBS → OBS overlay** on.
 2. Add the address shown there (`http://localhost:9412/` by default) to OBS as a **Browser Source**.
 3. For the players' voices to reach your stream, tick **Control audio via OBS** in the Browser Source.
 
@@ -293,7 +323,7 @@ Controller looks: DualSense in white, Midnight Black, Cosmic Red, Nova Pink, Sta
 
 ## 🖼️ On the game picture
 
-**Play Together → Overlays → On the game picture**, or **Options…** under Overlays in the stream menu, decides what lies on top of the game for you while playing: the players with picture, name and a ring that lights up when they talk, the webcams, everybody's controller, the controller the console gets, and short notes when somebody joins or writes.
+**Settings → Overlays & OBS → On your game picture**, or **Options…** under Overlays in the stream menu, decides what lies on top of the game for you while playing: the players with picture, name and a ring that lights up when they talk, the webcams, everybody's controller, the controller the console gets, and short notes when somebody joins or writes.
 
 Choose **Arrange** in the stream menu to drag the pieces into place; the mouse wheel or the + and − buttons change a piece's size.
 
@@ -309,11 +339,11 @@ Three looks: transparent without boxes (the default), glass boxes, dark boxes. A
 <details>
 <summary><b>Voice chat, webcam and text chat in detail</b></summary>
 
-**Voice chat and webcam.** **Play Together → Voice & webcam** has the settings: take part in the voice chat, start muted, which webcam and how large its picture is. Microphone and speakers are the ones from the audio settings. You never hear your own voice in the app, only the others. Use headphones: without them the others hear themselves through your microphone.
+**Voice chat and webcam.** **Settings → Voice & webcam** has the settings: take part in the voice chat, start muted, which webcam and how large its picture is. Microphone and speakers are the ones from **Settings → Sound & Wi-Fi**. You never hear your own voice in the app, only the others. Use headphones: without them the others hear themselves through your microphone.
 
 **Text chat.** Press **Ctrl+T** (**⌘T** on macOS), or choose **Chat** in the stream menu. The chat opens beside the game and takes the keyboard while it is open; Escape gives it back to the game. Anybody who joins later sees the last 30 messages.
 
-- Links can be clicked. For the first link in your own message, your app looks at the page once and sends a small preview along, so your friends' apps never contact a site they did not choose. This can be switched off under **Play Together → Voice & webcam**.
+- Links can be clicked. For the first link in your own message, your app looks at the page once and sends a small preview along, so your friends' apps never contact a site they did not choose. This can be switched off under **Settings → Voice & webcam**.
 - Emoji come from the picker, from shortcodes such as `:fire:`, `:gg:`, `:thumbsup:`, and from `:)`, `:D`, `<3`, `xD`.
 - New messages show on the game picture for a few seconds and, if you want, in the OBS overlay.
 
@@ -348,19 +378,19 @@ Roughly the Remote Play bitrate per guest, plus 0.4 to 2.5 Mbit/s per webcam and
 Usually not: with most routers friends get in by themselves, through the meeting point. If a friend cannot connect, forwarding UDP port 9410 always works. See [Does the host have to open a port?](#does-the-host-have-to-open-a-port)
 
 **What does the meeting point learn about us?**
-The IP addresses of the computers that ask it, like any web server. It cannot read the notes the apps leave there, never sees the session's key, and no picture, sound or controller data passes through it. **Play Together → Meeting point → off** switches it off; then the forwarded port is the only way in.
+The IP addresses of the computers that ask it, like any web server. It cannot read the notes the apps leave there, never sees the session's key, and no picture, sound or controller data passes through it. The **Meeting point** switch under **Settings → Network & invites** turns it off; then the forwarded port is the only way in.
 
 **Is the invite safe to share?**
-It is the key to your session, so give it only to the people who should join. Everything between host and guests is encrypted with it, and **Make a new invite** under Play Together makes old ones stop working.
+It is the key to your session, so give it only to the people who should join. Everything between host and guests is encrypted with it, and **New invites…** under **Settings → Network & invites** makes old ones stop working.
 
 **Can strangers get into my session?**
 Only into a public room, and only as you set it up: with **I let each player in**, nobody sees or plays anything before you let them in. Your private invites never appear on the list; a public room has a key of its own, which is new for every public session. **Closed to newcomers** in the stream menu takes the room off the list.
 
 **Nothing shows on the game picture on Windows or Linux?**
-The display on the game picture needs the Vulkan renderer there, which is the default: **Settings → Video → Renderer**.
+The display on the game picture needs the Vulkan renderer there, which is the default: **Settings → Picture → Renderer**.
 
 **How do I get updates?**
-The app asks GitHub at start whether a newer version exists and tells you. It never downloads anything by itself, and the check can be switched off under **Settings → General**.
+The app asks GitHub at start whether a newer version exists and tells you. It never downloads anything by itself, and the check can be switched off under **Settings → Updates & logs**.
 
 ---
 

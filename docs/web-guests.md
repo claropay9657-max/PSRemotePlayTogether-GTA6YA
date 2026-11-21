@@ -51,7 +51,7 @@ host's TV needs.
 **H.265.** A PS5 streams H.265 unless the host changes it. Chrome, Edge and
 Safari decode it where the computer has a hardware decoder, which is most of
 them; Firefox on fewer. A guest whose browser cannot is told so, and the host
-can switch to H.264 (Settings → Video).
+can switch to H.264 (Settings → Stream quality).
 
 **Delay.** Measured on one machine the way through WebRTC adds about a
 millisecond in each direction. What a browser adds on top is its decoder and
@@ -155,14 +155,14 @@ and a web page may talk to it as long as it answers with
   only asked for when the guest ticks "Join the voice chat".
 - **The host stays in control.** Browser guests can be muted, set to watching
   and removed like everybody else, "Make a new invite" locks all old links
-  out, and **Play Together → Friends can join from a web browser** switches
+  out, and **Browsers allowed** on the Host page switches
   the whole thing off.
 
 The page is as trustworthy as where it is served from: whoever can change the
 files a guest loads could read the key. The built-in page is served straight
 from this repository. A host who would rather not rely on that can serve the
 folder `web/` from anywhere with HTTPS and enter that address under
-**Play Together → Page for browsers**; the links then lead there.
+**Settings → Network & invites → Page for browsers**; the links then lead there.
 
 ## The pieces
 
@@ -254,7 +254,7 @@ the other side's router is strict as well.
 For those cases the host can forward a port, as for the app, but not the same
 one: a browser's connection cannot share the socket the app's guests use. All
 browser guests come in on one UDP port of their own, **one above the sharing
-port (9411)** unless another is set under **Play Together → UDP port for
+port (9411)** unless another is set under **Settings → Network & invites → UDP port for
 browsers**. Forwarded to the host's computer, it lets a browser in whatever
 the friend's router is like.
 
@@ -263,7 +263,7 @@ so in the session's log and gives every browser a port of its own instead,
 which works with ordinary routers but cannot be forwarded.
 
 The link carries the host's choice of STUN server (`&stun=host:port`, or
-`&stun=off`) when the host has set one under Play Together; otherwise the page
+`&stun=off`) when the host has set one under Settings → Network & invites; otherwise the page
 asks Google's and Cloudflare's.
 
 ## Trying it on one machine

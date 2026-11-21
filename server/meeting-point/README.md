@@ -8,7 +8,7 @@ controller. How the whole thing works is in
 [docs/nat-traversal.md](../../docs/nat-traversal.md).
 
 The app uses `https://gamernova.net/api/psrpt_meet.php` unless a user enters
-another address under Play Together → Meeting point. You only need this folder
+another address under Settings → Network & invites → Meeting point. You only need this folder
 if you run that one, or want one of your own.
 
 ## What it needs
@@ -41,7 +41,8 @@ the server ever gets busy; the apps follow it.
 
        server/meeting-point/selftest.sh https://example.org/psrpt_meet.php
 
-4. In the app: Play Together → Meeting point → `example.org/psrpt_meet.php`.
+4. In the app: Settings → Network & invites → Meeting point → Use my own… →
+   `example.org/psrpt_meet.php`.
    Invites made after that carry the address (`...?meet=example.org/psrpt_meet.php`),
    so friends need not enter anything.
 

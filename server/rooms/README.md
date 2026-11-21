@@ -18,7 +18,7 @@ internet address, as with every invite; with a listed invite that can be
 anybody who reads the list, which the app says on its Host page.
 
 The app uses `https://gamernova.net/api/psrpt_rooms.php` unless a user enters
-another address under Play Together → Public rooms. You only need this folder
+another address under Settings → Network & invites → Public rooms. You only need this folder
 if you run that one, or want one of your own.
 
 ## What it needs
@@ -55,9 +55,9 @@ then tells hosts not to send any and shows covers only.
 
        {"v":1,"ok":true,"poll":15000,"rooms":[]}
 
-3. In the app: Play Together → Public rooms → `example.org/psrpt_rooms.php`.
-   **off** switches public rooms off: nobody can host one, and Join shows no
-   list.
+3. In the app: Settings → Network & invites → Public rooms → Use my own… →
+   `example.org/psrpt_rooms.php`. The switch beside **Public rooms** turns them
+   off: nobody can host one, and Join shows no list.
 
 The page for browsers reads the built-in list; a copy of the page of your own
 reads another one when `DEFAULT_ROOMS_URL` in `web/js/rooms.js` names it.

@@ -63,7 +63,7 @@ GamerNova.net". Run it locally to see what a release will say.
 A moment after it starts, the app asks GitHub for the latest release
 (`gui/src/qmlbackend_update.cpp`). If that is newer than the running version,
 the start page shows "Update available" and offers to open the release page.
-Nothing is downloaded by itself, and **Settings → General → Check for updates**
+Nothing is downloaded by itself, and **Settings → Updates & logs → Check for updates**
 switches the check off. So a new release reaches existing users as soon as its
 "Publish the release" job is done.
 
