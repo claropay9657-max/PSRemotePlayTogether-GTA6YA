@@ -275,6 +275,9 @@ class Settings : public QObject
 		// Empty is the built-in one, "off" means that none is ever asked.
 		QString GetCoPlayMeetServer() const		{ return settings.value("coplay/meet_server").toString(); }
 		void SetCoPlayMeetServer(const QString &s)	{ settings.setValue("coplay/meet_server", s); }
+		// The own address a switched-off meeting point had, for when it is switched on again
+		QString GetCoPlayMeetServerKept() const		{ return settings.value("coplay/meet_server_kept").toString(); }
+		void SetCoPlayMeetServerKept(const QString &s)	{ settings.setValue("coplay/meet_server_kept", s); }
 		// Friends who join from a web browser, without the app (coplay/web.h). The page
 		// they open: empty is the built-in one.
 		// A public room: listed for everybody (coplayrooms.h). It has a key of its own, which
@@ -294,6 +297,9 @@ class Settings : public QObject
 		/** The list of public rooms: empty is the built-in one, "off" none. */
 		QString GetCoPlayRoomsServer() const	{ return settings.value("coplay/rooms_server").toString(); }
 		void SetCoPlayRoomsServer(const QString &s)	{ settings.setValue("coplay/rooms_server", s); }
+		// The own address a switched-off room list had, for when it is switched on again
+		QString GetCoPlayRoomsServerKept() const	{ return settings.value("coplay/rooms_server_kept").toString(); }
+		void SetCoPlayRoomsServerKept(const QString &s)	{ settings.setValue("coplay/rooms_server_kept", s); }
 		/** How many friends may join a session at the same time (1 to 8). */
 		int GetCoPlayMaxGuests() const			{ return qBound(1, settings.value("coplay/max_guests", 4).toInt(), 8); }
 		void SetCoPlayMaxGuests(int n)			{ settings.setValue("coplay/max_guests", qBound(1, n, 8)); }

@@ -209,12 +209,28 @@ QString QmlSettings::coplayMeetServer() const
     return settings->GetCoPlayMeetServer();
 }
 
+/** "off" in a server field: that one is switched off. */
+static bool IsOffSetting(const QString &s)
+{
+    return s.trimmed().compare(QLatin1String("off"), Qt::CaseInsensitive) == 0;
+}
+
 void QmlSettings::setCoplayMeetServer(const QString &server)
 {
-    if (server.trimmed() == settings->GetCoPlayMeetServer())
+    const QString text = server.trimmed();
+    const QString current = settings->GetCoPlayMeetServer();
+    if (text == current)
         return;
-    settings->SetCoPlayMeetServer(server.trimmed());
+    // Switched off: an own address waits for the switch to come on again
+    if (IsOffSetting(text) && !IsOffSetting(current))
+        settings->SetCoPlayMeetServerKept(current);
+    settings->SetCoPlayMeetServer(text);
     emit coplayChanged();
+}
+
+QString QmlSettings::coplayMeetServerKept() const
+{
+    return settings->GetCoPlayMeetServerKept();
 }
 
 bool QmlSettings::coplayMeetOn() const
@@ -365,10 +381,20 @@ QString QmlSettings::coplayRoomsServer() const
 
 void QmlSettings::setCoplayRoomsServer(const QString &server)
 {
-    if (server.trimmed() == settings->GetCoPlayRoomsServer())
+    const QString text = server.trimmed();
+    const QString current = settings->GetCoPlayRoomsServer();
+    if (text == current)
         return;
-    settings->SetCoPlayRoomsServer(server.trimmed());
+    // Switched off: an own address waits for the switch to come on again
+    if (IsOffSetting(text) && !IsOffSetting(current))
+        settings->SetCoPlayRoomsServerKept(current);
+    settings->SetCoPlayRoomsServer(text);
     emit coplayChanged();
+}
+
+QString QmlSettings::coplayRoomsServerKept() const
+{
+    return settings->GetCoPlayRoomsServerKept();
 }
 
 QString QmlSettings::coplayRoomsDefault() const

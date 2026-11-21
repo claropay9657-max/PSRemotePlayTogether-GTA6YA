@@ -106,6 +106,8 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString coplayStunServer READ coplayStunServer WRITE setCoplayStunServer NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayMeetServer READ coplayMeetServer WRITE setCoplayMeetServer NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayMeetOn READ coplayMeetOn NOTIFY coplayChanged)
+    /** The own address the meeting point had before it was switched off ("" for the default). */
+    Q_PROPERTY(QString coplayMeetServerKept READ coplayMeetServerKept NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayMeetDefault READ coplayMeetDefault CONSTANT)
     Q_PROPERTY(bool coplayWebSupported READ coplayWebSupported CONSTANT)
     Q_PROPERTY(bool coplayWebGuests READ coplayWebGuests WRITE setCoplayWebGuests NOTIFY coplayChanged)
@@ -119,6 +121,8 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString coplayRoomsServer READ coplayRoomsServer WRITE setCoplayRoomsServer NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayRoomsDefault READ coplayRoomsDefault CONSTANT)
     Q_PROPERTY(bool coplayRoomsOn READ coplayRoomsOn NOTIFY coplayChanged)
+    /** The own address the room list had before it was switched off ("" for the default). */
+    Q_PROPERTY(QString coplayRoomsServerKept READ coplayRoomsServerKept NOTIFY coplayChanged)
     Q_PROPERTY(QVariantList coplayLanguages READ coplayLanguages CONSTANT)
     Q_PROPERTY(QVariantList coplayRooms READ coplayRooms NOTIFY coplayRoomsChanged)
     Q_PROPERTY(int coplayRoomsState READ coplayRoomsState NOTIFY coplayRoomsChanged)
@@ -669,6 +673,7 @@ public:
     void setCoplayMeetServer(const QString &server);
     /** Whether a meeting point is asked when sharing: the setting is neither "off" nor unusable. */
     bool coplayMeetOn() const;
+    QString coplayMeetServerKept() const;
     /** The built-in meeting point, for showing it in the empty field. */
     QString coplayMeetDefault() const;
     /**
@@ -696,6 +701,7 @@ public:
     QString coplayRoomsDefault() const;
     /** Whether there is a list of public rooms at all (the setting is not "off"). */
     bool coplayRoomsOn() const;
+    QString coplayRoomsServerKept() const;
     QVariantList coplayLanguages() const;
     QVariantList coplayRooms() const;
     int coplayRoomsState() const;
