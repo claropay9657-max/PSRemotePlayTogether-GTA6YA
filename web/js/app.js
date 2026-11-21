@@ -122,6 +122,8 @@ const prefs = { volume: 100, voiceVolume: 100, haptics: 1, camSize: 1, mode: 'fi
 // ------------------------------------------------------------------ small helpers
 
 function show(card) {
+  // Another card: from its top, not from where the list of rooms was scrolled to
+  if (card.hidden) window.scrollTo(0, 0);
   for (const c of [ui.landing, ui.join, ui.connecting, ui.message]) c.hidden = c !== card;
   ui.front.hidden = false;
   ui.stage.hidden = true;
@@ -137,6 +139,8 @@ let roomList = [];
 let roomTimer = 0;
 let roomPoll = 15000;
 let roomsLoading = false;
+let roomsReadAt = 0; // when the list was last read, for "Updated …"
+let roomsDrawn = { list: null, key: '' }; // what the cards show now, see renderRooms()
 
 function startRooms() {
   if (roomTimer) return;
@@ -152,10 +156,15 @@ function stopRooms() {
 async function refreshRooms() {
   if (roomsLoading) return;
   roomsLoading = true;
-  $('rooms-refresh').textContent = 'Loading…';
+  // Never switched off while it reads, so that the focus stays on it
+  const refresh = $('rooms-refresh');
+  refresh.classList.add('loading');
+  refresh.setAttribute('aria-busy', 'true');
+  showRoomsUpdated();
   try {
     const answer = await fetchRooms(ROOMS_URL);
     roomList = answer.rooms;
+    roomsReadAt = Date.now();
     $('rooms-problem').hidden = true;
     if (answer.poll !== roomPoll && roomTimer) {
       roomPoll = answer.poll;
@@ -168,51 +177,141 @@ async function refreshRooms() {
     problem.hidden = false;
   } finally {
     roomsLoading = false;
-    $('rooms-refresh').textContent = 'Refresh';
+    refresh.classList.remove('loading');
+    refresh.removeAttribute('aria-busy');
+    showRoomsUpdated();
   }
   renderRooms();
 }
 
+/** "Updated …", as over the app's list: when the list was last read. */
+function showRoomsUpdated() {
+  const minutes = Math.floor((Date.now() - roomsReadAt) / 60000);
+  $('rooms-updated').textContent = roomsReadAt ? (minutes < 1 ? 'Updated just now' : `Updated ${minutes} min ago`)
+    : roomsLoading ? 'Loading…' : '';
+}
+
+const CONTROL = { all: 'Everybody plays at once', turns: 'One plays at a time', host: 'Only the host plays' };
+const POLICY = { ask: 'Host lets you in', watch: 'Watch first', open: 'Open' };
+
+/** How long a room has been open, as the app says it. */
+function openFor(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 1) return 'just opened';
+  if (minutes < 60) return `open for ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 ? `open for ${hours} h ${minutes % 60} min` : `open for ${hours} h`;
+}
+
+/** The line under a room's title: who hosts, what is played, for how long. */
+function roomLine(room) {
+  const who = room.game ? `${room.host} plays ${room.game}` : `Hosted by ${room.host}`;
+  return room.since > 0 ? `${who} · ${openFor(room.since)}` : who;
+}
+
+/** The game's cover where the host's app found one, otherwise its initial on the brand gradient. */
+function roomCover(room) {
+  const cover = el('div', 'cover', (room.game || room.title || '?').trim().charAt(0).toUpperCase());
+  cover.setAttribute('aria-hidden', 'true');
+  if (room.cover) {
+    // Only ever Sony's image server (rooms.js), as the page's Content-Security-Policy says
+    const img = el('img');
+    img.alt = '';
+    img.decoding = 'async';
+    img.addEventListener('error', () => img.remove());
+    img.src = room.cover;
+    cover.append(img);
+  }
+  return cover;
+}
+
+/** What kind of room it is: its language, how it is played, how one gets in, whether browsers can come. */
+function fillBadges(badges, room) {
+  badges.replaceChildren(el('span', 'badge', languageName(room.lang)),
+    el('span', 'badge play', CONTROL[room.control]),
+    el('span', 'badge door', POLICY[room.policy]));
+  if (room.web) badges.append(el('span', 'badge web', 'Browsers welcome'));
+  return badges;
+}
+
+/** One room of the list, as on the app's Join page. */
+function roomCard(room) {
+  const can = room.web && room.compatible && !room.full;
+  const card = el('article', 'room');
+  const main = el('div', 'room-main');
+
+  const body = el('div', 'room-body');
+  body.append(el('h3', 'room-title', room.title), el('p', 'room-sub', roomLine(room)),
+    fillBadges(el('div', 'badges'), room));
+
+  // How many play, of how many
+  const players = el('div', 'room-players' + (room.full ? ' full' : ''));
+  const count = el('b', '', `${room.players} / ${room.max}`);
+  const label = el('span', 'players-word', 'players');
+  const icon = el('span', 'people');
+  for (const e of [icon, count, label]) e.setAttribute('aria-hidden', 'true');
+  players.append(icon, count, label, el('span', 'sr-only', `${room.players} of ${room.max} players${room.full ? ', full' : ''}`));
+
+  const action = el('div', 'room-action');
+  const join = button(can ? 'primary' : 'ghost', room.full ? 'Full' : 'Join', () => joinRoom(room));
+  join.disabled = !can;
+  join.dataset.room = room.invite;
+  join.setAttribute('aria-label', `${room.full ? 'Full' : 'Join'}: ${room.title}`);
+  action.append(join);
+  if (!room.compatible || !room.web) {
+    action.append(el('small', 'room-note', !room.compatible ? 'Needs another version of the app' : 'App only'));
+  }
+
+  main.append(roomCover(room), body, players, action);
+  card.append(main);
+  return card;
+}
+
+/** Every room again: no words, any language, full ones and those that ask. */
+function showAllRooms() {
+  $('rooms-search').value = '';
+  $('rooms-lang').value = '';
+  $('rooms-hide-full').checked = false;
+  $('rooms-open-only').checked = false;
+  renderRooms();
+  $('rooms-search').focus();
+}
+
 function renderRooms() {
-  const shown = filterRooms(roomList, {
+  const list = $('rooms-list');
+  const filters = {
     search: $('rooms-search').value,
     lang: $('rooms-lang').value,
     hideFull: $('rooms-hide-full').checked,
     openOnly: $('rooms-open-only').checked,
-  });
-  $('rooms-count').textContent = shown.length === roomList.length ? `${roomList.length} open`
-    : `${shown.length} of ${roomList.length}`;
-  if (!shown.length) {
-    $('rooms-list').replaceChildren(el('div', 'rooms-empty', roomList.length
+  };
+  // Nothing new: the cards stay. Leaving the search field says "change" once more, and a list
+  // drawn anew under the pointer would swallow the click on one of its buttons.
+  const key = JSON.stringify([roomsReadAt, filters]);
+  if (roomsDrawn.list === roomList && roomsDrawn.key === key) return;
+  roomsDrawn = { list: roomList, key };
+  const shown = filterRooms(roomList, filters);
+  $('rooms-count').textContent = !roomsReadAt ? ''
+    : shown.length === roomList.length ? `${roomList.length} open` : `${shown.length} of ${roomList.length}`;
+  // The list is drawn anew every few seconds: the keys find the same room's button again
+  const focused = list.contains(document.activeElement) ? document.activeElement.dataset.room || '' : null;
+  const items = shown.map(roomCard);
+  if (!shown.length && roomsReadAt) {
+    items.push(el('div', 'rooms-empty', roomList.length
       ? 'No room matches. Try other words, another language, or show all rooms.'
       : 'No public rooms right now. Anybody with the app can host one.'));
-    return;
   }
-  $('rooms-list').replaceChildren(...shown.map((room) => {
-    const can = room.web && room.compatible && !room.full;
-    const card = el('div', 'room' + (can ? '' : ' unavailable'));
-    const cover = el('div', 'room-cover', room.cover ? '' : (room.game || room.title || '?').trim().charAt(0).toUpperCase());
-    if (room.cover) cover.style.backgroundImage = `url("${room.cover}")`;
-    const body = el('div', 'room-body');
-    body.append(el('div', 'room-title', room.title),
-      el('div', 'room-sub', room.game ? `${room.host} plays ${room.game}` : `Hosted by ${room.host}`));
-    const tags = el('div', 'room-tags');
-    tags.append(el('span', '', languageName(room.lang)),
-      el('span', room.full ? 'full' : '', `${room.players} of ${room.max} players`),
-      el('span', 'control', { all: 'Everybody plays at once', turns: 'One plays at a time', host: 'Only the host plays' }[room.control]),
-      el('span', 'policy', { ask: 'Host lets you in', watch: 'Watch first', open: 'Open' }[room.policy]));
-    body.append(tags);
-    const side = el('div', 'room-side');
-    const join = button('primary small', 'Join', () => joinRoom(room));
-    join.disabled = !can;
-    side.append(join);
-    if (!can) {
-      side.append(el('small', '', !room.compatible ? 'Needs another version'
-        : !room.web ? 'App only' : 'Full'));
-    }
-    card.append(cover, body, side);
-    return card;
-  }));
+  // Rooms the search and the filters leave out, and a way to see them all
+  const hidden = roomList.length - shown.length;
+  if (hidden > 0) {
+    items.push(button('ghost small rooms-show-all', `${hidden} ${hidden === 1 ? 'room' : 'rooms'} hidden by your filters · show all`, showAllRooms));
+  }
+  list.replaceChildren(...items);
+  if (focused !== null) {
+    const again = Array.from(list.querySelectorAll('button')).find((b) => (b.dataset.room || '') === focused && !b.disabled);
+    if (again) again.focus();
+    else $('rooms-search').focus();
+  }
 }
 
 /** A room from the list: like a link from a friend, to its host. */
@@ -240,11 +339,14 @@ function notice(text) {
   setTimeout(() => n.remove(), 7700);
 }
 
-function message(title, text, retryLabel = 'Try again') {
+/** @param {boolean} [bad] something went wrong (red), rather than simply being over */
+function message(title, text, retryLabel = 'Try again', bad = true) {
   $('message-title').textContent = title;
   $('message-text').textContent = text;
+  $('message-text').classList.toggle('problem', bad);
   $('message-retry').textContent = retryLabel;
   show(ui.message);
+  $('message-retry').focus();
 }
 
 /** Something on the page has the keys and the controller right now, as the stream menu has in the app. */
@@ -365,12 +467,34 @@ function showAvatar() {
 
 // ------------------------------------------------------------------ before joining
 
+/**
+ * The head of the join and the waiting card: a room from the list shows its cover, what it is
+ * and its badges, as its card in the list; an invite from a friend the app's Join door.
+ */
+function fillHead(prefix) {
+  const room = invite.room;
+  $(`${prefix}-title`).textContent = room ? `Join “${room.title}”` : 'You are invited to play';
+  $(`${prefix}-tile`).hidden = !!room;
+  const cover = $(`${prefix}-cover`);
+  cover.replaceChildren(...(room ? [roomCover(room)] : []));
+  cover.hidden = !room;
+  const sub = $(`${prefix}-sub`);
+  sub.textContent = room ? roomLine(room) : '';
+  sub.hidden = !room;
+  const badges = $(`${prefix}-badges`);
+  if (badges) {
+    if (room) fillBadges(badges, room);
+    else badges.replaceChildren();
+    badges.hidden = !room;
+  }
+}
+
 function showJoin() {
   if (!invite) {
     show(ui.landing);
     return;
   }
-  $('join-title').textContent = invite.room ? `Join “${invite.room.title}”` : 'You are invited to play';
+  fillHead('join');
   $('join-name').value = recall('psrpt.name');
   $('join-voice').checked = recall('psrpt.voice') === '1';
   $('join-muted').checked = recall('psrpt.muted') === '1';
@@ -443,9 +567,7 @@ function makeSession() {
     avatar,
     want: wantFlags(),
   }, {
-    onStatus: (text) => {
-      $('connecting-text').textContent = text;
-    },
+    onStatus: connectingStatus,
     onState,
     onVideoConfig: (config) => {
       if (player) player.setConfig(config);
@@ -472,6 +594,13 @@ function makeSession() {
   return s;
 }
 
+/** What happens on the way in; for a room from the list the host has a name. */
+function connectingStatus(text) {
+  const host = invite && invite.room ? invite.room.host : '';
+  $('connecting-text').textContent = host && text === 'Waiting for the host to let you in…'
+    ? `Waiting for ${host} to let you in…` : text;
+}
+
 /** The microphone, for a player who is in the voice chat. */
 async function openMic() {
   const problem = await sound.startMic();
@@ -494,9 +623,12 @@ async function join() {
   remember('psrpt.controllerOnly', controllerOnly ? '1' : '0');
   leaving = false;
   reconnecting = '';
+  fillHead('connecting');
   $('connecting-text').textContent = 'Getting ready…';
   $('connecting-hint').textContent = `Press ${pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY} to open stream menu`;
   show(ui.connecting);
+  // The Join button is gone: the keys go on to the way out, as in the app
+  $('connecting-cancel').focus();
 
   // Now, while this is still the click on "Join": browsers start sound only then
   const soundOk = await sound.start();
@@ -653,7 +785,7 @@ function onClosed(reason) {
     leaveStage();
     message(reason === 'kicked' ? 'You were removed' : 'The session is over',
       reason === 'kicked' ? 'The host removed you from the session.' : 'The host has stopped sharing. When they share again, the same link lets you back in.',
-      'Join again');
+      'Join again', reason === 'kicked');
     return;
   }
   // The connection broke, or the host is getting its console back: try to return
@@ -1487,11 +1619,12 @@ function start() {
     pad.read();
     const line = $('pad-status');
     line.classList.toggle('ok', !!pad.kind);
-    $('pad-status-text').textContent = pad.kind
+    const text = pad.kind
       ? `${controllerName(pad.kind)} connected.`
       : TouchControls.likely()
         ? 'No controller? You get one on the screen. Or pair one and press a button on it.'
         : 'Press any button on your controller so that the browser sees it. No controller? The keyboard works too.';
+    if ($('pad-status-text').textContent !== text) $('pad-status-text').textContent = text;
   }, 400);
 
   // ------------------------------------------------ the chat

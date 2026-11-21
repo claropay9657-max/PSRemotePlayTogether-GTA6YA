@@ -1,20 +1,47 @@
 /* SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL */
-/* PSRemotePlayTogether in a web browser. Same look as the app: dark, glass, violet to cyan. */
+/*
+ * PSRemotePlayTogether in a web browser. The same look as the app (gui/src/qml/controls/Theme.qml):
+ * calm dark cards, the gradient only for the name and the one step that starts something,
+ * and a colour always means the same thing: purple goes on, green is on or lets in, amber
+ * rests or waits, red leaves or removes, cyan is focus and how a room plays.
+ */
 
 :root {
-  --bg: #08070f;
-  --panel: rgba(18, 16, 28, 0.78);
-  --line: rgba(255, 255, 255, 0.1);
-  --line-strong: rgba(255, 255, 255, 0.2);
-  --text: #eceaf6;
-  --dim: rgba(236, 234, 246, 0.66);
-  --accent: #8c52ff;
-  --accent-2: #5b6cff;
-  --cyan: #00f2ff;
-  --pink: #f0469b;
-  --green: #34d399;
-  --red: #f0466e;
-  --radius: 18px;
+  /* Grounds, back to front */
+  --ground: #0c0a1d;
+  --card: #15122b;
+  --card-high: #1a1535;
+  --door: #17132e;
+  --field: #0f0c22;
+  --popup: #1b1735;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+
+  /* The brand: the one main action per screen, and the name */
+  --brand-from: #8c52ff;
+  --brand-to: #f0469b;
+  --button-from: #7a3cf5;
+  --button-to: #c92d7b;
+  --button: #7a3cf5;
+  --heading-soft: #a9b0ff;
+  --focus: #00f2ff;
+
+  /* What things are */
+  --good: #34d399;
+  --wait: #f5b942;
+  --bad: #f0466e;
+
+  /* Text */
+  --text: #f3f1ff;
+  --text-soft: #b9b4d6;
+  --text-dim: #8f8aad;
+  --text-on-light: #2a1366;
+
+  --radius-card: 20px;
+  --radius-field: 12px;
+  --touch: 44px;
+  --gutter: 32px;
+
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color-scheme: dark;
 }
@@ -35,119 +62,203 @@ body {
 
 body {
   background:
-    radial-gradient(1100px 620px at 50% -8%, rgba(140, 82, 255, 0.32), transparent 62%),
-    radial-gradient(900px 520px at 88% 108%, rgba(0, 242, 255, 0.11), transparent 60%),
-    var(--bg);
+    radial-gradient(900px 420px at 10% -10%, rgba(140, 82, 255, 0.2), transparent 70%),
+    radial-gradient(800px 400px at 100% 110%, rgba(240, 70, 155, 0.1), transparent 70%),
+    var(--ground);
   background-attachment: fixed;
   color: var(--text);
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 a {
-  color: var(--cyan);
-  text-decoration: none;
+  color: var(--heading-soft);
+  text-decoration: underline;
+  text-decoration-color: rgba(169, 176, 255, 0.45);
+  text-underline-offset: 2px;
 }
 
 a:hover {
-  text-decoration: underline;
+  color: #ffffff;
+  text-decoration-color: currentColor;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 code {
+  padding: 1px 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
   font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 0.9em;
-  color: #cfc4ff;
+  font-size: 0.88em;
+  color: #d8c6ff;
+  overflow-wrap: anywhere;
 }
 
 h1,
-h2 {
+h2,
+h3 {
   margin: 0;
   line-height: 1.2;
 }
 
-h1 {
-  font-size: clamp(26px, 5vw, 38px);
-  letter-spacing: -0.02em;
+/* For screen readers only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-h2 {
-  font-size: 23px;
-}
-
+/* The name, as in the app bar */
 .grad {
-  background: linear-gradient(90deg, #c084fc, var(--pink));
+  background: linear-gradient(90deg, #a77bff, var(--brand-to));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
 .dim {
-  color: var(--dim);
+  color: var(--text-dim);
 }
 
+/* The small capital heading over a group: "FIND A ROOM", "YOU JOIN AS" */
+.label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--heading-soft);
+}
+
+/* What went wrong (red), or what is not quite right (amber) */
 .problem {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
   margin: 12px 0 0;
   padding: 10px 14px;
   border: 1px solid rgba(240, 70, 110, 0.45);
-  border-radius: 12px;
+  border-radius: 14px;
   background: rgba(240, 70, 110, 0.12);
-  color: #ffc9d6;
+  color: #ffc2d1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.problem::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--bad);
+}
+
+.problem.warn {
+  border-color: rgba(245, 185, 66, 0.35);
+  background: rgba(245, 185, 66, 0.08);
+  color: #fbd98c;
+}
+
+.problem.warn::before {
+  background: var(--wait);
 }
 
 /* ---------------------------------------------------------------- before playing */
 
 .front {
   min-height: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: clamp(20px, 6vh, 64px) 20px 28px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
 }
 
-.brand {
+/* The app bar: the icon, the name and what it is */
+.appbar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.appbar-in {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px var(--gutter);
 }
 
-.brand img {
-  border-radius: 18px;
-  box-shadow: 0 10px 40px rgba(140, 82, 255, 0.45);
+.appbar img {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+.appbar-name {
+  min-width: 0;
+}
+
+.appbar h1 {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .tagline {
-  margin: 4px 0 0;
-  color: var(--dim);
-  font-size: 17px;
+  margin: 1px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
+.page {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px var(--gutter) 24px;
+}
+
+/* A card of the new look: a calm ground for one group of things */
 .card {
-  padding: 26px 28px;
+  padding: 22px 24px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  border-radius: var(--radius-card);
+  background: var(--card);
 }
 
 .card h2 {
-  margin-bottom: 8px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
-.card p {
-  margin: 0 0 14px;
+:where(.front, .dialog) p {
+  margin: 0;
 }
 
-.card.center {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+/* The join, waiting and message cards stand alone in the middle */
+.solo {
+  width: 100%;
+  max-width: 660px;
+  margin: 0 auto;
 }
 
 .row {
@@ -159,173 +270,870 @@ h2 {
 
 .row.end {
   justify-content: flex-end;
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
-:where(.front, .dialog) input[type="text"] {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  padding: 13px 15px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  font: inherit;
-  outline: none;
-}
+/* ---------------------------------------------------------------- buttons */
 
-:where(.front, .dialog) input[type="text"]:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(140, 82, 255, 0.28);
-}
-
-:where(.front, .dialog) input[type="text"]::placeholder {
-  color: rgba(236, 234, 246, 0.4);
-}
-
+/* A pill at least 44 px high. Ghost unless it says otherwise: "primary" goes on, "brand" (the
+   gradient) is the one step that starts something */
 :where(.front, .dialog) button {
-  font: inherit;
-  color: var(--text);
-  cursor: pointer;
-  border: 1px solid var(--line-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch);
+  padding: 0 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  padding: 11px 20px;
-  background: rgba(255, 255, 255, 0.07);
-  transition: background 0.12s, border-color 0.12s, transform 0.05s;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 0.12s, filter 0.12s;
 }
 
-:where(.front, .dialog) button:hover {
-  background: rgba(255, 255, 255, 0.13);
+:where(.front, .dialog) button:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
-:where(.front, .dialog) button:active {
-  transform: translateY(1px);
+:where(.front, .dialog) button:active:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.14);
 }
 
-:where(.front, .dialog) button:focus-visible,
-:where(.front, .dialog) input[type="checkbox"]:focus-visible,
-:where(.front, .dialog) input[type="range"]:focus-visible {
-  outline: 2px solid var(--cyan);
+:where(.front, .dialog) button:focus-visible {
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
 :where(.front, .dialog) button:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: default;
 }
 
 :where(.front, .dialog) button.primary {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  font-weight: 700;
+  border-color: transparent;
+  background: var(--button);
+  color: #ffffff;
+  font-weight: 800;
 }
 
-:where(.front, .dialog) button.primary:hover {
-  filter: brightness(1.12);
+:where(.front, .dialog) button.brand {
+  border-color: transparent;
+  background: linear-gradient(90deg, var(--button-from), var(--button-to));
+  color: #ffffff;
+  font-weight: 800;
 }
 
-:where(.front, .dialog) button.primary.big {
-  padding: 13px 34px;
-  font-size: 18px;
+:where(.front, .dialog) button.primary:hover:not(:disabled),
+:where(.front, .dialog) button.brand:hover:not(:disabled) {
+  filter: brightness(1.1);
 }
 
-:where(.front, .dialog) button.ghost {
-  background: transparent;
+:where(.front, .dialog) button.primary:active:not(:disabled),
+:where(.front, .dialog) button.brand:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+:where(.front, .dialog) button.small {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+:where(.front, .dialog) button.big {
+  min-height: 48px;
+  padding: 0 30px;
+  font-size: 16px;
+}
+
+/* A square button with only an icon; says what it does to screen readers */
+:where(.front, .dialog) button.icon-button {
+  flex: none;
+  width: var(--touch);
+  min-height: var(--touch);
+  height: var(--touch);
+  padding: 0;
+  border-color: rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d9d5f2;
+}
+
+:where(.front, .dialog) button.icon-button.small {
+  width: 34px;
+  min-height: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.icon-button svg {
+  display: block;
+}
+
+/* ---------------------------------------------------------------- fields */
+
+:where(.front, .dialog) :is(input[type="text"], input[type="search"], select) {
+  width: 100%;
+  min-width: 0;
+  height: var(--touch);
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  outline: none;
+}
+
+:where(.front, .dialog) :is(input[type="text"], input[type="search"], select):focus,
+:where(.front, .dialog) :is(input[type="text"], input[type="search"], select):focus-visible {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+:where(.front, .dialog) :is(input[type="text"], input[type="search"])::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+}
+
+:where(.front) input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+:where(.front) select {
+  padding-right: 38px;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b9b4d6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  cursor: pointer;
+}
+
+:where(.front) select option {
+  background: var(--popup);
+  color: var(--text);
 }
 
 .field {
-  display: block;
-  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
-.field > span {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 14px;
-  color: var(--dim);
+.field > span,
+.field-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-soft);
 }
 
+/* A filter that is on or off: a square box, as in the app's list of rooms */
 .check {
   display: flex;
   gap: 10px;
-  align-items: flex-start;
-  margin-top: 16px;
+  align-items: center;
+  min-height: 36px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #e7e4fa;
   cursor: pointer;
 }
 
 .check input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--button);
+  cursor: pointer;
+}
+
+.check input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* An on/off switch with its words: purple when on. The whole row switches it */
+.toggle {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-height: 60px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.toggle + .toggle {
+  border-top: 1px solid var(--line);
+}
+
+.toggle.sub {
+  min-height: 48px;
+  padding-left: 30px;
+}
+
+.toggle-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.toggle-text b {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.toggle.sub .toggle-text b {
+  font-weight: 700;
+  color: #e7e4fa;
+}
+
+.toggle-text small {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.toggle input {
+  flex: none;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  border-radius: 13px;
+  background: #3a3458;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+
+.toggle input::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
   width: 20px;
   height: 20px;
-  margin: 2px 0 0;
-  accent-color: var(--accent);
-}
-
-.check small {
-  color: var(--dim);
-  font-size: 14px;
-}
-
-.status-line {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-top: 18px;
-  padding: 11px 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 15px;
-}
-
-.status-line .dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
+  background: #cfcbe6;
+  transition: transform 0.12s ease-out, background-color 0.12s;
 }
 
-.status-line.ok .dot {
-  background: var(--green);
-  box-shadow: 0 0 10px var(--green);
+.toggle input:checked {
+  background: var(--button);
+}
+
+.toggle input:checked::before {
+  transform: translateX(18px);
+  background: #ffffff;
+}
+
+.toggle input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.toggle input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.toggle:has(input:disabled) {
+  cursor: default;
+}
+
+.toggles {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--field);
+}
+
+/* ---------------------------------------------------------------- badges */
+
+/* A small label for what something is; a colour always means the same */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 2px 9px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e7e4fa;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.badge.play {
+  background: rgba(0, 242, 255, 0.11);
+  color: #9ef7ff;
+}
+
+.badge.landing {
+  background: rgba(140, 82, 255, 0.2);
+  color: #d8c6ff;
+}
+
+.badge.web {
+  background: rgba(52, 211, 153, 0.14);
+  color: #9ff0cc;
+}
+
+/* ---------------------------------------------------------------- the landing: a link from a friend */
+
+/* Like the app's Join door: dark, with a soft light in the corner */
+.landing {
+  position: relative;
+  overflow: hidden;
+  padding: 26px 28px 28px;
+  border: 1px solid rgba(124, 134, 255, 0.3);
+  border-radius: 24px;
+  background: var(--door);
+}
+
+.landing::before {
+  content: "";
+  position: absolute;
+  right: -90px;
+  top: -90px;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 134, 255, 0.22), transparent 70%);
+  pointer-events: none;
+}
+
+.landing > * {
+  position: relative;
+}
+
+.door-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* The join and waiting cards: a lone title in line with the icon, a room's lines from the top */
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.head .head-text {
+  min-height: 48px;
+  justify-content: center;
+}
+
+.landing h2 {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.door-text {
+  max-width: 640px;
+  margin: 14px 0 0;
+  font-size: 15px;
+  color: var(--text-soft);
+}
+
+/* The icon in a rounded square, as on the app's doors */
+.tile {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(124, 134, 255, 0.16);
+  color: var(--heading-soft);
+}
+
+/* Like an address bar: paste it and go on */
+.address {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 860px;
+  min-height: 54px;
+  margin-top: 18px;
+  padding: 5px 5px 5px 16px;
+  border: 1px solid rgba(124, 134, 255, 0.4);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 0 0 4px rgba(124, 134, 255, 0.08);
+}
+
+.address:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus), 0 0 0 5px rgba(124, 134, 255, 0.08);
+}
+
+.address > svg {
+  flex: none;
+  color: var(--heading-soft);
+}
+
+:where(.front) .address input[type="text"],
+:where(.front) .address input[type="text"]:focus {
+  flex: 1 1 auto;
+  height: 42px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:where(.front) .address button {
+  flex: none;
+}
+
+.landing .problem {
+  max-width: 860px;
 }
 
 .steps {
   display: grid;
-  gap: 10px;
-  margin-top: 22px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 20px;
+  max-width: 1100px;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.steps > div {
+.steps li {
   display: flex;
-  gap: 14px;
+  gap: 10px;
   align-items: flex-start;
-  color: var(--dim);
+  font-size: 13.5px;
+  color: var(--text-soft);
 }
 
 .steps b {
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: rgba(140, 82, 255, 0.25);
-  border: 1px solid rgba(140, 82, 255, 0.6);
-  color: var(--text);
-  font-size: 14px;
+  background: rgba(140, 82, 255, 0.14);
+  color: #cdb6ff;
+  font-size: 12.5px;
+  font-weight: 800;
 }
 
-.spinner {
-  width: 46px;
-  height: 46px;
-  margin-bottom: 12px;
+/* ---------------------------------------------------------------- public rooms */
+
+/* Finding a room beside the list, as on the app's Join page */
+.rooms {
+  display: grid;
+  grid-template-columns: minmax(260px, 290px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.rooms-aside {
+  position: sticky;
+  top: 20px;
+  padding: 16px;
+}
+
+.find {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.search {
+  position: relative;
+}
+
+.search svg {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-soft);
+  pointer-events: none;
+}
+
+:where(.front) .search input[type="search"] {
+  padding-left: 38px;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.rooms-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rooms-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.rooms-head h2 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.rooms-count {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.rooms-fresh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.rooms-about {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.rooms-main .problem {
+  margin: 4px 0 0;
+}
+
+.rooms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rooms-empty {
+  margin-top: 4px;
+  padding: 36px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  color: var(--text-soft);
+  font-size: 15px;
+  text-align: center;
+}
+
+:where(.front) button.rooms-show-all {
+  align-self: center;
+}
+
+/* One room: the game's picture, what it is, how many play, Join */
+.room {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  transition: background-color 0.12s;
+}
+
+.room:hover {
+  background: var(--card-high);
+}
+
+.room-main {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+/* The game's cover where the host's app found one, otherwise its initial on the brand gradient */
+.cover {
+  position: relative;
+  flex: none;
+  width: 68px;
+  height: 68px;
+  overflow: hidden;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, var(--brand-from), var(--brand-to));
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.room-body,
+.head-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.room-title {
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-sub,
+.head-sub {
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--text-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-body .badges,
+.head-text .badges {
+  margin-top: 3px;
+}
+
+/* How many play, of how many */
+.room-players {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 104px;
+  white-space: nowrap;
+}
+
+.room-players b {
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.room-players.full b {
+  color: #ff9db5;
+}
+
+.room-players .players-word {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.people {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238f8aad' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='8' r='3.5'/%3E%3Cpath d='M2.5 20a6.5 6.5 0 0 1 13 0'/%3E%3Cpath d='M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.4a6.5 6.5 0 0 1 3.5 5.6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.room-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+:where(.front) .room-action button {
+  min-width: 104px;
+  min-height: 42px;
+}
+
+.room-note {
+  max-width: 160px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+/* ---------------------------------------------------------------- joining */
+
+.head h2 {
+  overflow-wrap: anywhere;
+}
+
+.head .cover {
+  width: 64px;
+  height: 64px;
+}
+
+.head-sub {
+  white-space: normal;
+}
+
+.intro {
+  margin-top: 14px;
+  font-size: 14.5px;
+  color: var(--text-soft);
+}
+
+.join-label {
+  margin-top: 22px;
+}
+
+.who {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.who-fields {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The player's picture, or their initial on the brand gradient */
+:where(.front) button.avatar {
+  flex: none;
+  width: 76px;
+  height: 76px;
+  min-height: 0;
+  padding: 0;
+  border: 2px solid var(--line-strong);
   border-radius: 50%;
-  border: 4px solid rgba(255, 255, 255, 0.12);
-  border-top-color: var(--accent);
-  border-right-color: var(--cyan);
+  background: linear-gradient(180deg, var(--brand-from), var(--brand-to));
+  background-size: cover;
+  background-position: center;
+  color: #ffffff;
+  font-size: 34px;
+  font-weight: 800;
+}
+
+:where(.front) button.avatar:hover:not(:disabled) {
+  background-color: transparent;
+  filter: brightness(1.08);
+}
+
+.who .row {
+  margin-top: 8px;
+}
+
+/* What the browser sees of the controller */
+.status-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--text-soft);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.status-line .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.status-line.ok {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.1);
+  color: #9ff0cc;
+}
+
+.status-line.ok .dot {
+  background: var(--good);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+}
+
+/* Waiting at the host's door: amber, as on the room being joined in the app */
+.card.joining {
+  border-color: rgba(245, 185, 66, 0.7);
+  background: #1b1631;
+  box-shadow: 0 0 0 4px rgba(245, 185, 66, 0.1);
+}
+
+.wait-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 12px 10px 12px 14px;
+  border-radius: 14px;
+  background: rgba(245, 185, 66, 0.1);
+}
+
+.wait-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wait-text b {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #fde4a8;
+}
+
+.wait-text span {
+  font-size: 12.5px;
+  color: #d8c9a3;
+}
+
+.spin {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(245, 185, 66, 0.25);
+  border-top-color: var(--wait);
+  border-radius: 50%;
   animation: spin 0.9s linear infinite;
+}
+
+.hint {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
 @keyframes spin {
@@ -334,20 +1142,260 @@ h2 {
   }
 }
 
-.foot {
-  margin-top: auto;
-  padding-top: 18px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  justify-content: center;
-  font-size: 14px;
-  color: var(--dim);
-  text-align: center;
+.icon-button.loading svg {
+  animation: spin 0.9s linear infinite;
 }
 
-.foot .sep {
-  opacity: 0.5;
+.message-text {
+  margin-top: 12px;
+  color: var(--text-soft);
+}
+
+.message-text.problem {
+  color: #ffc2d1;
+}
+
+/* ---------------------------------------------------------------- the footer */
+
+.foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 14px var(--gutter) 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.foot > :first-child {
+  flex: 1 1 200px;
+}
+
+.foot > :last-child {
+  flex: 1 1 260px;
+  text-align: right;
+}
+
+/* A pill with a tint of its own, as "Support the project" in the app */
+.pill-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgba(167, 123, 255, 0.6);
+  border-radius: 999px;
+  background: rgba(140, 82, 255, 0.1);
+  color: #d8c6ff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pill-link:hover {
+  background: rgba(140, 82, 255, 0.18);
+  color: #ffffff;
+}
+
+/* ---------------------------------------------------------------- narrower windows */
+
+@media (max-width: 899px) {
+  .rooms {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rooms-aside {
+    position: static;
+  }
+
+  .steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .find {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+    align-items: end;
+  }
+
+  .filters {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 2px 24px;
+  }
+}
+
+/* A phone: 16 px at the sides, players and Join below a room */
+@media (max-width: 639px) {
+  :root {
+    --gutter: 16px;
+  }
+
+  .appbar-in {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .page {
+    gap: 22px;
+    padding-top: 18px;
+  }
+
+  .card {
+    padding: 18px 16px;
+  }
+
+  .landing {
+    padding: 18px 16px 20px;
+  }
+
+  .landing h2 {
+    font-size: 22px;
+  }
+
+  .door-text {
+    font-size: 14.5px;
+  }
+
+  .tile {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+
+  .address {
+    gap: 8px;
+    padding-left: 12px;
+  }
+
+  :where(.front) .address button {
+    padding: 0 16px;
+  }
+
+  .room-main {
+    grid-template-columns: 68px minmax(0, 1fr) auto;
+  }
+
+  .room .cover {
+    align-self: start;
+  }
+
+  .room-body {
+    grid-column: 2 / -1;
+  }
+
+  .room-sub {
+    white-space: normal;
+  }
+
+  .room-players {
+    grid-row: 2;
+    grid-column: 1 / 3;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .room-action {
+    grid-row: 2;
+    grid-column: 3;
+  }
+
+  .head .cover {
+    width: 56px;
+    height: 56px;
+  }
+
+  .head .head-text {
+    min-height: 42px;
+  }
+
+  .card h2 {
+    font-size: 20px;
+  }
+
+  .who {
+    align-items: flex-start;
+  }
+
+  :where(.front) button.avatar {
+    width: 64px;
+    height: 64px;
+    font-size: 28px;
+  }
+
+  .wait-strip {
+    flex-wrap: wrap;
+  }
+
+  .wait-text {
+    flex-basis: calc(100% - 34px);
+  }
+
+  .wait-strip button {
+    margin-left: auto;
+  }
+
+  .foot {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .foot > :first-child,
+  .foot > :last-child {
+    flex: none;
+    text-align: center;
+  }
+}
+
+/* A small phone: the whole bar for the link */
+@media (max-width: 420px) {
+  .address > svg {
+    display: none;
+  }
+}
+
+/* Fingers: everything to press at least 44 px */
+@media (pointer: coarse) {
+  :where(.front, .dialog) button.small,
+  .pill-link {
+    min-height: var(--touch);
+  }
+
+  :where(.front, .dialog) button.icon-button.small {
+    width: var(--touch);
+    height: var(--touch);
+    min-height: var(--touch);
+  }
+
+  .check {
+    min-height: var(--touch);
+  }
+}
+
+/* No zooming in on a field on a phone */
+@media (pointer: coarse), (max-width: 639px) {
+  :where(.front, .dialog) :is(input[type="text"], input[type="search"], select) {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin,
+  .icon-button.loading svg {
+    animation-duration: 2.4s;
+  }
+
+  .toggle input,
+  .toggle input::before,
+  :where(.front, .dialog) button,
+  .room {
+    transition: none;
+  }
 }
 
 /* ---------------------------------------------------------------- playing */
@@ -370,52 +1418,6 @@ h2 {
   height: 100%;
   object-fit: contain;
   background: #000;
-}
-
-/* ---------------------------------------------------------------- the join card's extras */
-
-.who {
-  display: flex;
-  gap: 16px;
-  align-items: flex-end;
-  margin-top: 12px;
-}
-
-.who-fields {
-  flex: 1;
-  min-width: 0;
-}
-
-.who .field {
-  margin-top: 0;
-}
-
-.avatar {
-  flex: none;
-  width: 84px;
-  height: 84px;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid var(--line-strong);
-  background: linear-gradient(135deg, var(--accent), var(--pink));
-  background-size: cover;
-  background-position: center;
-  font-size: 34px;
-  font-weight: 700;
-}
-
-.row.small {
-  margin-top: 8px;
-}
-
-:where(.front, .dialog) button.small {
-  padding: 6px 14px;
-  font-size: 14px;
-}
-
-.check.sub {
-  margin: 8px 0 0 30px;
-  font-size: 15px;
 }
 
 /* ---------------------------------------------------------------- a controller on the screen */
@@ -642,11 +1644,12 @@ h2 {
 /* ---------------------------------------------------------------- dialogs */
 
 .dialog {
-  width: min(600px, 92vw);
-  padding: 26px 28px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #14121f;
+  width: min(600px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 22px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--popup);
   color: var(--text);
   box-shadow: 0 30px 100px rgba(0, 0, 0, 0.6);
 }
@@ -655,11 +1658,22 @@ h2 {
   background: rgba(4, 3, 10, 0.72);
 }
 
+.dialog h2 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.dialog > p {
+  margin-top: 10px;
+  font-size: 14px;
+}
+
 .keys-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 6px 18px;
-  margin-top: 14px;
+  gap: 8px 18px;
+  margin-top: 16px;
 }
 
 .keys-list div {
@@ -667,193 +1681,25 @@ h2 {
   gap: 10px;
   align-items: center;
   font-size: 14px;
+  color: var(--text-soft);
 }
 
+/* A key, as in the app's "While playing" row */
 kbd {
+  flex: none;
   min-width: 34px;
   padding: 2px 8px;
   border: 1px solid var(--line-strong);
   border-bottom-width: 2px;
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.07);
-  font: 13px ui-monospace, Menlo, Consolas, monospace;
+  background: #221d3e;
+  color: var(--text);
+  font: 700 12px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   text-align: center;
 }
 
-@media (max-width: 720px) {
-  .card {
-    padding: 20px;
+@media (max-width: 639px) {
+  .dialog {
+    padding: 18px 16px;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.4s;
-  }
-}
-
-/* ---------------------------------------------------------------- public rooms */
-
-.rooms-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-
-.rooms-head h2 {
-  margin: 0;
-}
-
-.rooms-head button {
-  margin-left: auto;
-}
-
-.rooms-find {
-  display: flex;
-  gap: 10px;
-  margin-top: 6px;
-}
-
-.rooms-find input {
-  flex: 1;
-  min-width: 0;
-  padding: 11px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  font: inherit;
-  outline: none;
-}
-
-.rooms-find input:focus {
-  border-color: var(--accent);
-}
-
-.rooms-find select {
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: #1a1728;
-  color: var(--text);
-  font: inherit;
-}
-
-.rooms-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  margin-top: 8px;
-}
-
-.rooms-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.rooms-empty {
-  padding: 18px;
-  color: var(--dim);
-  text-align: center;
-}
-
-.room {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.room.unavailable {
-  opacity: 0.6;
-}
-
-.room-cover {
-  flex: none;
-  width: 64px;
-  height: 64px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(180deg, var(--accent), var(--pink));
-  background-size: cover;
-  background-position: center;
-  font-size: 26px;
-  font-weight: bold;
-}
-
-.room-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.room-title {
-  overflow: hidden;
-  font-weight: bold;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.room-sub {
-  overflow: hidden;
-  color: var(--dim);
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.room-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.room-tags span {
-  padding: 1px 8px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.1);
-  font-size: 12px;
-  font-weight: bold;
-}
-
-.room-tags .full {
-  background: rgba(240, 70, 110, 0.45);
-}
-
-.room-tags .control {
-  background: rgba(0, 242, 255, 0.22);
-}
-
-.room-tags .policy {
-  background: rgba(140, 82, 255, 0.35);
-}
-
-.room-side {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.room-side small {
-  color: var(--dim);
-  font-size: 12px;
-}
-
-@media (max-width: 720px) {
-  .rooms-find {
-    flex-direction: column;
-  }
-
-  .rooms-find select {
-    padding: 10px 12px;
-  }
-}
-
