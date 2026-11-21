@@ -5,6 +5,8 @@ import QtQuick.Controls.Material
 
 import org.streetpea.chiaking
 
+import "controls" as C
+
 // The Play Together strip of the stream menu: who is here, who is talking,
 // everybody's webcam, and the switches for one's own microphone, sound and
 // webcam. The host also sets here who may control and can remove a guest.
@@ -154,6 +156,10 @@ Item {
                 }
 
                 ComboBox {
+                    // The opened list is never cut off: as wide as its longest entry, and inside the window
+                    implicitContentWidthPolicy: ComboBox.WidestText
+                    popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                    popup.margins: 8
                     id: modeCombo
                     Layout.preferredWidth: 250
                     model: [qsTr("All at once"), qsTr("One at a time"), qsTr("Only me")]
@@ -184,7 +190,7 @@ Item {
                         interval: 1500
                     }
 
-                    Menu {
+                    C.Menu {
                         id: inviteMenu
 
                         MenuItem {
@@ -429,7 +435,7 @@ Item {
                     onClicked: playerMenu.popup()
                 }
 
-                Menu {
+                C.Menu {
                     id: playerMenu
 
                     MenuItem {

@@ -6,6 +6,9 @@ ComboBox {
     property bool firstInFocusChain: false
     property bool lastInFocusChain: false
     implicitContentWidthPolicy: ComboBox.WidestText
+    // The opened list is never cut off: as wide as its longest entry, and kept inside the window
+    popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+    popup.margins: 8
 
     Keys.onPressed: (event) => {
         switch (event.key) {

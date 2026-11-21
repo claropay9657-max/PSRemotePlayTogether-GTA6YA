@@ -8,15 +8,25 @@ import org.streetpea.chiaking
 
 import "controls" as C
 
-// Play Together: join a session a friend shares, and set up sharing of your own.
+// Play Together: your profile, how your console is shared, voice, webcam and overlays.
+// Joining a friend, switching sharing on and the invites are on the start page. This page
+// only has them too when the start page has no room for them (a narrow window), so that
+// each of them is in one place, never in two.
 DialogView {
     id: dialog
     title: qsTr("Play Together")
-    /** 0 = join and share, 1 = voice chat and webcam, 2 = overlays */
+    /** 0 = profile and sharing, 1 = voice chat and webcam, 2 = overlays */
     property int page: 0
+    /**
+     * True when the start page shows no Play Together card (a narrow window): then joining,
+     * the switch for sharing, "I play on the TV" and the invites are here. Otherwise they
+     * are on the start page and this page is about the settings only.
+     */
+    property bool standalone: true
+    readonly property bool joinHere: standalone
     buttonText: Chiaki.coplayJoining ? qsTr("Connecting…") : qsTr("Join")
     buttonEnabled: !Chiaki.coplayJoining && inviteField.text.trim().length > 0
-    buttonVisible: page === 0
+    buttonVisible: page === 0 && joinHere
     onAccepted: {
         errorLabel.text = "";
         Chiaki.joinCoPlay(inviteField.text, nameField.text, controllerOnlyCheck.checked);
@@ -70,7 +80,7 @@ DialogView {
             spacing: 8
 
             Repeater {
-                model: [qsTr("Join & share"), qsTr("Voice & webcam"), qsTr("Overlays")]
+                model: [dialog.joinHere ? qsTr("Join & share") : qsTr("Profile & sharing"), qsTr("Voice & webcam"), qsTr("Overlays")]
 
                 Rectangle {
                     id: tab
@@ -247,8 +257,10 @@ DialogView {
                     }
 
                     // ---------------------------------------------------- join
+                    // Only where the start page does not have it already (dialog.joinHere)
 
                     C.GradientText {
+                        visible: dialog.joinHere
                         text: qsTr("Join a friend")
                         font.bold: true
                         font.pixelSize: 24
@@ -256,6 +268,7 @@ DialogView {
                     }
 
                     Label {
+                        visible: dialog.joinHere
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         opacity: 0.7
@@ -263,6 +276,7 @@ DialogView {
                     }
 
                     GridLayout {
+                        visible: dialog.joinHere
                         Layout.fillWidth: true
                         columns: 2
                         rowSpacing: 12
@@ -301,6 +315,7 @@ DialogView {
                     }
 
                     Rectangle {
+                        visible: dialog.joinHere
                         Layout.fillWidth: true
                         Layout.topMargin: 16
                         Layout.bottomMargin: 6
@@ -316,7 +331,7 @@ DialogView {
                     // ---------------------------------------------------- share
 
                     C.GradientText {
-                        text: qsTr("Share your console")
+                        text: dialog.standalone ? qsTr("Share your console") : qsTr("Sharing your console")
                         font.bold: true
                         font.pixelSize: 24
                         to: "#7c86ff"
@@ -326,11 +341,18 @@ DialogView {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         opacity: 0.7
-                        text: qsTr("While this is on, friends with your invite can join whenever you are connected to your console. The console sees everybody as one controller.")
+                        text: dialog.standalone
+                              ? qsTr("While this is on, friends with your invite can join whenever you are connected to your console. The console sees everybody as one controller.")
+                              : (Chiaki.settings.coplayHostEnabled
+                                 ? qsTr("How your console is shared. Sharing is switched on and off on the start page, and your invite is copied there.")
+                                 : qsTr("How your console is shared. Sharing is off right now: switch on \"Share your console\" on the start page."))
                     }
 
+                    // Only where the start page does not have them (dialog.standalone): the switch for
+                    // sharing, playing on the TV, and the invites
                     C.CheckBox {
                         id: hostEnabledCheck
+                        visible: dialog.standalone
                         text: qsTr("Let friends join my sessions")
                         checked: Chiaki.settings.coplayHostEnabled
                         onToggled: Chiaki.settings.coplayHostEnabled = checked
@@ -339,12 +361,14 @@ DialogView {
                     // For a host who plays on the TV: the same setting as "Picture and sound"
                     // under Settings, where the two can also be switched off one by one
                     C.CheckBox {
+                        visible: dialog.standalone
                         text: qsTr("Controller only: I play on the TV")
                         checked: (Chiaki.settings.audioVideoDisabled & 0x02) !== 0
                         onToggled: Chiaki.settings.audioVideoDisabled = checked ? 3 : 0
                     }
 
                     Label {
+                        visible: dialog.standalone
                         Layout.fillWidth: true
                         Layout.leftMargin: 4
                         wrapMode: Text.WordWrap
@@ -353,9 +377,31 @@ DialogView {
                         text: qsTr("No picture or sound on this computer when you connect to your console. It sends your controller and feeds the overlays, for example the one in OBS. Friends who join still get picture and sound.")
                     }
 
+                    // Without the invites on this page: how friends elsewhere get in, which the
+                    // invite for the internet says there
+                    Label {
+                        visible: !dialog.standalone && hostEnabledCheck.checked
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: invites.lookup === 3 ? "#ffb74d" : Material.foreground
+                        opacity: invites.lookup === 3 ? 1.0 : 0.7
+                        text: {
+                            const meet = !!Chiaki.settings.coplayMeetOn;
+                            if (invites.lookup === 1)
+                                return qsTr("Finding your address on the internet…");
+                            if (invites.lookup === 3) {
+                                return meet ? qsTr("Your address on the internet could not be found. Friends can still join through the meeting point.")
+                                            : qsTr("Your address on the internet could not be found. Check the internet connection, or enter your address below.");
+                            }
+                            return meet ? qsTr("Friends anywhere get in by themselves with most routers, through the meeting point. If a friend cannot connect, forward UDP port %1 to this computer in your router.").arg(invites.port)
+                                        : qsTr("For friends over the internet, UDP port %1 has to reach this computer: forward it in your router.").arg(invites.port);
+                        }
+                    }
+
                     // The invites: one per way a friend can reach this computer
                     ColumnLayout {
                         id: invites
+                        visible: dialog.standalone
                         Layout.fillWidth: true
                         Layout.topMargin: 4
                         Layout.bottomMargin: 8

@@ -158,8 +158,13 @@ Item {
         stack.push(manualHostDialogComponent);
     }
 
-    function showPlayTogetherDialog() {
-        stack.push(playTogetherDialogComponent);
+    /**
+     * @param standalone false when the page it is opened from has joining, the switch for
+     *        sharing and the invites on it (the start page in a wide window): each of those
+     *        has one place then, and this page is about the settings only
+     */
+    function showPlayTogetherDialog(standalone = true) {
+        stack.push(playTogetherDialogComponent, { standalone: standalone });
     }
 
     function showConfirmDialog(title, text, callback, rejectCallback = null) {

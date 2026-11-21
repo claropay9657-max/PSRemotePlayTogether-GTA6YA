@@ -101,6 +101,10 @@ Item {
             spacing: 8
 
             ComboBox {
+                // The opened list is never cut off: as wide as its longest entry, and inside the window
+                implicitContentWidthPolicy: ComboBox.WidestText
+                popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                popup.margins: 8
                 Layout.fillWidth: true
                 font.pixelSize: 15
                 model: presetRow.group.presets
@@ -306,6 +310,10 @@ Item {
                     text: qsTr("Style")
                 }
                 ComboBox {
+                    // The opened list is never cut off: as wide as its longest entry, and inside the window
+                    implicitContentWidthPolicy: ComboBox.WidestText
+                    popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                    popup.margins: 8
                     Layout.fillWidth: true
                     font.pixelSize: 15
                     readonly property var styles: ["transparent", "glass", "solid"]
@@ -346,6 +354,10 @@ Item {
                     text: qsTr("Controller colour")
                 }
                 ComboBox {
+                    // The opened list is never cut off: as wide as its longest entry, and inside the window
+                    implicitContentWidthPolicy: ComboBox.WidestText
+                    popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                    popup.margins: 8
                     id: hudSkinCombo
                     Layout.fillWidth: true
                     font.pixelSize: 15
@@ -531,6 +543,10 @@ Item {
                         text: qsTr("Style")
                     }
                     ComboBox {
+                        // The opened list is never cut off: as wide as its longest entry, and inside the window
+                        implicitContentWidthPolicy: ComboBox.WidestText
+                        popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                        popup.margins: 8
                         Layout.fillWidth: true
                         font.pixelSize: 15
                         readonly property var styles: ["transparent", "glass", "solid"]
@@ -548,6 +564,10 @@ Item {
                         text: qsTr("Controllers")
                     }
                     ComboBox {
+                        // The opened list is never cut off: as wide as its longest entry, and inside the window
+                        implicitContentWidthPolicy: ComboBox.WidestText
+                        popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                        popup.margins: 8
                         Layout.fillWidth: true
                         font.pixelSize: 15
                         model: [qsTr("Match each player's controller")].concat(Chiaki.settings.overlaySkins)
@@ -587,6 +607,10 @@ Item {
                         text: qsTr("Players")
                     }
                     ComboBox {
+                        // The opened list is never cut off: as wide as its longest entry, and inside the window
+                        implicitContentWidthPolicy: ComboBox.WidestText
+                        popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                        popup.margins: 8
                         Layout.fillWidth: true
                         font.pixelSize: 15
                         model: [qsTr("Side by side"), qsTr("Below each other")]

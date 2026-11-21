@@ -40,6 +40,7 @@
     <file>controls/GradientText.qml</file>
     <file>controls/GlassBar.qml</file>
     <file>controls/Button.qml</file>
+    <file>controls/Menu.qml</file>
     <file>controls/CheckBox.qml</file>
     <file>controls/ComboBox.qml</file>
     <file>controls/RadioButton.qml</file>

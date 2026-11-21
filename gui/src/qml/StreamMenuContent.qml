@@ -531,6 +531,10 @@ FocusScope {
                         title: qsTr("QUALITY")
 
                         ComboBox {
+                            // The opened list is never cut off: as wide as its longest entry, and inside the window
+                            implicitContentWidthPolicy: ComboBox.WidestText
+                            popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                            popup.margins: 8
                             id: qualityCombo
                             Layout.preferredWidth: 190
                             Layout.preferredHeight: 40
@@ -574,6 +578,10 @@ FocusScope {
 
                         // What is shown on the game picture: switch between the saved arrangements
                         ComboBox {
+                            // The opened list is never cut off: as wide as its longest entry, and inside the window
+                            implicitContentWidthPolicy: ComboBox.WidestText
+                            popup.width: Math.max(width, implicitContentWidth + leftPadding + rightPadding + 24)
+                            popup.margins: 8
                             id: hudPresetCombo
                             Layout.preferredWidth: 230
                             Layout.preferredHeight: 40
