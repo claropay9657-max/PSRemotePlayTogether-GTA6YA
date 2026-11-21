@@ -145,7 +145,7 @@ function typing() {
   const a = document.activeElement;
   const field = !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT')
     && a.type !== 'checkbox' && a.type !== 'range');
-  return field || $('keys').open || grabbed() || !ui.chat.hidden || !!(options && options.isOpen);
+  return field || $('keys').open || grabbed() || !ui.chat.hidden || !!(options && options.isOpen) || !$('sleep-ask').hidden;
 }
 
 function remember(key, value) {
@@ -495,18 +495,41 @@ function leaveStage() {
   ui.chat.hidden = true;
   ui.emoji.hidden = true;
   ui.banner.hidden = true;
+  $('sleep-ask').hidden = true;
   ui.chatList.replaceChildren();
   ui.notices.replaceChildren();
   lastChat = null;
   unread = 0;
 }
 
-function leave() {
+/** @param {boolean} [sleepConsole] also asks the host to put the console to sleep */
+function leave(sleepConsole = false) {
   leaving = true;
-  if (session) session.close();
+  $('sleep-ask').hidden = true;
+  if (session) session.close(sleepConsole === true);
   session = null;
   leaveStage();
   showJoin();
+}
+
+/** Whether the host lets guests put the console to sleep when they leave. */
+function maySleep() {
+  const s = lastState;
+  const me = s ? s.participants.find((p) => p.slot === s.yourSlot) : null;
+  return !!(me && me.maySleep && session && session.connected && !reconnecting);
+}
+
+/** Leaving from the menu: like the app, it asks about the console's sleep first where a guest may decide that. */
+function askLeave() {
+  if (!maySleep()) {
+    leave();
+    return;
+  }
+  const host = lastState.participants.find((p) => p.host);
+  $('sleep-ask-text').textContent = `Put ${host && host.name ? host.name : 'the host'}'s console into sleep mode?\nThat ends the session for everybody.`;
+  menu.close();
+  $('sleep-ask').hidden = false;
+  $('sleep-ask-yes').focus();
 }
 
 /** The connection ended without the player wanting it. */
@@ -897,9 +920,10 @@ function onChat(m) {
   ui.chatList.append(entry);
   if (atEnd || mine) ui.chatList.scrollTop = ui.chatList.scrollHeight;
   if (m.history) return;
-  // For a few seconds on the game picture, unless the chat is open anyway
+  if (mine) return;
+  // What somebody else wrote: for a few seconds on the game picture, unless the chat is open anyway
   hud.chatMessage({ slot: m.slot, name, text: m.text, embed: m.embed && m.embed.url ? m.embed : null });
-  if (ui.chat.hidden && !mine) {
+  if (ui.chat.hidden) {
     unread++;
     menu.setUnread(unread);
   }
@@ -1180,7 +1204,7 @@ function start() {
     onClose: () => syncFront(),
   });
   menu = new StreamMenu($('menu'), {
-    onLeave: leave,
+    onLeave: askLeave,
     onChat: () => {
       menu.close();
       openChat(true);
@@ -1368,7 +1392,20 @@ function start() {
     if (ui.emoji.hidden) ui.chatInput.focus();
   });
 
-  $('banner-leave').addEventListener('click', leave);
+  $('banner-leave').addEventListener('click', () => leave());
+  $('sleep-ask-yes').addEventListener('click', () => leave(true));
+  $('sleep-ask-no').addEventListener('click', () => leave(false));
+  $('sleep-ask').addEventListener('keydown', (e) => {
+    // Escape: stay in the session after all
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      $('sleep-ask').hidden = true;
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      (document.activeElement === $('sleep-ask-yes') ? $('sleep-ask-no') : $('sleep-ask-yes')).focus();
+    }
+  });
   camera.onEnded = () => {
     stopCamera();
     notice('Webcam: the camera went away.');
@@ -1426,6 +1463,13 @@ function start() {
   window.addEventListener('resize', applyPicture);
   window.addEventListener('gamepadconnected', () => {
     if (touch.visible && touch.auto) setTouch(false, true);
+  });
+  // The controller went away (battery, out of reach): a phone or tablet gets its controls back,
+  // unless the player has switched them by hand
+  window.addEventListener('gamepaddisconnected', () => {
+    setTimeout(() => {
+      if (TouchControls.likely() && !pad.gamepads().length && !touch.visible && touch.auto !== false) setTouch(true, true);
+    }, 300);
   });
 
   // Leaving the page says goodbye, so that the others do not wait for a timeout

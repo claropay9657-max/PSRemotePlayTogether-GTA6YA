@@ -655,12 +655,17 @@ export class Session {
     if (wasConnected && this.h.onClosed) this.h.onClosed(reason);
   }
 
-  /** Leaves the session. */
-  close() {
+  /**
+   * Leaves the session.
+   * @param {boolean} [sleepConsole] also asks the host to put the console to sleep; only for a
+   *   guest the session state allows it to (maySleep), any other host just sees a goodbye
+   */
+  close(sleepConsole = false) {
     if (this.closed) return;
     if (this.connected) {
-      this.send(P.byeFrame());
-      this.send(P.byeFrame());
+      const bye = P.byeFrame(sleepConsole ? P.BYE_SLEEP : P.BYE_QUIT);
+      this.send(bye);
+      this.send(bye);
     }
     // A moment for the goodbye to get out
     const pc = this.pc;

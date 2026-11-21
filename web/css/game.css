@@ -1879,6 +1879,60 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* ---------------------------------------------------------------- a question in front of everything */
+
+.ask-veil {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.ask {
+  max-width: calc(100% - 24px);
+  padding: 30px;
+  border-radius: 28px;
+  background: #1b1733;
+  text-align: center;
+}
+
+.ask-title {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.ask-text {
+  margin-top: 10px;
+  font-size: 20px;
+  white-space: pre-line;
+}
+
+.ask-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  margin-top: 30px;
+}
+
+.ask-button {
+  width: 200px;
+  max-width: 40vw;
+  height: 80px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 24px;
+}
+
+.ask-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.ask-button:focus {
+  outline: none;
+  background: var(--g-accent);
+}
+
 /* ================================================================ the rest on the picture */
 
 /* The connection was lost and the page is getting it back by itself */

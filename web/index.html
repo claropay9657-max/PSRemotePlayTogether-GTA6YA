@@ -168,6 +168,18 @@
   </aside>
 
   <div id="options" class="gpanel options" hidden></div>
+
+  <!-- Leaving, where the host lets guests put the console to sleep: the app's own question -->
+  <div id="sleep-ask" class="ask-veil" hidden>
+    <div class="ask" role="dialog" aria-labelledby="sleep-ask-title">
+      <div id="sleep-ask-title" class="ask-title">Disconnect Session</div>
+      <div id="sleep-ask-text" class="ask-text"></div>
+      <div class="ask-buttons">
+        <button id="sleep-ask-yes" class="ask-button" type="button">Sleep</button>
+        <button id="sleep-ask-no" class="ask-button" type="button">No</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ============================================================ keyboard help -->

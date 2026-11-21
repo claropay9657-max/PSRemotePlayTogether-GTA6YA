@@ -43,6 +43,8 @@ export const BYE_QUIT = 0;
 export const BYE_KICKED = 1;
 export const BYE_HOST_ENDED = 2;
 export const BYE_RECONNECTING = 3;
+/** A guest left and asks the host to put the console to sleep; only where PARTICIPANT_MAY_SLEEP says it may. */
+export const BYE_SLEEP = 4;
 
 export const WANT_VIDEO = 1 << 0;
 export const WANT_AUDIO = 1 << 1;
@@ -59,6 +61,8 @@ export const MEDIA_SILENCED = 1 << 3;
 export const PARTICIPANT_HOST = 1 << 0;
 export const PARTICIPANT_CAN_CONTROL = 1 << 1;
 export const PARTICIPANT_IN_CONTROL = 1 << 2;
+/** May put the console to sleep when leaving. The host always may; guests if the host has allowed it. */
+export const PARTICIPANT_MAY_SLEEP = 1 << 3;
 
 export const BATTERY_UNKNOWN = 0xff;
 export const BATTERY_WIRED = 0xfe;
@@ -238,6 +242,7 @@ export function readState(payload) {
     p.host = (p.flags & PARTICIPANT_HOST) !== 0;
     p.canControl = (p.flags & PARTICIPANT_CAN_CONTROL) !== 0;
     p.inControl = (p.flags & PARTICIPANT_IN_CONTROL) !== 0;
+    p.maySleep = (p.flags & PARTICIPANT_MAY_SLEEP) !== 0;
     s.participants.push(p);
   }
   return r.ok ? s : null;
