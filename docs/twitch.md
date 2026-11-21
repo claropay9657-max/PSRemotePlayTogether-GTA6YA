@@ -11,8 +11,9 @@ stream ([live streaming](live-streaming.md)) and in OBS alike.
 **Settings → Twitch** → **Log in with Twitch** shows a code; the player confirms it on
 twitch.tv/activate (OAuth device code flow, the app is a public client without a secret).
 The app never sees the password. The tokens are kept in the system's password store
-(`keystore.h`), the settings only note who is logged in. Builds of the project carry the
-app's id at Twitch; own builds set `PSRPT_TWITCH_CLIENT_ID` in CMake.
+(`keystore.h`), the settings only note who is logged in. Every build carries the
+project's id at Twitch (a public client, `PSRPT_TWITCH_CLIENT_ID` in `gui/CMakeLists.txt`); a fork
+can register its own app at dev.twitch.tv (client type Public) and set its id there.
 
 What the app asks for: reading follows, subs, bits, channel points, hype trains, polls,
 predictions, goals, charity, shoutouts, ad schedule and chat (`user:read:chat`), and

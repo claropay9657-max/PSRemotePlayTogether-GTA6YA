@@ -3,6 +3,10 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.4.1
+
+- **Log in with Twitch works.** 0.4.0 said "Not in this build" under Settings → Twitch, because the releases carried no id at Twitch. Now they do, and with the login come the alerts, the Twitch elements, the chat sound for Twitch chat and "On Twitch" in the room lists.
+
 ## 0.4.0
 
 - **New: go live on Twitch from the app, without OBS.** Set it up once under **Settings → Live streaming**: Twitch (or any other service that takes RTMP or RTMPS, such as YouTube or Kick), your stream key, the picture (720p or 1080p, 30 or 60 frames a second) and the bitrate. Then press **Go live** in the stream menu. The stream is what you see and hear: the game picture with the display on top of it (players, webcams, controllers, as arranged under Overlays & OBS), the game sound, the other players' voices and, if you like, your own microphone, each with its own volume. It never shows the stream menu, the chat or invites. The stream menu shows how long you are live, the upload rate and any pictures left out because the connection could not keep up; a lost connection is made again by itself.

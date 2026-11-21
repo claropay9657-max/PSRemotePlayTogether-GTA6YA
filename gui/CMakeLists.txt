@@ -141,7 +141,9 @@ add_executable(chiaki WIN32
 target_include_directories(chiaki PRIVATE include)
 # The app's id at Twitch (a public client: no secret). Registered by the project on dev.twitch.tv;
 # without one, logging in to Twitch is off. Builds of your own can set theirs.
-set(PSRPT_TWITCH_CLIENT_ID "" CACHE STRING "Client id of the app at Twitch (dev.twitch.tv), for logging in")
+# The project's app at Twitch (a public client: the id is not a secret, every copy carries it).
+# Forks may register their own at dev.twitch.tv and set it here or with -DPSRPT_TWITCH_CLIENT_ID=...
+set(PSRPT_TWITCH_CLIENT_ID "r6c2otmrwul0sevqxk9nb9fzmnlkwk" CACHE STRING "Client id of the app at Twitch (dev.twitch.tv), for logging in")
 target_compile_definitions(chiaki PRIVATE PSRPT_TWITCH_CLIENT_ID="${PSRPT_TWITCH_CLIENT_ID}")
 # Nayuki's QR code generator (MIT): the code to the room on the Play with us scene
 target_include_directories(chiaki PRIVATE ${CMAKE_SOURCE_DIR}/third-party/qrcodegen)
