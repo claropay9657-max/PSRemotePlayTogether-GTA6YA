@@ -228,6 +228,8 @@ void Host::Fire(Deferred &d)
 		callbacks.on_reach_changed();
 	if(d.sleep_requested && callbacks.on_sleep_requested)
 		callbacks.on_sleep_requested(d.sleep_slot, d.sleep_name);
+	if(d.pending_changed && callbacks.on_pending_changed)
+		callbacks.on_pending_changed();
 	if(callbacks.on_voice)
 	{
 		for(const auto &v : d.voice)
@@ -391,6 +393,25 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	if(std::find(seen_nonces.begin(), seen_nonces.end(), hello.guest_nonce) != seen_nonces.end())
 		return;
 
+	switch(CheckAdmission(hello, false, now_ms, d))
+	{
+		case Admission::In:
+			break;
+		case Admission::Wait: {
+			// It keeps asking; this tells it that somebody is deciding, so it waits longer
+			std::vector<uint8_t> packet;
+			if(SealHandshakePacket(welcome_key, PacketType::Waiting, hello.guest_nonce.data(), kHandshakeNonceSize, packet))
+				socket.SendTo(packet.data(), packet.size(), from);
+			return;
+		}
+		case Admission::Refused:
+			reject(hello.guest_nonce.data(), RejectReason::Refused);
+			return;
+		case Admission::Locked:
+			reject(hello.guest_nonce.data(), RejectReason::Locked);
+			return;
+	}
+
 	// The same player joining again (its connection broke, or the host came back):
 	// it takes its old place over instead of sitting next to its own ghost
 	uint8_t previous_slot = 0;
@@ -438,6 +459,9 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	g->player_id = hello.player_id;
 	g->avatar = hello.avatar;
 	g->media = hello.media & kMediaOwnMask;
+	g->can_control = StartsInControl(hello.player_id);
+	if(hello.player_id)
+		admitted_players.insert(hello.player_id);
 
 	WelcomePayload welcome;
 	welcome.guest_nonce = hello.guest_nonce;
@@ -791,6 +815,7 @@ void Host::UpdateControl(uint64_t now_ms, Deferred &d)
 
 void Host::Tick(uint64_t now_ms, Deferred &d)
 {
+	TickPending(now_ms, d);
 	std::vector<uint32_t> timed_out;
 	for(auto &entry : guests)
 	{
@@ -1426,6 +1451,9 @@ void Host::SetGuestCanControl(uint8_t slot, bool allowed)
 		if(!g || g->can_control == allowed)
 			return;
 		g->can_control = allowed;
+		// Holds when the player comes back, whatever the join policy says
+		if(g->player_id)
+			control_choice[g->player_id] = allowed;
 		mixer.SetMask(slot, allowed ? InputMask::All() : InputMask::None());
 		uint64_t now = NowMs();
 		state_seq++;
@@ -1436,7 +1464,7 @@ void Host::SetGuestCanControl(uint8_t slot, bool allowed)
 	Fire(d);
 }
 
-void Host::KickGuest(uint8_t slot)
+void Host::KickGuest(uint8_t slot, bool block)
 {
 	Deferred d;
 	{
@@ -1444,11 +1472,158 @@ void Host::KickGuest(uint8_t slot)
 		Guest *g = FindBySlot(slot);
 		if(!g)
 			return;
+		if(block && g->player_id)
+		{
+			refused_players.insert(g->player_id);
+			admitted_players.erase(g->player_id);
+		}
 		SendBye(*g, ByeReason::Kicked);
 		SendBye(*g, ByeReason::Kicked);
-		RemoveGuest(g->conn_id, d, "was removed");
+		RemoveGuest(g->conn_id, d, block ? "was removed and blocked" : "was removed");
 	}
 	Fire(d);
+}
+
+// ------------------------------------------------------------------ who gets in
+
+/** A player that sends no id is told apart by its nonce, which stays the same while it knocks. */
+static uint64_t KnockKey(const HelloPayload &hello)
+{
+	if(hello.player_id)
+		return hello.player_id;
+	uint64_t key = 0;
+	std::memcpy(&key, hello.guest_nonce.data(), sizeof(key));
+	return key | 1;
+}
+
+Host::Admission Host::CheckAdmission(const HelloPayload &hello, bool web_guest, uint64_t now_ms, Deferred &d)
+{
+	const uint64_t player = KnockKey(hello);
+	if(refused_players.count(player))
+		return Admission::Refused;
+	// Who is in, or was in this session, comes back without being asked again
+	bool known = admitted_players.count(player) > 0;
+	for(auto &entry : guests)
+		known = known || (hello.player_id && entry.second->player_id == hello.player_id);
+	if(known)
+		return Admission::In;
+	if(locked)
+		return Admission::Locked;
+	if(config.join_policy != JoinPolicy::Ask)
+		return Admission::In;
+
+	for(Knock &k : knocks)
+	{
+		if(k.player == player)
+		{
+			k.last_ms = now_ms;
+			return Admission::Wait;
+		}
+	}
+	Knock k;
+	k.id = next_knock_id++;
+	k.player = player;
+	k.name = hello.name.empty() ? std::string("Somebody") : CleanName(hello.name, 1);
+	k.web = web_guest;
+	k.last_ms = now_ms;
+	d.logs.push_back(k.name + (web_guest ? " asks to join from a web browser" : " asks to join"));
+	knocks.push_back(k);
+	d.pending_changed = true;
+	return Admission::Wait;
+}
+
+bool Host::StartsInControl(uint64_t player_id) const
+{
+	if(player_id)
+	{
+		auto choice = control_choice.find(player_id);
+		if(choice != control_choice.end())
+			return choice->second;
+	}
+	return config.join_policy != JoinPolicy::WatchFirst;
+}
+
+void Host::TickPending(uint64_t now_ms, Deferred &d)
+{
+	// Who stopped knocking has given up, or its app is gone
+	size_t before = knocks.size();
+	knocks.erase(std::remove_if(knocks.begin(), knocks.end(), [&](const Knock &k) {
+		return now_ms - k.last_ms > config.pending_timeout_ms;
+	}), knocks.end());
+	if(knocks.size() != before)
+		d.pending_changed = true;
+}
+
+void Host::SetJoinPolicy(JoinPolicy policy)
+{
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		if(config.join_policy == policy)
+			return;
+		config.join_policy = policy;
+		// Nobody is asked any more: who waits gets in at its next Hello
+		if(policy != JoinPolicy::Ask && !knocks.empty())
+		{
+			for(const Knock &k : knocks)
+				admitted_players.insert(k.player);
+			knocks.clear();
+			d.pending_changed = true;
+		}
+	}
+	Fire(d);
+}
+
+JoinPolicy Host::GetJoinPolicy()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return config.join_policy;
+}
+
+std::vector<PendingGuest> Host::Pending()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	std::vector<PendingGuest> out;
+	for(const Knock &k : knocks)
+	{
+		PendingGuest p;
+		p.id = k.id;
+		p.name = k.name;
+		p.web = k.web;
+		out.push_back(p);
+	}
+	return out;
+}
+
+void Host::Admit(uint64_t pending_id, bool allow)
+{
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		auto it = std::find_if(knocks.begin(), knocks.end(), [&](const Knock &k) { return k.id == pending_id; });
+		if(it == knocks.end())
+			return;
+		if(allow)
+			admitted_players.insert(it->player);
+		else
+			refused_players.insert(it->player);
+		d.logs.push_back(it->name + (allow ? " was let in" : " was not let in"));
+		knocks.erase(it);
+		d.pending_changed = true;
+	}
+	Fire(d);
+}
+
+void Host::SetLocked(bool closed)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	locked = closed;
+}
+
+bool Host::Locked()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return locked;
 }
 
 std::vector<GuestInfo> Host::Guests()
@@ -1683,6 +1858,24 @@ void Host::HandleWebHello(uint64_t peer_id, const uint8_t *payload, size_t size,
 		return;
 	}
 
+	switch(CheckAdmission(hello, true, now_ms, d))
+	{
+		case Admission::In:
+			break;
+		case Admission::Wait: {
+			uint8_t frame[1 + kHandshakeNonceSize] = { 0 };
+			frame[0] = static_cast<uint8_t>(PacketType::Waiting);
+			web->Send(peer_id, frame, sizeof(frame));
+			return;
+		}
+		case Admission::Refused:
+			reject(RejectReason::Refused);
+			return;
+		case Admission::Locked:
+			reject(RejectReason::Locked);
+			return;
+	}
+
 	// The same player joining again takes its old place over, as in HandleHello()
 	uint8_t previous_slot = 0;
 	if(hello.player_id)
@@ -1725,6 +1918,9 @@ void Host::HandleWebHello(uint64_t peer_id, const uint8_t *payload, size_t size,
 	g->player_id = hello.player_id;
 	g->avatar = hello.avatar;
 	g->media = hello.media & kMediaOwnMask;
+	g->can_control = StartsInControl(hello.player_id);
+	if(hello.player_id)
+		admitted_players.insert(hello.player_id);
 
 	WelcomePayload welcome;
 	welcome.conn_id = g->conn_id;

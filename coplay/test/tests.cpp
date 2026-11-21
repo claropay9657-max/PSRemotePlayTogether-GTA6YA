@@ -1047,6 +1047,7 @@ struct TestHost
 	std::atomic<int> guest_changes{0};
 	std::atomic<int> reach_changes{0};
 	std::atomic<int> sleep_requests{0};
+	std::atomic<int> pending_changes{0};
 	std::mutex mutex;
 	std::string sleep_name; // who asked for the console to sleep
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
@@ -1071,6 +1072,7 @@ struct TestHost
 		cb.on_input_changed = [this] { input_changes++; };
 		cb.on_keyframe_needed = [this] { keyframe_requests++; };
 		cb.on_guests_changed = [this] { guest_changes++; };
+		cb.on_pending_changed = [this] { pending_changes++; };
 		cb.on_sleep_requested = [this](uint8_t, const std::string &name) {
 			{
 				std::lock_guard<std::mutex> lock(mutex);
@@ -1377,6 +1379,179 @@ TEST(net_guest_sends_the_console_to_sleep_only_where_the_host_allows)
 		CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
 		std::this_thread::sleep_for(std::chrono::milliseconds(150));
 		CHECK(h.sleep_requests == 0);
+	}
+}
+
+/** Connects on a thread of its own, for a guest that waits for the host. */
+struct Knocker
+{
+	TestGuest guest;
+	std::atomic<bool> waiting{false};
+	std::atomic<int> done{0}; // 1 in, 2 not
+	std::string error;
+	std::thread thread;
+
+	Knocker(const Invite &invite, const std::string &name, uint64_t player_id)
+		: guest(invite, name, kWantAll, 3000, {}, player_id, 1500, [this](ClientConfig &c) {
+			c.admission_timeout_ms = 6000;
+			c.on_waiting = [this] { waiting = true; };
+		})
+	{
+		thread = std::thread([this] {
+			std::string e;
+			bool ok = guest.Connect(&e);
+			error = e;
+			done = ok ? 1 : 2;
+		});
+	}
+	~Knocker()
+	{
+		guest.client->CancelConnect();
+		if(thread.joinable())
+			thread.join();
+	}
+};
+
+TEST(net_host_lets_each_newcomer_in_by_hand)
+{
+	TestHost h(4, {}, [](HostConfig &c) { c.join_policy = JoinPolicy::Ask; c.pending_timeout_ms = 1500; });
+	CHECK(h.host->GetJoinPolicy() == JoinPolicy::Ask);
+
+	// Knocks, is told to wait, and is let in
+	{
+		Knocker k(h.MakeInvite(), "Pixel", 0x1111);
+		CHECK(WaitFor([&] { return k.waiting.load(); }, 2000));
+		CHECK(WaitFor([&] { return h.host->Pending().size() == 1; }, 1000));
+		CHECK(h.pending_changes > 0);
+		std::vector<PendingGuest> pending = h.host->Pending();
+		CHECK(!pending.empty() && pending[0].name == "Pixel" && !pending[0].web);
+		CHECK(h.host->Guests().empty());
+		if(!pending.empty())
+			h.host->Admit(pending[0].id, true);
+		CHECK(WaitFor([&] { return k.done.load() == 1; }, 3000));
+		CHECK(h.host->Pending().empty());
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+		k.guest.client->Stop();
+		CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
+	}
+	// Who was let in once comes back without asking
+	{
+		TestGuest again(h.MakeInvite(), "Pixel", kWantAll, 3000, {}, 0x1111);
+		CHECK(again.Connect());
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+	}
+	// Refused: told so, and refused again later
+	{
+		Knocker k(h.MakeInvite(), "Troll", 0x2222);
+		CHECK(WaitFor([&] { return h.host->Pending().size() == 1; }, 2000));
+		std::vector<PendingGuest> pending = h.host->Pending();
+		if(!pending.empty())
+			h.host->Admit(pending[0].id, false);
+		CHECK(WaitFor([&] { return k.done.load() == 2; }, 3000));
+		CHECK(k.error == "The host did not let you in.");
+	}
+	{
+		TestGuest again(h.MakeInvite(), "Troll", kWantAll, 3000, {}, 0x2222);
+		std::string error;
+		CHECK(!again.Connect(&error));
+		CHECK(error == "The host did not let you in.");
+		CHECK(h.host->Pending().empty());
+	}
+	// One that gives up is forgotten
+	{
+		auto k = std::make_unique<Knocker>(h.MakeInvite(), "Shy", 0x3333);
+		CHECK(WaitFor([&] { return h.host->Pending().size() == 1; }, 2000));
+		k.reset();
+		CHECK(WaitFor([&] { return h.host->Pending().empty(); }, 4000));
+	}
+	// Nobody asked any more: who waits gets in
+	{
+		Knocker k(h.MakeInvite(), "Late", 0x4444);
+		CHECK(WaitFor([&] { return h.host->Pending().size() == 1; }, 2000));
+		h.host->SetJoinPolicy(JoinPolicy::Open);
+		CHECK(WaitFor([&] { return k.done.load() == 1; }, 3000));
+		CHECK(h.host->Pending().empty());
+	}
+}
+
+TEST(net_newcomers_watch_first_and_keep_the_hosts_choice)
+{
+	TestHost h(4, {}, [](HostConfig &c) { c.join_policy = JoinPolicy::WatchFirst; });
+	auto can_control = [&](const std::string &name) {
+		for(const GuestInfo &g : h.host->Guests())
+		{
+			if(g.name == name)
+				return g.can_control ? 1 : 0;
+		}
+		return -1;
+	};
+	uint8_t slot = 0;
+	{
+		TestGuest g(h.MakeInvite(), "Pixel", kWantAll, 3000, {}, 0x5555);
+		CHECK(g.Connect());
+		CHECK(WaitFor([&] { return can_control("Pixel") == 0; }, 2000));
+		slot = g.client->Welcome().slot;
+		// The host lets it play, and that holds when it comes back
+		h.host->SetGuestCanControl(slot, true);
+		CHECK(WaitFor([&] { return can_control("Pixel") == 1; }, 2000));
+	}
+	CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
+	{
+		TestGuest g(h.MakeInvite(), "Pixel", kWantAll, 3000, {}, 0x5555);
+		CHECK(g.Connect());
+		CHECK(WaitFor([&] { return can_control("Pixel") == 1; }, 2000));
+	}
+	{
+		TestGuest other(h.MakeInvite(), "Other", kWantAll, 3000, {}, 0x6666);
+		CHECK(other.Connect());
+		CHECK(WaitFor([&] { return can_control("Other") == 0; }, 2000));
+	}
+}
+
+TEST(net_closed_session_and_blocked_players)
+{
+	TestHost h;
+	TestGuest in(h.MakeInvite(), "In", kWantAll, 3000, {}, 0x7777);
+	CHECK(in.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+
+	h.host->SetLocked(true);
+	CHECK(h.host->Locked());
+	{
+		TestGuest newcomer(h.MakeInvite(), "New", kWantAll, 3000, {}, 0x8888);
+		std::string error;
+		CHECK(!newcomer.Connect(&error));
+		CHECK(error == "The host has closed the session to newcomers.");
+	}
+	// Who is in may come back, closed or not
+	in.client->Stop();
+	CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
+	{
+		TestGuest back(h.MakeInvite(), "In", kWantAll, 3000, {}, 0x7777);
+		CHECK(back.Connect());
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+		h.host->SetLocked(false);
+		// Removed and blocked: gone, and kept out
+		h.host->KickGuest(back.client->Welcome().slot, true);
+		CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
+	}
+	{
+		TestGuest again(h.MakeInvite(), "In", kWantAll, 3000, {}, 0x7777);
+		std::string error;
+		CHECK(!again.Connect(&error));
+		CHECK(error == "The host did not let you in.");
+	}
+	// Removed without blocking: may come back
+	{
+		TestGuest other(h.MakeInvite(), "Other", kWantAll, 3000, {}, 0x9999);
+		CHECK(other.Connect());
+		CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+		h.host->KickGuest(other.client->Welcome().slot);
+		CHECK(WaitFor([&] { return h.host->Guests().empty(); }, 2000));
+	}
+	{
+		TestGuest other(h.MakeInvite(), "Other", kWantAll, 3000, {}, 0x9999);
+		CHECK(other.Connect());
 	}
 }
 
@@ -4570,9 +4745,10 @@ struct WebTestHost
 	std::shared_ptr<FakeGateway::Shared> web = std::make_shared<FakeGateway::Shared>();
 	std::unique_ptr<TestHost> h;
 
-	explicit WebTestHost(size_t max_guests = 4)
+	explicit WebTestHost(size_t max_guests = 4, JoinPolicy policy = JoinPolicy::Open)
 	{
-		h = std::make_unique<TestHost>(max_guests, std::vector<uint8_t>(), [this](HostConfig &c) {
+		h = std::make_unique<TestHost>(max_guests, std::vector<uint8_t>(), [this, policy](HostConfig &c) {
+			c.join_policy = policy;
 			c.meet = TestMeet(point, {});
 			c.web.enabled = true;
 			c.web_factory = [this](const WebConfig &, const WebGateway::Callbacks &cb) {
@@ -4915,6 +5091,39 @@ TEST(net_browser_guests_version_places_and_goodbye)
 	CHECK(byes.size() == 2);
 	if(!byes.empty())
 		CHECK(byes[0][1] == static_cast<uint8_t>(ByeReason::HostEnded));
+}
+
+TEST(net_browser_guest_waits_to_be_let_in)
+{
+	WebTestHost t(4, JoinPolicy::Ask);
+	Host &host = *t.h->host;
+	t.Join(20, "Webby", 4242);
+	CHECK(WaitFor([&] { return host.Pending().size() == 1; }, 2000));
+	auto waits = t.Sent(20, PacketType::Waiting);
+	CHECK(!waits.empty());
+	if(!waits.empty())
+		CHECK(waits[0].size() == 1 + kHandshakeNonceSize);
+	std::vector<PendingGuest> pending = host.Pending();
+	CHECK(!pending.empty() && pending[0].web && pending[0].name == "Webby");
+	CHECK(host.Guests().empty() && t.Count(20, PacketType::Welcome) == 0);
+	if(!pending.empty())
+		host.Admit(pending[0].id, true);
+	// The page asks again and gets in
+	t.Join(20, "Webby", 4242);
+	CHECK(WaitFor([&] { return host.Guests().size() == 1; }, 2000));
+	CHECK(t.Count(20, PacketType::Welcome) == 1);
+
+	// Another one is refused
+	t.Join(21, "Troll", 4343);
+	CHECK(WaitFor([&] { return host.Pending().size() == 1; }, 2000));
+	pending = host.Pending();
+	if(!pending.empty())
+		host.Admit(pending[0].id, false);
+	t.Join(21, "Troll", 4343);
+	auto refused = t.Sent(21, PacketType::Reject);
+	CHECK(!refused.empty() && host.Guests().size() == 1);
+	if(!refused.empty())
+		CHECK(refused.back().back() == static_cast<uint8_t>(RejectReason::Refused));
 }
 
 TEST(net_browser_that_cannot_keep_up_gets_no_more_video_until_it_can)

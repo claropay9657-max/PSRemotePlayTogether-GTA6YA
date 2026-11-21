@@ -85,6 +85,12 @@ enum class PacketType : uint8_t
 	Punch = 0x04,
 	/** Never a datagram: the type in the header of a note left at the meeting point (meet.h). */
 	MeetNote = 0x05,
+	/**
+	 * host -> guest, sealed like Welcome, holds the guest's nonce: the Hello arrived, and
+	 * the host has to let this guest in first (JoinPolicy::Ask). The guest keeps sending
+	 * its Hello and waits longer. Versions that do not know it ignore it.
+	 */
+	Waiting = 0x06,
 
 	Input = 0x10,           // guest -> host
 	Ping = 0x11,            // guest -> host
@@ -117,6 +123,10 @@ enum class RejectReason : uint8_t
 {
 	Full = 1,
 	Version = 2,
+	/** The host did not let this player in, or removed and blocked it. */
+	Refused = 3,
+	/** The host has closed the session to newcomers. */
+	Locked = 4,
 };
 
 enum class ByeReason : uint8_t

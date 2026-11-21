@@ -169,6 +169,8 @@ bool Client::Connect(std::string *error)
 	uint64_t start = NowMs();
 	uint64_t last_hello = 0;
 	bool hello_now = true;
+	// The host has heard us and lets us in, or not, by hand: that may take a while
+	uint64_t waiting_since = 0;
 	uint8_t buf[2048];
 	while(!cancel_connect)
 	{
@@ -177,7 +179,12 @@ bool Client::Connect(std::string *error)
 		uint64_t allowed = config.connect_timeout_ms;
 		if(host_found && config.meet.connect_ms > allowed)
 			allowed = config.meet.connect_ms;
-		if(ElapsedMs(now, start) >= allowed)
+		if(waiting_since)
+		{
+			if(ElapsedMs(now, waiting_since) >= config.admission_timeout_ms)
+				return fail("The host did not answer your request to join.");
+		}
+		else if(ElapsedMs(now, start) >= allowed)
 			return fail(gave_up());
 
 		if(use_meet)
@@ -251,7 +258,7 @@ bool Client::Connect(std::string *error)
 			hello_now = add_target(from) || hello_now;
 			continue;
 		}
-		if(header.type != PacketType::Welcome && header.type != PacketType::Reject)
+		if(header.type != PacketType::Welcome && header.type != PacketType::Reject && header.type != PacketType::Waiting)
 			continue;
 		std::vector<uint8_t> payload;
 		if(!OpenPacket(welcome_key, buf, static_cast<size_t>(n), payload))
@@ -259,6 +266,16 @@ bool Client::Connect(std::string *error)
 		if(payload.size() < kHandshakeNonceSize
 			|| std::memcmp(payload.data(), hello.guest_nonce.data(), kHandshakeNonceSize) != 0)
 			continue; // answer to someone else's or an old request
+		if(header.type == PacketType::Waiting)
+		{
+			if(!waiting_since)
+			{
+				waiting_since = NowMs();
+				if(config.on_waiting)
+					config.on_waiting();
+			}
+			continue;
+		}
 		if(header.type == PacketType::Reject)
 		{
 			uint8_t reason = payload.size() > kHandshakeNonceSize ? payload[kHandshakeNonceSize] : 0;
@@ -266,6 +283,10 @@ bool Client::Connect(std::string *error)
 				return fail("The session is full.");
 			if(reason == static_cast<uint8_t>(RejectReason::Version))
 				return fail("The host runs a different version of the app. Both sides need the same version.");
+			if(reason == static_cast<uint8_t>(RejectReason::Refused))
+				return fail("The host did not let you in.");
+			if(reason == static_cast<uint8_t>(RejectReason::Locked))
+				return fail("The host has closed the session to newcomers.");
 			return fail("The host declined the connection.");
 		}
 		if(header.version != kProtocolVersion)

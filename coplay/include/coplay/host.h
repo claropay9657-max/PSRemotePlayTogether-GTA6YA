@@ -7,6 +7,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <set>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -24,6 +25,26 @@
 #include "web.h"
 
 namespace coplay {
+
+/** Who gets in: what a host chooses for a session anybody can find (a public room). */
+enum class JoinPolicy : uint8_t
+{
+	/** Everybody with the invite gets in and plays. */
+	Open = 0,
+	/** Everybody gets in, but watches until the host lets them play. */
+	WatchFirst = 1,
+	/** The host lets each newcomer in, or not (Host::Pending(), Host::Admit()). */
+	Ask = 2,
+};
+
+/** Somebody who knocked and waits for the host to let them in (JoinPolicy::Ask). */
+struct PendingGuest
+{
+	uint64_t id = 0;
+	std::string name;
+	/** Knocked from a web browser. */
+	bool web = false;
+};
 
 struct HostConfig
 {
@@ -46,6 +67,10 @@ struct HostConfig
 	InputMixer::Config mixer;
 	/** Guests may put the console to sleep when they leave; see Host::SetGuestsMaySleep(). */
 	bool guests_may_sleep = false;
+	/** Who gets in; see Host::SetJoinPolicy(). */
+	JoinPolicy join_policy = JoinPolicy::Open;
+	/** A guest that knocked and stopped asking is forgotten after this long. */
+	uint32_t pending_timeout_ms = 8000;
 	/** Lets friends in without a forwarded port (meet.h). Off unless a URL and a way to ask it are given. */
 	MeetConfig meet;
 	/** Lets friends in who join from a web browser (web.h). Needs the meeting point. */
@@ -126,6 +151,8 @@ struct HostCallbacks
 	 * The guest is gone from Guests() by now; nothing else has happened yet.
 	 */
 	std::function<void(uint8_t slot, const std::string &name)> on_sleep_requested;
+	/** Somebody knocked, or stopped waiting; see Host::Pending(). */
+	std::function<void()> on_pending_changed;
 	std::function<void(const std::string &)> on_log;
 };
 
@@ -210,7 +237,21 @@ class Host
 		 */
 		void SetGuestsMaySleep(bool allowed);
 		bool GuestsMaySleep();
-		void KickGuest(uint8_t slot);
+		/**
+		 * Who gets in from now on. Players who are in stay in; a player who was let in or
+		 * refused once keeps that answer for the rest of the session.
+		 */
+		void SetJoinPolicy(JoinPolicy policy);
+		JoinPolicy GetJoinPolicy();
+		/** Who waits to be let in (JoinPolicy::Ask). */
+		std::vector<PendingGuest> Pending();
+		/** Lets a waiting player in, or not; it is told at its next Hello. */
+		void Admit(uint64_t pending_id, bool allow);
+		/** Closed: nobody new gets in, but players who are in, or were, may come back. */
+		void SetLocked(bool locked);
+		bool Locked();
+		/** @param block also refuses this player for the rest of the session */
+		void KickGuest(uint8_t slot, bool block = false);
 		std::vector<GuestInfo> Guests();
 		/** Whether the host's own controllers currently reach the console (see MixMode). */
 		bool HostInControl();
@@ -291,6 +332,7 @@ class Host
 			bool reach_changed = false;
 			/** A guest asked for the console to be put to sleep: its slot and name. */
 			bool sleep_requested = false;
+			bool pending_changed = false;
 			uint8_t sleep_slot = 0;
 			std::string sleep_name;
 			std::vector<std::string> logs;
@@ -299,6 +341,33 @@ class Host
 			std::vector<ChatMessage> chats;
 			std::vector<BlobRef> chat_images;
 		};
+
+		/** Whether a Hello gets a Welcome; see CheckAdmission(). */
+		enum class Admission { In, Wait, Refused, Locked };
+		/**
+		 * What the join policy, the lock and the host's answers say about this Hello. A
+		 * player is told apart by its player id, or by its nonce if it sends none.
+		 */
+		Admission CheckAdmission(const HelloPayload &hello, bool web, uint64_t now_ms, Deferred &d);
+		/** Whether a newcomer starts out with control, by the host's earlier choice or the policy. */
+		bool StartsInControl(uint64_t player_id) const;
+		void TickPending(uint64_t now_ms, Deferred &d);
+		struct Knock
+		{
+			uint64_t id = 0;
+			uint64_t player = 0; // player id, or a value made from the nonce
+			std::string name;
+			bool web = false;
+			uint64_t last_ms = 0;
+		};
+		std::vector<Knock> knocks;
+		uint64_t next_knock_id = 1;
+		/** Players the host let in (or who were in) and refused or blocked, for this session. */
+		std::set<uint64_t> admitted_players;
+		std::set<uint64_t> refused_players;
+		/** The host's own choice of who plays and who watches, so that it holds when they come back. */
+		std::map<uint64_t, bool> control_choice;
+		bool locked = false;
 
 		void StopWith(ByeReason reason);
 		void ThreadMain();

@@ -38,6 +38,13 @@ struct ClientConfig
 	/** MediaFlags we start with; see Client::SetMedia(). */
 	uint8_t media = 0;
 	uint32_t connect_timeout_ms = 5000;
+	/** How long a guest waits for the host to let it in (JoinPolicy::Ask on the host). */
+	uint32_t admission_timeout_ms = 120000;
+	/**
+	 * Called once, from the thread in Connect(), when the host says that it has to let this
+	 * guest in first. Connect() goes on waiting.
+	 */
+	std::function<void()> on_waiting;
 	/** The session counts as lost after this long without a packet from the host. */
 	uint32_t host_timeout_ms = 6000;
 	FrameAssembler::Config assembler;
