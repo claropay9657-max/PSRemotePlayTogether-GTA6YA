@@ -48,6 +48,8 @@ It also makes a great stream: the game picture is on your computer, so OBS shows
 
 Free, for Windows, macOS and Linux. Everybody who uses the app in a session needs the same version. A friend who only wants to join needs no download at all: the host can send a link that opens in a [web browser](#join-from-a-web-browser-without-the-app).
 
+> 🌐 No download, no account: **[crypto90.github.io/PSRemotePlayTogether](https://crypto90.github.io/PSRemotePlayTogether/)** opens an invite, or shows the [public rooms](#public-rooms) to join right in the browser.
+
 | System | Download | How to start |
 | :--- | :---: | :--- |
 | **Windows 10 / 11** (64-bit) | [**⬇️ Windows zip**](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest) | Unzip, run `PSRemotePlayTogether.exe` |
@@ -140,7 +142,7 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
   <tr>
     <td width="50%">
       <h3>🌍 Public rooms, live</h3>
-      Host privately for your friends, or list your session as a public room with a title, a language and the game that runs. The list shows a <b>live picture</b> of every game and <b>who plays</b>, with their pictures. Search it by title, game, host or language, in the app or in a browser, and join.
+      Host privately for your friends, or list your session as a public room with a title, a language and the game that runs. The list shows a <b>live picture</b> of every game and <b>who plays</b>, with their pictures. Search it by title, game, host or language, in the app or <a href="https://crypto90.github.io/PSRemotePlayTogether/">in a browser</a>, and join.
     </td>
     <td width="50%">
       <h3>🚦 You decide who gets in</h3>
@@ -224,6 +226,8 @@ A friend who does not want to install anything can play from a browser.
 1. Host: copy the **Web browser** invite (on the **Host…** page, and during a game in the stream menu → **Copy invite**). It is a link.
 2. Friend: open the link in a current **Chrome, Edge, Firefox or Safari**, enter a name, press a button on the controller so that the browser sees it, and press **Join**.
 
+The page is **[crypto90.github.io/PSRemotePlayTogether](https://crypto90.github.io/PSRemotePlayTogether/)**. Opened without an invite, it shows the public rooms, and an invite can be pasted there too.
+
 The browser gets the same picture and sound and its controller plays along like everybody else's. Voice chat, text chat, webcams (the friend's own too), a player picture and rumble work as well. Without a controller the keyboard can stand in, and a phone or tablet gets controls on the screen.
 
 On the game picture it looks and works like the app: the same display of players, webcams and controllers with the same presets and the same way of arranging them, the same stream menu, chat and options. The stream menu opens with **Ctrl+O** (**⌘O** on a Mac), with **L1+R1+L3+R3** on the controller, or with the **Menu** button that shows when the mouse moves.
@@ -242,7 +246,7 @@ It can be switched off on the **Host…** page (**Browsers allowed**), and the p
 
 A session can be found by people you have never sent an invite to. Choose **Public** on the **Host…** page and give the room a title and a language; the game that runs on the console is shown by itself, with its picture from Sony's public catalog.
 
-- **Finding one:** **Join… → Public rooms** in the app, or the page for web browsers without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms where the host lets each player in; the app also sorts them by players, free places or age. Every room shows the game, who plays and how many, who controls (everybody at once, one at a time, or only the host), and whether browsers are welcome.
+- **Finding one:** **Join… → Public rooms** in the app, or [the page for web browsers](https://crypto90.github.io/PSRemotePlayTogether/) without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms where the host lets each player in; the app also sorts them by players, free places or age. Every room shows the game, who plays and how many, who controls (everybody at once, one at a time, or only the host), and whether browsers are welcome.
 - **Live:** every 45 seconds the host's app sends a small picture of the game, so the list shows what is happening right now, with the game's cover in the corner. **Live picture in the list** on the Host page switches it off; in streamer mode it is always off.
 - **Who plays:** each player as a small circle, with the picture they chose in the app, or the first letter of their name. The list never gets the other players' names.
 - **Getting in** works like with an invite: straight to the host, nothing passes through the list. If the host lets each player in, you wait at the door until they do.
