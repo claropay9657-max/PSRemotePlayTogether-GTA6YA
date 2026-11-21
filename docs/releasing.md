@@ -116,6 +116,13 @@ change of the protocol version reaches browser guests as soon as it is on
 browser tries to join. So publish the release that brings such a change soon
 after it is merged, or keep the change on a branch until then.
 
+**Servers first.** The page and the app read the list of public rooms at
+`https://gamernova.net/api/psrpt_rooms.php` (next to the meeting point, see
+[server/rooms](../server/rooms/README.md)). Put that file on the server before
+the page that reads it reaches `main`, or before the release that brings it:
+otherwise the page and the app say the list could not be read, and nobody can
+host a public room. The same goes for any later change to the list's requests.
+
 This needs Pages switched on once: repository **Settings → Pages → Build and
 deployment → Source: GitHub Actions**.
 

@@ -137,6 +137,16 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
       Host and friends find each other through a small meeting point and then connect directly. Picture, sound and controllers never pass through a server.
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <h3>🌍 Public rooms</h3>
+      Host privately for your friends, or list your session as a public room with a title, a language and the game that runs. Others search the list by title, game, host or language, in the app or in a browser, see who controls and how many play, and join.
+    </td>
+    <td width="50%">
+      <h3>🚦 You decide who gets in</h3>
+      Let each player in yourself, let newcomers watch until you let them play, or open the door to everybody. Close the room to newcomers at any time, and remove a player, for good if you like.
+    </td>
+  </tr>
 </table>
 
 ---
@@ -145,14 +155,20 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
 
 ![The host registers the console, shares it and sends the invite; guests paste the invite and join](docs/images/quick-start.png)
 
-### Share your console
+### Host a session
 
 1. Register your console as in any Remote Play app: your PSN account and the PIN from the console's Remote Play settings.
-2. Switch on **Share your console** and choose how the controller is shared (under **Profile & settings…**).
-3. Press **Copy invite**, choose who it is for (a friend over the internet, in the same network, or without the app), and send it.
-4. Press **Play**. Friends can join as long as you are connected.
+2. Press **Host…** on the start page. Everything about the session is set there, before it starts:
+   - **Private**, only friends you send your invite to, or **Public**, listed for everybody (see [Public rooms](#public-rooms)). A public room also gets a title, a language, and who gets in: you let each player in, everybody but watching until you let them play, or everybody playing at once.
+   - How many friends, and who controls: all at once, one at a time, or only you while the others watch.
+   - Whether friends without the app may join from a web browser, and whether guests may send the console to sleep when they leave.
+   - **I play on the TV** if you watch the console on the TV and the computer should only send your controller and feed the overlays. Friends still get picture and sound.
+3. Copy an invite on the same page and send it: for a friend over the internet, in the same network, over IPv6, or a link for a web browser. A public room has an invite of its own there, to send friends straight to it.
+4. Press **Start** (**Wake up & start** while the console sleeps). Friends can join as long as you are connected.
 
-When a guest leaves, the console stays as it is: only you send it to sleep. If you want guests to be able to do that too, for example a friend who plays on while you are away, switch on **Guests may put the console to sleep when they leave** on the same page.
+**Play** on the console itself is for playing on your own: nobody can join that session. The app remembers which of the two you chose last, for when it connects at start.
+
+When a guest leaves, the console stays as it is: only you send it to sleep, unless you switched on **Guests may put the console to sleep when they leave**, for example for a friend who plays on while you are away.
 
 <div align="center">
   <img src="docs/images/screenshots/start-page.jpg" alt="The start page: your console, joining a friend, sharing your console and Controller only" width="820">
@@ -181,7 +197,7 @@ For this the app asks a STUN server for your address on the internet (Google's b
 
 ### Join a friend
 
-Paste the invite on the start page and press **Join**. Tick **With my controller only** if you sit in front of the same TV and need no picture or sound. Or from the command line:
+Press **Join…** on the start page, paste the invite and press **Join**. Tick **With my controller only** if you sit in front of the same TV and need no picture or sound. If the host lets each player in, you see "Waiting for the host to let you in…" until they do. Or from the command line:
 
 ```bash
 PSRemotePlayTogether --name Alex join "psrpt://host.example.org:9410/…"
@@ -193,7 +209,7 @@ PSRemotePlayTogether --name Alex join "psrpt://host.example.org:9410/…"
 
 A friend who does not want to install anything can play from a browser.
 
-1. Host: copy the **Web browser** invite (start page or **Play Together**, and during a game the stream menu → **Copy invite**). It is a link.
+1. Host: copy the **Web browser** invite (on the **Host…** page, and during a game in the stream menu → **Copy invite**). It is a link.
 2. Friend: open the link in a current **Chrome, Edge, Firefox or Safari**, enter a name, press a button on the controller so that the browser sees it, and press **Join**.
 
 The browser gets the same picture and sound and its controller plays along like everybody else's. Voice chat, text chat, webcams (the friend's own too), a player picture and rumble work as well. Without a controller the keyboard can stand in, and a phone or tablet gets controls on the screen.
@@ -204,7 +220,18 @@ The connection goes straight from the browser to the host's computer (WebRTC), s
 
 Where a browser falls short: the game's haptics arrive as plain rumble, and it adds a little delay compared to the app. The touchpad, the motion sensors, adaptive triggers and the light bar need a DualSense that the browser opens directly (Chrome and Edge only, **DualSense…** in the stream menu; this part is new and little tested). A PS5 streams H.265 by default, which Chrome, Edge and Safari play on most computers; if a friend's browser cannot, the host can switch to H.264 under **Settings → Video**. Like the app without a forwarded port, it does not get through every pair of routers (see above). A browser cannot use the sharing port; if a friend's browser cannot connect, the host forwards a second one for browsers, **UDP port 9411** (one above the sharing port, to be changed under Play Together).
 
-It can be switched off under **Play Together** (**Friends can join from a web browser**), and the page is a folder of static files (`web/`) that you can host yourself. More in [docs/web-guests.md](docs/web-guests.md).
+It can be switched off on the **Host…** page (**Friends without the app can join from a web browser**), and the page is a folder of static files (`web/`) that you can host yourself. More in [docs/web-guests.md](docs/web-guests.md).
+
+### Public rooms
+
+A session can be found by people you have never sent an invite to. Choose **Public** on the **Host…** page and give the room a title and a language; the game that runs on the console is shown by itself.
+
+- **Finding one:** **Join… → Public rooms** in the app, or the page for web browsers without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms where the host lets each player in; the app also sorts them by players, free places or age. Every room shows the game, how many play, who controls (everybody at once, one at a time, or only the host), and whether browsers are welcome.
+- **Getting in** works like with an invite: straight to the host, nothing passes through the list. If the host lets each player in, you wait at the door until they do.
+- **As the host** you see who knocks, as a note on the game picture and in the stream menu, and press **Let in** or **No**. In the stream menu the room can be **Closed to newcomers** (it leaves the list; players who were in before can come back), and a click on a player removes them, with **Remove and block** for the rest of the session.
+- **What the list shows about you:** the room's title and language, the game, your name in the app, the number of players, and an invite: the room has a key of its own, new for every public session, and your private invites stay private. The invite names no address, but players connect to your computer directly, as with every invite, and so learn its internet address. In a public room that can be anybody who reads the list.
+
+The list is one small PHP file next to the meeting point, which you can host yourself: [server/rooms](server/rooms). **Play Together → Network → Public rooms** takes the address of your own, and **off** switches public rooms off.
 
 ### Your controller
 
@@ -212,7 +239,7 @@ Connect your controller **to your computer**, by Bluetooth or cable, not to the 
 
 ### While you play: the stream menu
 
-Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. It has the players, your microphone, the others' voices and your webcam, who may control, the invite, and the overlays. The host can click a player to mute them for everybody, let them only watch, or remove them.
+Press **Ctrl+O** (**⌘O** on macOS), or hold **L1 + R1 + L3 + R3** on the controller, to open the stream menu on top of the game. It has the players, your microphone, the others' voices and your webcam, who may control, the invite, and the overlays. The host can click a player to mute them for everybody, let them only watch, or remove them (with **Remove and block**, for the rest of the session), answer who wants to join, and close the session to newcomers.
 
 <div align="center">
   <img src="docs/images/screenshots/stream-menu.jpg" alt="The stream menu on top of the game" width="820">
@@ -325,6 +352,9 @@ The IP addresses of the computers that ask it, like any web server. It cannot re
 
 **Is the invite safe to share?**
 It is the key to your session, so give it only to the people who should join. Everything between host and guests is encrypted with it, and **Make a new invite** under Play Together makes old ones stop working.
+
+**Can strangers get into my session?**
+Only into a public room, and only as you set it up: with **I let each player in**, nobody sees or plays anything before you let them in. Your private invites never appear on the list; a public room has a key of its own, which is new for every public session. **Closed to newcomers** in the stream menu takes the room off the list.
 
 **Nothing shows on the game picture on Windows or Linux?**
 The display on the game picture needs the Vulkan renderer there, which is the default: **Settings → Video → Renderer**.

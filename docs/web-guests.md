@@ -38,6 +38,8 @@ server only helps the two find each other.
 | The display on the game picture, the stream menu, chat, options | the app's, see below |
 | Controller only (no picture and sound) | yes, like in the app |
 | Putting the console to sleep when leaving | asked like in the app, where the host has allowed it for guests |
+| Public rooms | the list, searched and filtered like in the app, on the page opened without an invite |
+| Waiting at the door | yes, when the host lets each player in |
 | Touchpad, motion sensors, adaptive triggers, light bar | with a DualSense the browser opens directly (WebHID: Chrome and Edge); new and little tested |
 | A host's forwarded port | a second one, for browsers (see "Routers" below) |
 
@@ -204,6 +206,7 @@ nothing to install.
 | `js/hud.js`, `js/presets.js` | the display on the game picture and its presets |
 | `js/menu.js` | the stream menu |
 | `js/options.js` | the options of the display |
+| `js/rooms.js` | the list of public rooms |
 | `js/app.js` | the page itself, and the chat |
 | `css/game.css` | how everything on the game picture looks |
 | `pad/` | the controller pictures of the display |
@@ -215,6 +218,31 @@ It is published to GitHub Pages by `.github/workflows/pages.yml` whenever
 with an older app is told to update; a page left open across an update of the
 host says to reload. When the protocol changes, hosts that have not updated
 yet cannot take browser guests until they do.
+
+## Public rooms
+
+Opened without an invite, the page shows the list of public rooms
+([server/rooms](../server/rooms)), the same list as the app's **Join → Public
+rooms**, read again every 15 seconds while it is open: search by title, game,
+host or language, a language to choose, and switches to hide full rooms and
+rooms where the host lets each player in. Rooms that take browsers come first;
+the ones whose host has switched browsers off ("App only"), that are full, or
+that speak another version of the protocol are listed but cannot be joined.
+
+**Join** on a room works like opening a link: the page takes the room's
+invite, which names no address, and finds the host through the meeting point.
+The list never sees anything of the session. A host who lets each player in
+answers the browser's hello with "wait" instead of "welcome"; the page then
+says "Waiting for the host to let you in…" and keeps waiting for up to two
+minutes. Turned away, or at a room closed to newcomers, it says so and does
+not try again by itself.
+
+The list's address is `DEFAULT_ROOMS_URL` in `js/rooms.js`. Opened from
+`127.0.0.1` or `localhost`, the page also takes `?rooms=` and `?meet=` from its
+address, for trying things out with a list and a meeting point on the same
+machine (see "Trying it on one machine" below). A cover in the list can only be
+a picture on Sony's image server, which is also all the page's
+Content-Security-Policy allows besides its own.
 
 ## Routers
 
@@ -252,7 +280,8 @@ build/coplay/coplay-sim host sample.h264 --voice --chat \
   --meet http://127.0.0.1:8765/psrpt_meet.php --stun off --web http://127.0.0.1:8765/web/
 ```
 
-It prints a link for a browser on the same machine. A meeting point without
+It prints a link for a browser on the same machine. For a public room on the
+page's list, see [server/rooms](../server/rooms/README.md#trying-it-on-one-machine). A meeting point without
 HTTPS is only accepted by the page when the page itself is opened from
 `127.0.0.1` or `localhost`. There the page also puts `window.psrpt` into the
 browser's console for a look inside (the session, the decoder's counters).
