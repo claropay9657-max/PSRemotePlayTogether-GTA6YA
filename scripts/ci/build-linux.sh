@@ -23,6 +23,14 @@ fi
 ARCH="$(uname -m)"
 echo "== Building PSRemotePlayTogether $VERSION for linux-$ARCH"
 
+# Going live without a hardware encoder: Cisco's OpenH264, where the image's distribution
+# has it (scripts/build-ffmpeg.sh uses it when pkg-config finds it)
+if command -v apt-get >/dev/null; then
+	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libopenh264-dev >/dev/null 2>&1 \
+		|| { apt-get update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libopenh264-dev >/dev/null 2>&1; } \
+		|| echo "note: libopenh264-dev is not available, going live will need a hardware encoder"
+fi
+
 # No FUSE in a CI container: let linuxdeploy and its plugins unpack themselves instead
 export APPIMAGE_EXTRACT_AND_RUN=1
 # build-appimage.sh expects this file name whatever the desktop file calls the app

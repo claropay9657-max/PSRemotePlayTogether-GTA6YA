@@ -2612,6 +2612,41 @@ TEST(net_media_flags_reach_everyone)
 	CHECK(WaitFor([&] { return media_of(b, slot_a) == kMediaOwnMask; }, 2000));
 }
 
+TEST(net_live_flags_reach_everyone)
+{
+	// Who streams live, and who asks to be left out of streams: everybody sees both
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll | kWantVoice | kWantCams);
+	TestGuest b(h.MakeInvite(), "B", kWantAll | kWantVoice | kWantCams);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	uint8_t slot_a = a.client->Welcome().slot;
+	uint8_t slot_b = b.client->Welcome().slot;
+
+	auto media_of = [](TestGuest &g, uint8_t slot) -> int {
+		SessionState s = g.LastState();
+		for(const Participant &p : s.participants)
+		{
+			if(p.slot == slot)
+				return p.media;
+		}
+		return -1;
+	};
+
+	a.client->SetMedia(kMediaVoice | kMediaLive);
+	b.client->SetMedia(kMediaNoStreams);
+	CHECK(WaitFor([&] { return media_of(b, slot_a) == (kMediaVoice | kMediaLive); }, 2000));
+	CHECK(WaitFor([&] { return media_of(a, slot_b) == kMediaNoStreams; }, 2000));
+
+	h.host->SetLocalMedia(kMediaLive | kMediaNoStreams);
+	CHECK(WaitFor([&] { return media_of(a, 0) == (kMediaLive | kMediaNoStreams) && media_of(b, 0) == (kMediaLive | kMediaNoStreams); }, 2000));
+
+	// Stopping is seen as well
+	a.client->SetMedia(kMediaVoice);
+	CHECK(WaitFor([&] { return media_of(b, slot_a) == kMediaVoice; }, 2000));
+}
+
 TEST(net_voice_reaches_everyone_but_the_speaker)
 {
 	TestHost h;

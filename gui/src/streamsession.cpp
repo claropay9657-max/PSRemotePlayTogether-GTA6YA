@@ -3,6 +3,7 @@
 #include <streamsession.h>
 #include <settings.h>
 #include <controllermanager.h>
+#include <livestream.h>
 
 #include <chiaki/base64.h>
 #include <chiaki/streamconnection.h>
@@ -377,6 +378,7 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 		this->coplay_avatar = avatar_file.read(64 * 1024);
 	this->coplay_voice_enabled = settings->GetCoPlayVoiceEnabled();
 	this->coplay_voice_start_muted = settings->GetCoPlayVoiceStartMuted();
+	this->coplay_leave_out_of_streams = settings->GetValue(QStringLiteral("live/leave_me_out"), false).toBool();
 	this->coplay_voice_volume = settings->GetCoPlayVoiceVolume();
 	this->coplay_camera_device = settings->GetCoPlayCameraDevice();
 	this->coplay_camera_quality = settings->GetCoPlayCameraQuality();
@@ -1532,6 +1534,8 @@ void StreamSession::SendFeedbackState()
 
 void StreamSession::InitAudio(unsigned int channels, unsigned int rate)
 {
+	audio_out_channels = channels;
+	audio_out_rate = rate;
 	StopAudioOutDrainThread();
 	allow_unmute = true;
 	if(start_mic_unmuted)
@@ -2112,6 +2116,8 @@ void StreamSession::StopSdeckHaptics()
 
 void StreamSession::PushAudioFrame(int16_t *og_buf, size_t samples_count)
 {
+	// A live stream gets the game sound whatever the volume here
+	live::Engine::Get().PushGameAudio(og_buf, samples_count, static_cast<int>(audio_out_channels), static_cast<int>(audio_out_rate));
 	if(!audio_out || !audio_volume)
 		return;
 

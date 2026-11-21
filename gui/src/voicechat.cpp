@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
 #include "voicechat.h"
+#include "livestream.h"
 
 #include <chiaki/log.h>
 
@@ -214,6 +215,9 @@ void VoiceChat::ProcessFrame(int16_t *frame)
 	own_sent_ms = now;
 	if(send_callback)
 		send_callback(packet, static_cast<size_t>(size));
+	// What the others hear of us goes into our own live stream too, if wanted
+	if(stream_own)
+		live::Engine::Get().PushOwnVoice(frame, kFrameSamples);
 
 	QMutexLocker locker(&own_mutex);
 	if(!tap_include_own)
@@ -399,8 +403,14 @@ void VoiceChat::Mix(int16_t *out, size_t count)
 {
 	QMutexLocker locker(&play_mutex);
 	mix_buf.assign(count, 0);
-	for(Player &p : players)
+	// Our live stream hears what we hear, without whoever asked to be left out of streams
+	const bool to_stream = stream_voices;
+	const uint32_t excluded = stream_excluded;
+	if(to_stream)
+		stream_buf.assign(count, 0);
+	for(int slot = 0; slot < kMaxPlayers; slot++)
 	{
+		Player &p = players[slot];
 		if(!p.decoder)
 			continue;
 		if(!p.playing)
@@ -414,6 +424,11 @@ void VoiceChat::Mix(int16_t *out, size_t count)
 		{
 			for(size_t i = 0; i < take; i++)
 				mix_buf[i] += p.ring[(p.read_pos + i) % p.ring.size()];
+			if(to_stream && !(excluded & (1u << slot)))
+			{
+				for(size_t i = 0; i < take; i++)
+					stream_buf[i] += p.ring[(p.read_pos + i) % p.ring.size()];
+			}
 		}
 		p.read_pos = (p.read_pos + take) % p.ring.size();
 		p.fill -= take;
@@ -422,6 +437,14 @@ void VoiceChat::Mix(int16_t *out, size_t count)
 	}
 
 	auto clip = [](int32_t v) { return static_cast<int16_t>(std::clamp(v, -32768, 32767)); };
+
+	if(to_stream)
+	{
+		stream_out.resize(count);
+		for(size_t i = 0; i < count; i++)
+			stream_out[i] = clip(stream_buf[i]);
+		live::Engine::Get().PushVoices(stream_out.data(), count);
+	}
 
 	if(tap_enabled)
 	{
@@ -477,6 +500,12 @@ void VoiceChat::SetTap(bool enabled, bool include_own)
 		if(!tap_include_own)
 			own_fill = 0;
 	}
+}
+
+void VoiceChat::SetStreamTap(bool voices, bool own)
+{
+	stream_voices = voices;
+	stream_own = own;
 }
 
 QByteArray VoiceChat::ReadTap()

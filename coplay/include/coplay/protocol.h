@@ -174,8 +174,19 @@ enum MediaFlags : uint8_t
 	kMediaCamera = 1 << 2,   // webcam is on
 	/** Set by the host only: this player's microphone is not passed on to the others. */
 	kMediaSilenced = 1 << 3,
+	/**
+	 * This player streams the session live (to Twitch, say) right now. Everybody sees it
+	 * next to the name. Versions that do not know it ignore it, and hosts that do not
+	 * know it leave it out of the session state.
+	 */
+	kMediaLive = 1 << 4,
+	/**
+	 * This player asks to be left out of everybody else's live streams: their voice,
+	 * webcam and name do not go into them. Ignored like kMediaLive.
+	 */
+	kMediaNoStreams = 1 << 5,
 	/** What a player may say about itself. */
-	kMediaOwnMask = kMediaVoice | kMediaMuted | kMediaCamera
+	kMediaOwnMask = kMediaVoice | kMediaMuted | kMediaCamera | kMediaLive | kMediaNoStreams
 };
 
 /**

@@ -63,6 +63,10 @@ export const MEDIA_VOICE = 1 << 0;
 export const MEDIA_MUTED = 1 << 1;
 export const MEDIA_CAMERA = 1 << 2;
 export const MEDIA_SILENCED = 1 << 3;
+/** Streams the session live (Twitch, say) right now; shown next to the name. */
+export const MEDIA_LIVE = 1 << 4;
+/** Asks to be left out of everybody else's live streams (voice, webcam, name). */
+export const MEDIA_NO_STREAMS = 1 << 5;
 
 export const PARTICIPANT_HOST = 1 << 0;
 export const PARTICIPANT_CAN_CONTROL = 1 << 1;

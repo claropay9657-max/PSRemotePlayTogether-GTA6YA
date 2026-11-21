@@ -485,6 +485,32 @@ FocusScope {
                     tone: "bad"
                     text: qsTr("%1 dropped").arg(Chiaki.window.droppedFrames)
                 }
+
+                // Going live: on air (red), on its way (amber), or why it stopped
+                C.Badge {
+                    readonly property var stats: Chiaki.live.stats
+                    visible: Chiaki.live.live || Chiaki.live.state === "failed"
+                    dot: true
+                    tone: Chiaki.live.state === "live" ? "bad" : "wait"
+                    text: {
+                        switch (Chiaki.live.state) {
+                        case "live": {
+                            const secs = stats.seconds || 0;
+                            const time = Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0");
+                            let parts = [qsTr("LIVE %1").arg(time), qsTr("%1 Mbps").arg(((stats.kbps || 0) / 1000).toFixed(1))];
+                            if (stats.dropped > 0)
+                                parts.push(qsTr("%1 left out").arg(stats.dropped));
+                            return parts.join(" · ");
+                        }
+                        case "connecting":
+                            return qsTr("Going live…");
+                        case "reconnecting":
+                            return qsTr("Live: connecting again…");
+                        default:
+                            return qsTr("Not live: %1").arg(stats.error || qsTr("the stream stopped"));
+                        }
+                    }
+                }
             }
         }
 
@@ -592,6 +618,59 @@ FocusScope {
                     }
                 }
             }
+
+            // Going live from here, to Twitch or another service (set up under Settings → Live streaming)
+            C.PillButton {
+                id: liveButton
+                visible: !!streamMenu.session
+                kind: Chiaki.live.live ? "danger" : "ghost"
+                iconName: "broadcast"
+                font.pixelSize: 14
+                firstInFocusChain: true
+                lastInFocusChain: true
+                text: Chiaki.live.live ? qsTr("Stop live") : qsTr("Go live")
+                Accessible.description: qsTr("Streams what you see and hear to %1").arg(Chiaki.live.server)
+                onClicked: {
+                    if (Chiaki.live.live) {
+                        Chiaki.live.stop();
+                        return;
+                    }
+                    const problem = Chiaki.live.start();
+                    liveProblem.text = problem;
+                    liveProblemTimer.restart();
+                }
+            }
+        }
+    }
+
+    // What is missing for going live, under the buttons for a moment
+    Rectangle {
+        visible: liveProblem.text.length > 0
+        x: topBar.x + topBar.width - width
+        y: topBar.y + topBar.height + 8
+        width: Math.min(liveProblem.implicitWidth + 28, topBar.width)
+        height: liveProblem.implicitHeight + 16
+        radius: 12
+        color: Qt.rgba(14 / 255, 11 / 255, 30 / 255, 0.92)
+        border.width: 1
+        border.color: Qt.rgba(0.94, 0.27, 0.43, 0.55)
+        opacity: streamMenu.reveal
+
+        Text {
+            id: liveProblem
+            x: 14
+            y: 8
+            width: parent.width - 28
+            wrapMode: Text.WordWrap
+            font.pixelSize: 13
+            font.weight: Font.Bold
+            color: "#ffc2d1"
+        }
+
+        Timer {
+            id: liveProblemTimer
+            interval: 8000
+            onTriggered: liveProblem.text = ""
         }
     }
 

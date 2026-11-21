@@ -234,6 +234,13 @@
   color: var(--hud-red);
 }
 
+.hud-tag-live {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #e91916;
+  color: #fff;
+}
+
 .hud-battery {
   display: flex;
   align-items: center;
@@ -1282,6 +1289,10 @@
   letter-spacing: 0.6px;
   line-height: 17px;
   white-space: nowrap;
+}
+
+.ptag.live {
+  background: #e91916;
 }
 
 .ptag.host {

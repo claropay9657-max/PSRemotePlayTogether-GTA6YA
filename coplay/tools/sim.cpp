@@ -78,6 +78,8 @@ static void Usage()
 		"      --guests-may-sleep  a guest that leaves may ask for the console to be put to sleep;\n"
 		"                          the host then stops, as a real one would with its console asleep\n"
 		"      --cam A.jpg,B.jpg   the host has a webcam: these pictures in turn, 8 per second\n"
+		"      --no-streams        the host asks to be left out of the others' live streams\n"
+		"                          (voice, webcam and name)\n"
 		"      --meet URL|default  let friends in without a forwarded port: leave a note at this\n"
 		"                          meeting point (see server/meeting-point). Needs curl.\n"
 		"      --stun HOST[:PORT]  ask this STUN server for the session's address on the internet\n"
@@ -147,6 +149,7 @@ struct Options
 	bool voice = false;
 	bool chat = false;
 	bool guests_may_sleep = false;
+	bool no_streams = false;
 	std::string room_title, rooms, lang = "en", game = "Simulator", policy = "open", title_id, cover, preview, face;
 	int admit_after = 3;
 	bool refuse = false;
@@ -194,6 +197,7 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--voice") o.voice = true;
 		else if(a == "--chat") o.chat = true;
 		else if(a == "--guests-may-sleep") o.guests_may_sleep = true;
+		else if(a == "--no-streams") o.no_streams = true;
 		else if(a == "--public") { if(!value(o.room_title)) return false; }
 		else if(a == "--rooms") { if(!value(o.rooms)) return false; }
 		else if(a == "--lang") { if(!value(o.lang)) return false; }
@@ -716,6 +720,8 @@ static int RunHost(const Options &o)
 	if(o.voice)
 		std::fprintf(stderr, "--voice: built without Opus, the host stays silent\n");
 #endif
+	if(o.no_streams)
+		media |= kMediaNoStreams;
 	host.SetLocalMedia(media);
 	(void)voice_sample;
 
@@ -1113,9 +1119,10 @@ static int RunHost(const Options &o)
 			std::lock_guard<std::mutex> lock(print_mutex);
 			std::printf("[host] %zu guest(s):", guests.size());
 			for(auto &g : guests)
-				std::printf("  #%u %s (%s%s%s%s%s, %u ms)", g.slot, g.name.c_str(), (g.want & kWantVideo) ? "video" : "controller only",
+				std::printf("  #%u %s (%s%s%s%s%s%s%s, %u ms)", g.slot, g.name.c_str(), (g.want & kWantVideo) ? "video" : "controller only",
 					g.in_control ? ", in control" : "", (g.media & kMediaVoice) ? ", voice" : "",
-					(g.media & kMediaMuted) ? " muted" : "", (g.media & kMediaCamera) ? ", webcam" : "", g.rtt_ms);
+					(g.media & kMediaMuted) ? " muted" : "", (g.media & kMediaCamera) ? ", webcam" : "",
+					(g.media & kMediaLive) ? ", LIVE" : "", (g.media & kMediaNoStreams) ? ", not in streams" : "", g.rtt_ms);
 			std::printf("\n");
 			std::fflush(stdout);
 		}

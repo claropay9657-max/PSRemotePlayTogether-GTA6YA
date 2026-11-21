@@ -1,4 +1,5 @@
 #include "qmlbackend.h"
+#include "livecontroller.h"
 
 #include <coplay/invite.h>
 #include "qmlsettings.h"
@@ -401,6 +402,9 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     qmlRegisterUncreatableType<QmlSettings>(uri, 1, 0, "ChiakiSettings", {});
     qmlRegisterUncreatableType<StreamSession>(uri, 1, 0, "ChiakiSession", {});
 
+    live_controller = new LiveController(settings, this);
+    connect(this, &QmlBackend::sessionChanged, live_controller, &LiveController::SetSession);
+
     QObject *frame_obj = new QObject();
     frame_thread = new QThread(frame_obj);
     frame_thread->setObjectName("frame");
@@ -619,6 +623,7 @@ bool QmlBackend::prepareFrameForPresentation(ChiakiFfmpegFrame &frame, bool use_
 
 QmlBackend::~QmlBackend()
 {
+    live_controller->Shutdown();
     teardownSession();
 #ifdef CHIAKI_HAVE_WEBENGINE
     if(request_interceptor)

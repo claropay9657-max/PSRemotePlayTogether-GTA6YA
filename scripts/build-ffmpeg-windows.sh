@@ -19,6 +19,10 @@ cd .. || exit 1
 
 git clone https://github.com/FFmpeg/FFmpeg.git ffmpeg --depth 1 -b $TAG && cd ffmpeg || exit 1
 git apply ${SCRIPT_DIR}/flatpak/0001-vulkan-ignore-frames-without-hw-context.patch || exit 1
-./configure --disable-all --enable-shared --enable-ffmpeg --enable-avformat --enable-avcodec --enable-decoder=h264 --enable-decoder=hevc --enable-decoder=h264_cuvid --enable-decoder=hevc_cuvid --enable-hwaccel=h264_vulkan --enable-hwaccel=hevc_vulkan --enable-hwaccel=h264_d3d11va --enable-hwaccel=hevc_d3d11va --enable-hwaccel=h264_nvdec --enable-hwaccel=hevc_nvdec --enable-cuvid --enable-nvdec --enable-ffnvcodec --prefix=/mingw64 "$@" || exit 1
+./configure --disable-all --enable-shared --enable-ffmpeg --enable-avformat --enable-avcodec --enable-decoder=h264 --enable-decoder=hevc --enable-decoder=h264_cuvid --enable-decoder=hevc_cuvid --enable-hwaccel=h264_vulkan --enable-hwaccel=hevc_vulkan --enable-hwaccel=h264_d3d11va --enable-hwaccel=hevc_d3d11va --enable-hwaccel=h264_nvdec --enable-hwaccel=hevc_nvdec --enable-cuvid --enable-nvdec --enable-ffnvcodec \
+    --enable-encoder=aac --enable-nvenc --enable-encoder=h264_nvenc --enable-amf --enable-encoder=h264_amf \
+    --enable-mediafoundation --enable-encoder=h264_mf --enable-muxer=flv --enable-schannel \
+    --enable-protocol=rtmp --enable-protocol=rtmps --enable-protocol=tcp --enable-protocol=tls --enable-protocol=file \
+    --prefix=/mingw64 "$@" || exit 1
 make -j4 || exit 1
 make install || exit 1

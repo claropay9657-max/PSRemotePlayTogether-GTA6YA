@@ -151,6 +151,16 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
   </tr>
   <tr>
     <td width="50%">
+      <h3>🔴 Go live on Twitch, without OBS</h3>
+      Press <b>Go live</b> in the stream menu and what you see and hear goes to Twitch, straight from your computer: the game, the players and webcams on top of it, the game sound and everybody's voices. Host and guests each stream on their own; everybody sees who is live.
+    </td>
+    <td width="50%">
+      <h3>🙈 Left out if you like</h3>
+      Anybody can ask to be left out of the others' streams: their voice, webcam and name stay out. The stream key lives in your system's keychain, never in a settings file.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
       <h3>🎨 A new look</h3>
       Two doors on the start page, <b>Host</b> and <b>Join</b>, each one page from start to finish. In the game, Play Together sits in a panel at the side. Everything works with a controller as well as with a mouse.
     </td>
@@ -280,6 +290,18 @@ Everything is in one window: **Playing** (general, picture, stream quality, soun
 </div>
 
 ---
+
+## 🔴 Going live from the app
+
+Every player, host or guest, can stream the session to Twitch on their own, without OBS. The stream goes straight from your computer to Twitch; nothing passes through a server of ours.
+
+1. **Settings → Live streaming**: choose **Twitch** and paste your stream key (Twitch: Creator Dashboard → Settings → Stream). **Other service** takes any RTMP or RTMPS address instead, for YouTube, Kick or a server of your own.
+2. Pick the picture (720p or 1080p, 30 or 60 frames a second) and what goes in: the display on the game picture, the game sound, the others' voices, your microphone, each with its own volume.
+3. In the game, open the stream menu and press **Go live**. The top of the menu then shows how long you are live and how fast the stream goes out; **Stop live** ends it.
+
+What viewers see is what you see, without the stream menu, the chat or invites. While you are live, everybody in the session sees a red **LIVE** tag next to your name. Whoever switches on **Leave me out of their streams** is not heard in your stream and appears there as "Player N", without picture or webcam.
+
+The stream key is kept in the macOS keychain, the Windows Credential Manager or the system keyring on Linux, never in the settings file. More in [docs/live-streaming.md](docs/live-streaming.md).
 
 ## 🎥 Streaming with OBS
 

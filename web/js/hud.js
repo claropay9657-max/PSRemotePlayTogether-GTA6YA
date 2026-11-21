@@ -475,6 +475,7 @@ export class Hud {
       name.hidden = !cfg.names;
       const tags = el('div', 'hud-chip-tags');
       if (p.host) tags.append(el('span', 'hud-tag-host', 'HOST'));
+      if (p.live) tags.append(el('span', 'hud-tag-live', 'LIVE'));
       if (this.shared && !p.canControl) tags.append(el('span', 'hud-tag-watching', 'WATCHING'));
       if (p.muted || p.silenced) tags.append(el('span', 'hud-tag-muted', 'MUTED'));
       const b = battery();

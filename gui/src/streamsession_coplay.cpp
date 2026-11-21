@@ -170,6 +170,9 @@ struct CoPlayState
 	QHash<int, QByteArray> cam_jpeg;
 	QHash<int, quint64> cam_serial;
 	std::atomic<int> cam_serial_total{0};
+	// Going live (livestream.h): we stream right now, and we ask the others to leave us out of theirs
+	bool live = false;
+	bool no_streams = false;
 };
 
 /** What a player's flags say, for the player list. */
@@ -179,6 +182,8 @@ static void MediaToMap(QVariantMap &m, uint8_t media)
 	m["muted"] = (media & coplay::kMediaMuted) != 0;
 	m["camera"] = (media & coplay::kMediaCamera) != 0;
 	m["silenced"] = (media & coplay::kMediaSilenced) != 0;
+	m["live"] = (media & coplay::kMediaLive) != 0;
+	m["noStreams"] = (media & coplay::kMediaNoStreams) != 0;
 }
 
 static QString AvatarId(const coplay::BlobRef &ref)
@@ -359,6 +364,7 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	coplay->voice->SetVolume(connect_info.coplay_voice_volume);
 	coplay->voice_wanted = connect_info.coplay_voice_enabled;
 	coplay->mic_muted = connect_info.coplay_voice_start_muted;
+	coplay->no_streams = connect_info.coplay_leave_out_of_streams;
 	coplay->camera_on_start = connect_info.coplay_camera_on_start;
 	coplay->show_cams = connect_info.coplay_show_cams;
 	coplay->camera_device = connect_info.coplay_camera_device;
@@ -2114,6 +2120,10 @@ void StreamSession::CoPlayUpdateMedia()
 		media |= coplay::kMediaMuted;
 	if(coplay->camera_on)
 		media |= coplay::kMediaCamera;
+	if(coplay->live)
+		media |= coplay::kMediaLive;
+	if(coplay->no_streams)
+		media |= coplay::kMediaNoStreams;
 	if(coplay->client)
 		coplay->client->SetMedia(media);
 	else if(coplay->host)
@@ -2188,6 +2198,7 @@ void StreamSession::CoPlaySyncPlayers(const QVariantList &players)
 		return;
 	bool present[VoiceChat::kMaxPlayers] = {};
 	bool camera[VoiceChat::kMaxPlayers] = {};
+	uint32_t not_in_streams = 0;
 	for(const QVariant &entry : players)
 	{
 		QVariantMap m = entry.toMap();
@@ -2196,7 +2207,11 @@ void StreamSession::CoPlaySyncPlayers(const QVariantList &players)
 			continue;
 		present[slot] = true;
 		camera[slot] = m.value("camera").toBool();
+		if(m.value("noStreams").toBool() && !m.value("you").toBool())
+			not_in_streams |= 1u << slot;
 	}
+	// Whoever asked to be left out of other people's streams is not heard in ours
+	coplay->voice->SetStreamExcluded(not_in_streams);
 	bool cams_changed = false;
 	for(int slot = 0; slot < VoiceChat::kMaxPlayers; slot++)
 	{
@@ -2279,6 +2294,28 @@ QByteArray StreamSession::CoPlayReadOverlayAudio()
 	return coplay ? coplay->voice->ReadTap() : QByteArray();
 }
 
+void StreamSession::CoPlaySetLiveAudio(bool voices, bool own_mic)
+{
+	if(coplay)
+		coplay->voice->SetStreamTap(voices, own_mic);
+}
+
+void StreamSession::CoPlaySetLive(bool live)
+{
+	if(!coplay || coplay->live == live)
+		return;
+	coplay->live = live;
+	CoPlayUpdateMedia();
+}
+
+void StreamSession::CoPlaySetLeaveMeOut(bool leave_out)
+{
+	if(!coplay || coplay->no_streams == leave_out)
+		return;
+	coplay->no_streams = leave_out;
+	CoPlayUpdateMedia();
+}
+
 QVariantMap StreamSession::coplayPadStates()
 {
 	QVariantMap out;
@@ -2313,6 +2350,7 @@ QVariantMap StreamSession::coplayOwnPlayer()
 	if(coplay->own_avatar_ref.Valid())
 		data = std::make_shared<const std::vector<uint8_t>>(coplay->own_avatar);
 	me["avatarUrl"] = AvatarUrl(data);
+	me["live"] = coplay->live;
 	return me;
 }
 

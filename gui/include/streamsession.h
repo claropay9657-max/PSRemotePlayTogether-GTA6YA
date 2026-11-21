@@ -170,6 +170,8 @@ class SdeckHapticsWorker;
 		// Talking to and seeing the other players
 		bool coplay_voice_enabled = true;
 		bool coplay_voice_start_muted = false;
+		/** Asks the others to leave us out of their live streams. */
+		bool coplay_leave_out_of_streams = false;
 		int coplay_voice_volume = 100;
 		QString coplay_camera_device;
 		int coplay_camera_quality = 1;
@@ -370,6 +372,8 @@ class StreamSession : public QObject
 		SDL_AudioDeviceID audio_out;
 		SDL_AudioDeviceID audio_in;
 		size_t audio_out_sample_size;
+		unsigned int audio_out_channels = 2;
+		unsigned int audio_out_rate = 48000;
 		QMutex audio_out_ring_mutex;
 		QByteArray audio_out_ring_buf;
 		size_t audio_out_ring_read_pos = 0;
@@ -626,6 +630,12 @@ class StreamSession : public QObject
 		/** The conversation for the stream overlay; see VoiceChat::SetTap(). */
 		void CoPlaySetOverlayAudio(bool enabled, bool include_own);
 		QByteArray CoPlayReadOverlayAudio();
+		/** Our live stream gets the voices and our own microphone, as asked (both false: neither). */
+		void CoPlaySetLiveAudio(bool voices, bool own_mic);
+		/** We are on air (or not any more): the others see it next to our name. */
+		void CoPlaySetLive(bool live);
+		/** Asks everybody else to leave us out of their live streams (voice, webcam, name). */
+		void CoPlaySetLeaveMeOut(bool leave_out);
 		void CoPlayMicPermissionResult(bool granted);
 		/** Everything the stream overlay shows: players, who is in control, what everybody presses. */
 		QJsonObject OverlayState();

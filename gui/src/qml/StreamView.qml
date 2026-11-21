@@ -583,6 +583,52 @@ Item {
         }
     }
 
+    // Going live (Chiaki.live): the display once more, laid out like the one on screen but
+    // 16:9, and drawn into a picture of the stream's size that the app lays over the game
+    // picture of the stream (QmlMainWindow::captureLiveFrame). It never shows on screen:
+    // `hideSource` keeps it out of this scene and the tiny item below only keeps Qt drawing it.
+    // Qt draws it only with Vulkan (with OpenGL this scene must not change while playing).
+    Loader {
+        id: liveOverlayLoader
+        anchors.fill: parent
+        active: Chiaki.live.live && !!Chiaki.live.values.overlays && !useSeparateMenuWindow
+        sourceComponent: Component {
+            Item {
+                id: liveOverlay
+
+                StreamHud {
+                    id: liveHud
+                    // The same size on screen as the display the player sees, as wide as 16:9 makes it
+                    height: Math.max(360, view.height)
+                    width: Math.round(height * 16 / 9)
+                    view: liveOverlayLoader.parent
+                    broadcast: true
+                    allowed: true
+                    // Never takes a click or a key
+                    enabled: false
+                }
+
+                ShaderEffectSource {
+                    id: liveTexture
+                    sourceItem: liveHud
+                    hideSource: true
+                    live: true
+                    recursive: false
+                    textureSize: Chiaki.live.streamSize
+                    format: ShaderEffectSource.RGBA8
+                    // Drawn as one pixel that nobody can make out; without it Qt would not draw the picture
+                    x: parent.width - 1
+                    y: parent.height - 1
+                    width: 1
+                    height: 1
+                    opacity: 0.01
+                    Component.onCompleted: Chiaki.window.setLiveOverlay(liveTexture)
+                    Component.onDestruction: Chiaki.window.setLiveOverlay(null)
+                }
+            }
+        }
+    }
+
     Loader {
         id: hudWindowLoader
         active: !view.hudInline

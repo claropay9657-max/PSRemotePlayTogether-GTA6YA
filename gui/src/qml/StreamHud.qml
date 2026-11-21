@@ -27,6 +27,12 @@ Item {
     property bool editing: false
     /** The chat window is open: new messages are seen there, no notes needed. */
     property bool chatOpen: false
+    /**
+     * Drawn for our live stream (StreamView's live overlay), never on screen: no chat, no
+     * questions for the host, and whoever asked to be left out of streams appears without
+     * name, picture or webcam.
+     */
+    property bool broadcast: false
 
     readonly property var cfg: Chiaki.hud.values
     readonly property var session: Chiaki.session
@@ -41,9 +47,13 @@ Item {
         if (!session)
             return [];
         let list = session.coplayPlayers;
-        if (list.length > 0)
+        if (list.length === 0)
+            return (cfg.solo || editing) ? [session.coplayOwnPlayer()] : [];
+        if (!broadcast)
             return list;
-        return (cfg.solo || editing) ? [session.coplayOwnPlayer()] : [];
+        return list.map((p) => (p.noStreams && !p.you)
+            ? Object.assign({}, p, { name: qsTr("Player %1").arg(p.slot + 1), avatarUrl: "", camera: false })
+            : p);
     }
     readonly property var camPlayers: players.filter((p) => !!p.camera)
     readonly property bool wantPads: editing || ((cfg.pads_show || cfg.combined_show) && players.length > 0)
@@ -83,8 +93,9 @@ Item {
 
     // A guest only gets the others' inputs when it asks for them
     readonly property bool needInputs: wantPads || Chiaki.settings.overlayEnabled
-    onNeedInputsChanged: if (session) session.coplaySetWantInputs(needInputs)
-    onSessionChanged: if (session) session.coplaySetWantInputs(needInputs)
+    // The display on screen asks for them; the stream's copy goes by what that one gets
+    onNeedInputsChanged: if (session && !broadcast) session.coplaySetWantInputs(needInputs)
+    onSessionChanged: if (session && !broadcast) session.coplaySetWantInputs(needInputs)
 
     Shortcut {
         enabled: hud.editing
@@ -352,6 +363,25 @@ Item {
                                     font.pixelSize: 9
                                     font.bold: true
                                     text: qsTr("HOST")
+                                }
+
+                                // Streams this session live right now (Twitch, say)
+                                Rectangle {
+                                    visible: !!chip.modelData.live
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: liveText.implicitWidth + 8
+                                    height: 12
+                                    radius: 3
+                                    color: "#e91916"
+
+                                    Text {
+                                        id: liveText
+                                        anchors.centerIn: parent
+                                        color: "white"
+                                        font.pixelSize: 8
+                                        font.bold: true
+                                        text: qsTr("LIVE")
+                                    }
                                 }
 
                                 Text {
@@ -673,6 +703,8 @@ Item {
     Connections {
         target: hud.session
         function onCoplayKnock(name) {
+            if (hud.broadcast)
+                return;
             toasts.append({ text: qsTr("%1 wants to join · open the menu to answer").arg(name), joined: true });
         }
     }
@@ -680,7 +712,8 @@ Item {
     Connections {
         target: hud.session
         function onCoplayChatMessage(message) {
-            if (!hud.cfg.chat || hud.chatOpen || hud.editing)
+            // What the players write to each other stays between them
+            if (!hud.cfg.chat || hud.chatOpen || hud.editing || hud.broadcast)
                 return;
             let player = null;
             for (let i = 0; i < hud.players.length; ++i) {

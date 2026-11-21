@@ -10,6 +10,7 @@
 #include <SDL.h>
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <thread>
 #include <vector>
@@ -81,6 +82,14 @@ class VoiceChat
 		/** What was said since the last call: 48 kHz, mono, signed 16 bit little endian. */
 		QByteArray ReadTap();
 
+		/**
+		 * Hands the conversation to a live stream of ours (livestream.h): the others as we
+		 * hear them, and our own voice while it is sent.
+		 */
+		void SetStreamTap(bool voices, bool own);
+		/** Players (bit = slot) who asked to be left out of other people's streams. */
+		void SetStreamExcluded(uint32_t mask) { stream_excluded = mask; }
+
 	private:
 		struct Player
 		{
@@ -126,6 +135,13 @@ class VoiceChat
 		mutable QMutex play_mutex; // players, tap
 		Player players[kMaxPlayers];
 		std::vector<int32_t> mix_buf;
+
+		// what goes to our live stream
+		std::atomic<bool> stream_voices{false};
+		std::atomic<bool> stream_own{false};
+		std::atomic<uint32_t> stream_excluded{0};
+		std::vector<int32_t> stream_buf;
+		std::vector<int16_t> stream_out;
 
 		// what goes to the stream overlay
 		bool tap_enabled = false;

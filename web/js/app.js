@@ -117,7 +117,7 @@ const cams = new Map(); // slot -> what is collected of that player's webcam
 const camShown = new Map(); // slot -> the pictures on screen, to give their memory back
 let statsLast = { at: 0, bytes: 0, shown: 0, fragments: 0, nacks: 0 };
 let numbers = { mbps: '0.0', fps: 0, loss: 0 };
-const prefs = { volume: 100, voiceVolume: 100, haptics: 1, camSize: 1, mode: 'fit', zoom: 0, stats: false };
+const prefs = { volume: 100, voiceVolume: 100, haptics: 1, camSize: 1, mode: 'fit', zoom: 0, stats: false, noStreams: false };
 
 // ------------------------------------------------------------------ small helpers
 
@@ -640,6 +640,8 @@ function wantFlags() {
 function mediaFlags() {
   let media = camera.on ? P.MEDIA_CAMERA : 0;
   if (voiceOn) media |= P.MEDIA_VOICE | (micMuted || !sound.micOn ? P.MEDIA_MUTED : 0);
+  // Players who go live from the app leave us out of their streams
+  if (prefs.noStreams) media |= P.MEDIA_NO_STREAMS;
   return media;
 }
 
@@ -991,6 +993,8 @@ function playersNow() {
     silenced: (p.media & P.MEDIA_SILENCED) !== 0,
     mutedHere: sound.muted.has(p.slot),
     camera: (p.media & P.MEDIA_CAMERA) !== 0,
+    live: (p.media & P.MEDIA_LIVE) !== 0,
+    noStreams: (p.media & P.MEDIA_NO_STREAMS) !== 0,
     battery: p.battery,
     avatarUrl: p.avatar.valid ? (blobUrls.get(P.hashKey(p.avatar.hash)) || '') : '',
   }));
@@ -1371,6 +1375,7 @@ function syncVoice() {
     camOn: camera.on,
     camSize: prefs.camSize,
     pictureOff: !hasPicture(),
+    noStreams: prefs.noStreams,
   });
 }
 
@@ -1515,6 +1520,7 @@ function start() {
   prefs.voiceVolume = Number(recall('psrpt.voiceVolume', '100'));
   prefs.haptics = Number(recall('psrpt.haptics', '1'));
   prefs.camSize = Number(recall('psrpt.camSize', '1'));
+  prefs.noStreams = recall('psrpt.noStreams') === '1';
   prefs.mode = ['fit', 'zoom', 'stretch'].includes(recall('psrpt.pictureMode')) ? recall('psrpt.pictureMode') : 'fit';
   prefs.zoom = Number(recall('psrpt.zoom', '0')) || 0;
   prefs.stats = recall('psrpt.stats') === '1';
@@ -1558,6 +1564,11 @@ function start() {
       syncVoice();
     },
     onCam: () => (camera.on ? stopCamera() : startCamera()),
+    onNoStreams: () => {
+      prefs.noStreams = !prefs.noStreams;
+      remember('psrpt.noStreams', prefs.noStreams ? '1' : '0');
+      syncVoice();
+    },
     onCamSize: (index) => {
       prefs.camSize = index;
       remember('psrpt.camSize', index);

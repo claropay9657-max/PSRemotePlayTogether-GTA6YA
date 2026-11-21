@@ -83,6 +83,8 @@ class QmlBackend : public QObject
     // What is drawn on top of the game picture, and the OBS overlay: live values and presets
     Q_PROPERTY(QObject* hud READ hudSettings CONSTANT)
     Q_PROPERTY(QObject* overlayLayout READ overlayLayoutSettings CONSTANT)
+    // Going live to Twitch or another RTMP(S) server: settings, key, Go live / Stop, numbers
+    Q_PROPERTY(QObject* live READ liveController CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
     Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
     // A release newer than this build, found by the check at start; empty if there is none
@@ -224,6 +226,7 @@ public:
     void initOverlay();
     void initDisplays();
     QObject *hudSettings() const;
+    QObject *liveController() const;
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
     QString updateVersion() const { return update_version; }
@@ -423,6 +426,7 @@ private:
     QString update_version;
     QString update_url;
     class PresetSettings *hud_settings = {};
+    class LiveController *live_controller = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};

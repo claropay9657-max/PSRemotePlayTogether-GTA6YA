@@ -64,6 +64,12 @@ set(SOURCE_FILES
 	src/presetsettings.cpp
 	include/voicechat.h
 	src/voicechat.cpp
+	include/livestream.h
+	src/livestream.cpp
+	include/livecontroller.h
+	src/livecontroller.cpp
+	include/keystore.h
+	src/keystore.cpp
 	include/coplaycamera.h
 	src/coplaycamera.cpp
 	include/coplayaddress.h
@@ -176,7 +182,14 @@ if(NOT CHIAKI_ENABLE_FFMPEG_DECODER)
 	message(FATAL_ERROR "Chiaki GUI requires CHIAKI_ENABLE_FFMPEG_DECODER=ON")
 endif()
 if(APPLE)
-	target_link_libraries(chiaki "-framework AVFoundation" "-framework IOKit")
+	# Security: the stream key in the keychain (keystore.cpp)
+	target_link_libraries(chiaki "-framework AVFoundation" "-framework IOKit" "-framework Security" "-framework CoreFoundation")
+elseif(WIN32)
+	# advapi32: the stream key in the Credential Manager (keystore.cpp)
+	target_link_libraries(chiaki advapi32)
+else()
+	# libsecret is opened when needed (keystore.cpp)
+	target_link_libraries(chiaki ${CMAKE_DL_LIBS})
 endif()
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fanalyzer")

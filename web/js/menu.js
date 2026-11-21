@@ -45,6 +45,7 @@ const ICONS = {
   'chevron-down': [2.4, '<path d="m6 9 6 6 6-6"/>'],
   check: [3.2, '<path d="M20 6 9 17l-5-5"/>'],
   gamepad: [1.9, '<path d="M7 7h10a5 5 0 0 1 4.9 6l-.8 4a2.6 2.6 0 0 1-4.6 1.1L14.8 16H9.2l-1.7 2.1A2.6 2.6 0 0 1 2.9 17l-.8-4A5 5 0 0 1 7 7z"/><path d="M8 10.5v3M6.5 12h3"/><path d="M15.5 11h.01M17.5 13h.01"/>'],
+  broadcast: [2, '<circle cx="12" cy="12" r="2.4"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>'],
   eye: [2, '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'],
   fullscreen: [2, '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'],
   stats: [2, '<path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/>'],
@@ -132,7 +133,7 @@ export class StreamMenu {
     this.messages = [];
     /** The open list: {el, owner, where, fill, kind, slot}. */
     this.popup = null;
-    this.voice = { voice: false, voiceOn: false, micMuted: false, deafened: false, cam: false, camOn: false, camSize: 1, pictureOff: false };
+    this.voice = { voice: false, voiceOn: false, micMuted: false, deafened: false, cam: false, camOn: false, camSize: 1, pictureOff: false, noStreams: false };
     this.controller = { touch: false, haptics: 1, dualsense: false, dualsenseOn: false, note: '', padKind: 0 };
     this.presets = { names: [], active: 0 };
     this.hasSound = true;
@@ -238,7 +239,9 @@ export class StreamMenu {
     this.camButton = this.ownSwitch(() => h.onCam());
     this.leaveVoiceButton = this.ownSwitch(() => h.onVoice(false));
     this.leaveVoiceButton.setAttribute('aria-label', 'Leave voice chat');
-    this.own.append(this.voiceButton, this.micButton, this.soundButton, this.camButton, this.leaveVoiceButton);
+    // Whether players who go live from the app may show us in their streams
+    this.streamsButton = this.ownSwitch(() => h.onNoStreams());
+    this.own.append(this.voiceButton, this.micButton, this.soundButton, this.camButton, this.leaveVoiceButton, this.streamsButton);
 
     // While the webcam runs: what this browser sends of it
     this.camRow = el('div', 'mcamsize');
@@ -945,7 +948,7 @@ export class StreamMenu {
 
   /**
    * One's own switches.
-   * @param {object} v {voice, voiceOn, micMuted, deafened, cam, camOn, camSize, pictureOff}
+   * @param {object} v {voice, voiceOn, micMuted, deafened, cam, camOn, camSize, pictureOff, noStreams}
    */
   setVoice(v) {
     this.voice = v;
@@ -959,7 +962,10 @@ export class StreamMenu {
     this.soundButton.set(v.deafened ? 'speaker-off' : 'headphones', v.deafened ? 'Voices off' : 'Voices on', v.deafened ? 'bad' : '');
     this.camButton.set('camera', v.camOn ? 'Webcam on' : 'Webcam off', v.camOn ? 'good' : '');
     this.leaveVoiceButton.set('leave', 'Leave voice', 'dim');
-    this.own.hidden = this.voiceButton.hidden && !v.voiceOn && this.camButton.hidden;
+    this.streamsButton.set('broadcast', v.noStreams ? 'Not in streams' : 'In streams', v.noStreams ? 'bad' : '');
+    this.streamsButton.setAttribute('aria-label', v.noStreams
+      ? 'Left out of live streams: players who go live do not show your voice, webcam or name'
+      : 'Players who go live may show your voice, webcam and name');
     this.camRow.hidden = !v.cam || !v.camOn;
     this.camSizeButton.label.textContent = CAM_SIZES[v.camSize] || CAM_SIZES[1];
     this.roomNote.hidden = !v.pictureOff;
@@ -972,7 +978,7 @@ export class StreamMenu {
   /**
    * Everybody, as tiles: by place, so that a tile stays (and keeps the focus) while its
    * player's state changes.
-   * @param {object[]} players each {slot, name, you, web, host, canControl, inControl, muted, silenced, mutedHere, voice, camera, avatarUrl}
+   * @param {object[]} players each {slot, name, you, web, host, canControl, inControl, muted, silenced, mutedHere, voice, camera, live, noStreams, avatarUrl}
    */
   setPlayers(players) {
     this.players = players;
@@ -1047,8 +1053,9 @@ export class StreamMenu {
       if (url) t.cam.src = url;
       parts.push(t.cam);
     }
-    // Host, from a browser, only watching
+    // Live right now, host, from a browser, only watching
     const tags = el('div', 'ptile-tags');
+    if (p.live) tags.append(el('span', 'ptag live', 'LIVE'));
     if (p.host) tags.append(el('span', 'ptag host', 'HOST'));
     if (p.web) tags.append(el('span', 'ptag web', 'WEB'));
     if (!p.canControl) tags.append(el('span', 'ptag watching', 'WATCHING'));

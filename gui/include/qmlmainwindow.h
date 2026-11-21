@@ -7,8 +7,11 @@
 #include <QAtomicInteger>
 #include <QWindow>
 #include <QQuickWindow>
+#include <QPointer>
+#include <QSGTextureProvider>
 #include <QLoggingCategory>
 #include <deque>
+#include <vector>
 #include <atomic>
 
 extern "C" {
@@ -153,6 +156,11 @@ public:
     Q_INVOKABLE void setStatsOverlayActive(bool active);
     Q_INVOKABLE void noteLoadingTransitionComplete();
     Q_INVOKABLE void presentStartupWarmupFrame(unsigned width, unsigned height, bool hdr);
+    /**
+     * Going live: the item (a ShaderEffectSource of the display drawn at stream size)
+     * whose picture is laid over the game picture of the stream; null for none.
+     */
+    Q_INVOKABLE void setLiveOverlay(QQuickItem *item);
     void armVerbosePlaceboQuietWindow();
     bool startupWarmupFrameActive() const { return startup_warmup_frame_active; }
 
@@ -434,6 +442,38 @@ private:
     VkSemaphore quick_sem = VK_NULL_HANDLE;
     uint64_t quick_sem_value = 0;
     VkImage quick_vk_image = VK_NULL_HANDLE;
+
+    // Going live (livestream.h): the picture drawn a second time at stream size, as NV12,
+    // and read back without waiting for it. Render thread only, apart from live_overlay_item.
+    void captureLiveFrame(const struct pl_frame *image);
+    void collectLiveReadbacks(bool wait);
+    bool acquireLiveOverlay(struct pl_overlay *overlay, struct pl_overlay_part *part, int width, int height);
+    void releaseLiveOverlay();
+    void destroyLiveOverlay();
+    void releaseLiveCapture();
+    struct LiveReadback {
+        pl_buf y = nullptr;
+        pl_buf uv = nullptr;
+        bool pending = false;
+    };
+    pl_renderer live_renderer = {};
+    pl_tex live_y = {};
+    pl_tex live_uv = {};
+    int live_width = 0;
+    int live_height = 0;
+    LiveReadback live_readback[3];
+    int live_readback_next = 0;
+    std::vector<uint8_t> live_sync_y;
+    std::vector<uint8_t> live_sync_uv;
+    QPointer<QQuickItem> live_overlay_item;
+    QPointer<QSGTextureProvider> live_overlay_provider;
+    pl_tex live_overlay_tex = {};
+    VkImage live_overlay_image = VK_NULL_HANDLE;
+    VkImageLayout live_overlay_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    QSize live_overlay_size;
+    VkSemaphore live_overlay_sem = VK_NULL_HANDLE;
+    uint64_t live_overlay_sem_value = 0;
+    bool live_overlay_wait = false;
     bool quick_frame = false;
     QAtomicInteger<int> quick_need_sync = 0;
     QAtomicInteger<int> quick_need_render = 0;

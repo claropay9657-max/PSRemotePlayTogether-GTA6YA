@@ -4,6 +4,7 @@
 // ("hud") and the OBS overlay. Both are groups of live settings with presets.
 
 #include "qmlbackend.h"
+#include "livecontroller.h"
 #include "overlayserver.h"
 #include "presetsettings.h"
 
@@ -135,6 +136,11 @@ void QmlBackend::initDisplays()
 QObject *QmlBackend::hudSettings() const
 {
     return hud_settings;
+}
+
+QObject *QmlBackend::liveController() const
+{
+    return live_controller;
 }
 
 QObject *QmlBackend::overlayLayoutSettings() const

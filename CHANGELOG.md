@@ -3,6 +3,15 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## Unreleased
+
+- **New: go live on Twitch from the app, without OBS.** Set it up once under **Settings → Live streaming**: Twitch (or any other service that takes RTMP or RTMPS, such as YouTube or Kick), your stream key, the picture (720p or 1080p, 30 or 60 frames a second) and the bitrate. Then press **Go live** in the stream menu. The stream is what you see and hear: the game picture with the display on top of it (players, webcams, controllers, as arranged under Overlays & OBS), the game sound, the other players' voices and, if you like, your own microphone, each with its own volume. It never shows the stream menu, the chat or invites. The stream menu shows how long you are live, the upload rate and any pictures left out because the connection could not keep up; a lost connection is made again by itself.
+- **Every player goes live on their own.** Host and guests each stream their own view from their own computer, straight to Twitch. Nothing passes through a server of ours.
+- **Everybody sees who is live.** A red **LIVE** tag shows next to that player's name, in the app and in the browser.
+- **Your choice to be left out.** **Leave me out of their streams** (Settings → Live streaming, and **In streams / Not in streams** in the browser's menu) keeps your voice, webcam and name out of what the other players stream; there you appear as "Player 2" without a picture. A player who is live sees **NOT IN STREAM** on your tile.
+- **The stream key stays private.** It is kept in the macOS keychain, the Windows Credential Manager or the system keyring on Linux, never in the settings file, and it is never shown. Twitch is reached over TLS (RTMPS), and the app checks the server's certificate before it sends the key.
+- **Good to know:** the stream uses the computer's own H.264 encoder (VideoToolbox on a Mac; NVIDIA, AMD or Windows' own encoder on Windows; VAAPI, NVIDIA or OpenH264 on Linux). The display on the game picture goes into the stream with the Vulkan renderer (the default); with OpenGL the stream shows the game alone. Players with an older version of the app do not see the LIVE tag and cannot ask to be left out.
+
 ## 0.3.3
 
 - **Waking the console failed with "Network error" on macOS.** After an update macOS can keep the app away from the devices in your network (Privacy & Security → Local Network): the app still finds the console, but cannot wake it or play. A firewall such as LuLu can do the same, or keep the app from finding the console at all. The app now notices both and says so on the start page, with a button to the macOS settings, and a failed wake-up says what to do instead of "Network error". The app also tells macOS why it needs your network, for the question macOS asks.

@@ -26,6 +26,7 @@
     <file>settings/KeyboardPage.qml</file>
     <file>settings/VoicePage.qml</file>
     <file>settings/OverlaysPage.qml</file>
+    <file>settings/StreamingPage.qml</file>
     <file>settings/NetworkPage.qml</file>
     <file>settings/ConsolesPage.qml</file>
     <file>settings/PsnPage.qml</file>

@@ -5,6 +5,7 @@
 #include "chiaki/log.h"
 #include "chiaki/time.h"
 #include "streamsession.h"
+#include "livestream.h"
 
 #include <qpa/qplatformnativeinterface.h>
 
@@ -44,6 +45,9 @@ extern "C" {
 #include <QSurfaceFormat>
 #include <QVulkanInstance>
 #include <QQuickItem>
+#include <QSGTexture>
+#include <QSGTextureProvider>
+#include <QtQuick/qsgtexture_platform.h>
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QQuickRenderTarget>
@@ -2638,6 +2642,10 @@ QmlMainWindow::~QmlMainWindow()
 #endif
 
     if (pl_gpu gpu = placeboGpu()) {
+        releaseLiveCapture();
+        destroyLiveOverlay();
+        if (render_backend == RenderBackend::Vulkan && live_overlay_sem)
+            pl_vulkan_sem_destroy(gpu, &live_overlay_sem);
         pl_unmap_avframe(gpu, &direct_frame);
         if (quick_tex)
             pl_tex_destroy(gpu, &quick_tex);
@@ -6260,6 +6268,10 @@ void QmlMainWindow::sync()
 {
     Q_ASSERT(QThread::currentThread() == render_thread);
 
+    // The stream's display is going away: let go of its picture before Qt frees it
+    if (!live_overlay_item && live_overlay_tex)
+        destroyLiveOverlay();
+
     if (!quick_tex)
         return;
 
@@ -6278,6 +6290,10 @@ void QmlMainWindow::sync()
         return;
     const qint64 sync_quick_render_begin_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
     quick_need_render.storeRelaxed(quick_render->sync() ? 1 : 0);
+    {
+        QQuickItem *overlay_item = live_overlay_item.data();
+        live_overlay_provider = overlay_item && overlay_item->isTextureProvider() ? overlay_item->textureProvider() : nullptr;
+    }
     const qint64 sync_quick_render_end_us = static_cast<qint64>(chiaki_time_now_monotonic_us());
     if (sync_quick_render_end_us >= sync_quick_render_begin_us) {
         const qint64 sync_quick_render_us = sync_quick_render_end_us - sync_quick_render_begin_us;
@@ -6367,6 +6383,18 @@ void QmlMainWindow::beginFrame()
                 << "[latency] beginFrame_wait_us=" << quick_begin_wait_last_us;
         }
         logQuickBeginWaitStats(quick_wait_after_us, quick_begin_wait_last_us);
+    }
+
+    // The stream drew the display's picture: Qt may only draw into it again once that is done
+    if (live_overlay_wait && live_overlay_sem) {
+        VkSemaphoreWaitInfo live_wait_info = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+            .semaphoreCount = 1,
+            .pSemaphores = &live_overlay_sem,
+            .pValues = &live_overlay_sem_value,
+        };
+        vk_funcs.vkWaitSemaphores(placebo_vulkan->device, &live_wait_info, UINT64_MAX);
+        live_overlay_wait = false;
     }
 
     quick_window->setRenderTarget(QQuickRenderTarget::fromVulkanImage(
@@ -7664,6 +7692,8 @@ void QmlMainWindow::render()
         }
     }
     close_started_frame(true);
+    // Going live: the same picture once more at stream size, after the screen got its own
+    captureLiveFrame(bypass_frame_queue ? &direct_render_frame : hint_frame);
 
     if (startup_video_visible_refresh_pending.loadAcquire() != 0) {
         loading_transition_complete.storeRelease(1);
@@ -7676,6 +7706,309 @@ void QmlMainWindow::render()
         schedulePostRenderWork();
     schedulePostSwapchainRecreateRefresh();
 
+}
+
+// ------------------------------------------------------------------ going live
+
+void QmlMainWindow::setLiveOverlay(QQuickItem *item)
+{
+    live_overlay_item = item;
+    // The stream's display changed: the scene has to be synced for the render thread to see it
+    scheduleUpdate(true, UpdateRequestReason::SceneChanged);
+}
+
+void QmlMainWindow::releaseLiveCapture()
+{
+    pl_gpu gpu = placeboGpu();
+    if (!gpu)
+        return;
+    for (LiveReadback &slot : live_readback) {
+        pl_buf_destroy(gpu, &slot.y);
+        pl_buf_destroy(gpu, &slot.uv);
+        slot.pending = false;
+    }
+    pl_tex_destroy(gpu, &live_y);
+    pl_tex_destroy(gpu, &live_uv);
+    pl_renderer_destroy(&live_renderer);
+    live_width = live_height = 0;
+    live_readback_next = 0;
+    live_sync_y.clear();
+    live_sync_uv.clear();
+}
+
+void QmlMainWindow::destroyLiveOverlay()
+{
+    pl_gpu gpu = placeboGpu();
+    if (gpu && live_overlay_tex)
+        pl_tex_destroy(gpu, &live_overlay_tex);
+    live_overlay_tex = {};
+    live_overlay_image = VK_NULL_HANDLE;
+    live_overlay_size = QSize();
+    live_overlay_provider = nullptr;
+}
+
+bool QmlMainWindow::acquireLiveOverlay(struct pl_overlay *overlay, struct pl_overlay_part *part, int width, int height)
+{
+    // Qt draws the display for the stream into a texture of its own (StreamView's live
+    // overlay); with OpenGL the scene cannot change while the game is drawn, so only Vulkan
+    // live_overlay_provider is only set in sync(), while the GUI thread waits
+    if (render_backend != RenderBackend::Vulkan)
+        return false;
+    QSGTextureProvider *provider = live_overlay_provider.data();
+    QSGTexture *texture = provider ? provider->texture() : nullptr;
+    if (!texture)
+        return false;
+    auto *vk = texture->nativeInterface<QNativeInterface::QSGVulkanTexture>();
+    if (!vk)
+        return false;
+    const VkImage image = vk->nativeImage();
+    const VkImageLayout layout = vk->nativeImageLayout();
+    const QSize size = texture->textureSize();
+    if (!image || layout == VK_IMAGE_LAYOUT_UNDEFINED || size.isEmpty())
+        return false;
+
+    pl_gpu gpu = placeboGpu();
+    if (!live_overlay_sem) {
+        struct pl_vulkan_sem_params sem_params = {
+            .type = VK_SEMAPHORE_TYPE_TIMELINE,
+        };
+        live_overlay_sem = pl_vulkan_sem_create(gpu, &sem_params);
+        if (!live_overlay_sem)
+            return false;
+    }
+    if (image != live_overlay_image || size != live_overlay_size) {
+        destroyLiveOverlay();
+        struct pl_vulkan_wrap_params wrap_params = {
+            .image = image,
+            .width = size.width(),
+            .height = size.height(),
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .usage = VK_IMAGE_USAGE_SAMPLED_BIT,
+        };
+        live_overlay_tex = pl_vulkan_wrap(gpu, &wrap_params);
+        if (!live_overlay_tex)
+            return false;
+        live_overlay_image = image;
+        live_overlay_size = size;
+        live_overlay_provider = provider;
+    }
+    // Lent to libplacebo for this one picture; Qt gets it back in releaseLiveOverlay()
+    struct pl_vulkan_release_params release_params = {
+        .tex = live_overlay_tex,
+        .layout = layout,
+        .qf = VK_QUEUE_FAMILY_IGNORED,
+    };
+    pl_vulkan_release_ex(gpu, &release_params);
+    live_overlay_layout = layout;
+
+    *part = {};
+    part->src = {0, 0, static_cast<float>(size.width()), static_cast<float>(size.height())};
+    part->dst = {0, 0, static_cast<float>(width), static_cast<float>(height)};
+    *overlay = {};
+    overlay->tex = live_overlay_tex;
+    overlay->repr = pl_color_repr_rgb;
+    overlay->repr.alpha = PL_ALPHA_PREMULTIPLIED;
+    overlay->color = pl_color_space_srgb;
+    overlay->parts = part;
+    overlay->num_parts = 1;
+    return true;
+}
+
+void QmlMainWindow::releaseLiveOverlay()
+{
+    live_overlay_sem_value++;
+    struct pl_vulkan_hold_params hold_params = {
+        .tex = live_overlay_tex,
+        .layout = live_overlay_layout,
+        .qf = VK_QUEUE_FAMILY_IGNORED,
+        .semaphore = {
+            .sem = live_overlay_sem,
+            .value = live_overlay_sem_value,
+        },
+    };
+    if (pl_vulkan_hold_ex(placeboGpu(), &hold_params))
+        live_overlay_wait = true;
+}
+
+void QmlMainWindow::collectLiveReadbacks(bool wait)
+{
+    pl_gpu gpu = placeboGpu();
+    if (!gpu || !live_y)
+        return;
+    live::Engine &engine = live::Engine::Get();
+    // Oldest first: each one handed over replaces the one before
+    for (int i = 0; i < 3; i++) {
+        LiveReadback &slot = live_readback[(live_readback_next + i) % 3];
+        if (!slot.pending)
+            continue;
+        const uint64_t timeout = wait ? 100000000ULL : 0;
+        if (pl_buf_poll(gpu, slot.y, timeout) || pl_buf_poll(gpu, slot.uv, timeout))
+            continue;
+        slot.pending = false;
+        if (slot.y->data && slot.uv->data) {
+            engine.PushFrame(slot.y->data, live_width, slot.uv->data, live_width, live_width, live_height);
+            continue;
+        }
+        live_sync_y.resize(slot.y->params.size);
+        live_sync_uv.resize(slot.uv->params.size);
+        if (pl_buf_read(gpu, slot.y, 0, live_sync_y.data(), live_sync_y.size())
+            && pl_buf_read(gpu, slot.uv, 0, live_sync_uv.data(), live_sync_uv.size()))
+            engine.PushFrame(live_sync_y.data(), live_width, live_sync_uv.data(), live_width, live_width, live_height);
+    }
+}
+
+void QmlMainWindow::captureLiveFrame(const struct pl_frame *image)
+{
+    live::Engine &engine = live::Engine::Get();
+    if (!engine.Running()) {
+        if (live_renderer)
+            releaseLiveCapture();
+        return;
+    }
+    collectLiveReadbacks(false);
+    if (!engine.WantsFrame(static_cast<int64_t>(chiaki_time_now_monotonic_us())))
+        return;
+
+    pl_gpu gpu = placeboGpu();
+    const int width = engine.Width();
+    const int height = engine.Height();
+    if (!live_renderer || width != live_width || height != live_height) {
+        releaseLiveCapture();
+        const enum pl_fmt_caps caps = static_cast<enum pl_fmt_caps>(PL_FMT_CAP_RENDERABLE | PL_FMT_CAP_HOST_READABLE);
+        pl_fmt r8 = pl_find_fmt(gpu, PL_FMT_UNORM, 1, 8, 8, caps);
+        pl_fmt rg8 = pl_find_fmt(gpu, PL_FMT_UNORM, 2, 8, 8, caps);
+        if (!r8 || !rg8) {
+            qCWarning(chiakiGui) << "Live: this GPU cannot draw the stream picture (no readable R8/RG8)";
+            return;
+        }
+        struct pl_tex_params y_params = {
+            .w = width,
+            .h = height,
+            .format = r8,
+            .renderable = true,
+            .host_readable = true,
+        };
+        struct pl_tex_params uv_params = y_params;
+        uv_params.w = width / 2;
+        uv_params.h = height / 2;
+        uv_params.format = rg8;
+        live_y = pl_tex_create(gpu, &y_params);
+        live_uv = pl_tex_create(gpu, &uv_params);
+        live_renderer = pl_renderer_create(placebo_log, gpu);
+        if (!live_y || !live_uv || !live_renderer) {
+            qCWarning(chiakiGui) << "Live: could not create the textures for the stream picture";
+            releaseLiveCapture();
+            return;
+        }
+        // Read back without waiting where the GPU allows it, else right away. Buffers that
+        // stay mapped (Vulkan) are read in place; others (OpenGL) are copied out once done.
+        const bool can_map = gpu->limits.max_mapped_size >= static_cast<size_t>(width) * height;
+        for (LiveReadback &slot : live_readback) {
+            struct pl_buf_params y_buf = {
+                .size = static_cast<size_t>(width) * height,
+                .host_readable = !can_map,
+                .host_mapped = can_map,
+            };
+            struct pl_buf_params uv_buf = y_buf;
+            uv_buf.size = static_cast<size_t>(width) * (height / 2);
+            slot.y = pl_buf_create(gpu, &y_buf);
+            slot.uv = pl_buf_create(gpu, &uv_buf);
+            if (!slot.y || !slot.uv) {
+                for (LiveReadback &s : live_readback) {
+                    pl_buf_destroy(gpu, &s.y);
+                    pl_buf_destroy(gpu, &s.uv);
+                }
+                qCInfo(chiakiGui) << "Live: reading the stream picture back the slow way (no mapped buffers)";
+                break;
+            }
+        }
+        live_width = width;
+        live_height = height;
+        qCInfo(chiakiGui) << "Live: drawing the stream picture at" << width << "x" << height;
+    }
+
+    const bool mapped = live_readback[0].y != nullptr;
+    LiveReadback &slot = live_readback[live_readback_next];
+    if (mapped && slot.pending) {
+        // The GPU is three pictures behind: wait for the oldest instead of piling up more
+        collectLiveReadbacks(true);
+        if (slot.pending)
+            return;
+    }
+
+    struct pl_frame target = {};
+    target.num_planes = 2;
+    target.planes[0].texture = live_y;
+    target.planes[0].components = 1;
+    target.planes[0].component_mapping[0] = PL_CHANNEL_Y;
+    target.planes[1].texture = live_uv;
+    target.planes[1].components = 2;
+    target.planes[1].component_mapping[0] = PL_CHANNEL_U;
+    target.planes[1].component_mapping[1] = PL_CHANNEL_V;
+    target.repr.sys = PL_COLOR_SYSTEM_BT_709;
+    target.repr.levels = PL_COLOR_LEVELS_LIMITED;
+    target.repr.alpha = PL_ALPHA_NONE;
+    target.repr.bits.sample_depth = 8;
+    target.repr.bits.color_depth = 8;
+    // Whatever the console sends (HDR too), the stream is ordinary SDR
+    target.color = pl_color_space_bt709;
+    target.crop = {0, 0, static_cast<float>(width), static_cast<float>(height)};
+    pl_frame_set_chroma_location(&target, PL_CHROMA_LEFT);
+    // The whole game picture, with black bars if it is not 16:9
+    if (image)
+        pl_rect2df_aspect_copy(&target.crop, &image->crop, 0.0);
+
+    struct pl_overlay overlay;
+    struct pl_overlay_part overlay_part;
+    const bool with_overlay = acquireLiveOverlay(&overlay, &overlay_part, width, height);
+    if (with_overlay) {
+        // The display covers the whole stream picture, not just the game in it
+        overlay_part.dst = {0, 0, static_cast<float>(width), static_cast<float>(height)};
+        target.overlays = &overlay;
+        target.num_overlays = 1;
+    }
+
+    struct pl_render_params params = pl_render_default_params;
+    const bool rendered = pl_render_image(live_renderer, image, &target, &params);
+    if (with_overlay)
+        releaseLiveOverlay();
+    if (!rendered) {
+        qCWarning(chiakiGui) << "Live: could not draw the stream picture";
+        return;
+    }
+
+    if (mapped) {
+        struct pl_tex_transfer_params y_transfer = {
+            .tex = live_y,
+            .row_pitch = static_cast<size_t>(width),
+            .buf = slot.y,
+        };
+        struct pl_tex_transfer_params uv_transfer = {
+            .tex = live_uv,
+            .row_pitch = static_cast<size_t>(width),
+            .buf = slot.uv,
+        };
+        if (pl_tex_download(gpu, &y_transfer) && pl_tex_download(gpu, &uv_transfer)) {
+            slot.pending = true;
+            live_readback_next = (live_readback_next + 1) % 3;
+        }
+        pl_gpu_flush(gpu);
+    } else {
+        live_sync_y.resize(static_cast<size_t>(width) * height);
+        live_sync_uv.resize(static_cast<size_t>(width) * (height / 2));
+        struct pl_tex_transfer_params y_transfer = {
+            .tex = live_y,
+            .row_pitch = static_cast<size_t>(width),
+            .ptr = live_sync_y.data(),
+        };
+        struct pl_tex_transfer_params uv_transfer = {
+            .tex = live_uv,
+            .row_pitch = static_cast<size_t>(width),
+            .ptr = live_sync_uv.data(),
+        };
+        if (pl_tex_download(gpu, &y_transfer) && pl_tex_download(gpu, &uv_transfer))
+            engine.PushFrame(live_sync_y.data(), width, live_sync_uv.data(), width, width, height);
+    }
 }
 
 bool QmlMainWindow::handleShortcut(QKeyEvent *event)

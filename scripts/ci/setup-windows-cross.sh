@@ -8,7 +8,8 @@
 #   qt/           Qt for Windows (the official llvm-mingw build) and the same Qt
 #                 version for this machine, whose moc/rcc/qml tools the build runs
 #   msys2/        the other libraries, taken prebuilt from MSYS2's CLANG64 repository
-#   ffmpeg/       FFmpeg built here from source with only the decoders the app uses
+#   ffmpeg/       FFmpeg built here from source with only the decoders the app uses,
+#                 and the encoders, muxer and protocols for going live
 #
 # scripts/ci/build-windows.sh then builds and packages the app against it.
 set -euo pipefail
@@ -26,7 +27,8 @@ NV_CODEC_TAG=n13.1.15.0
 QT_MODULES="${PSRPT_QT_MODULES-qtmultimedia}"
 
 # Libraries taken from MSYS2 (names without the mingw-w64-clang-x86_64- prefix)
-MSYS2_PACKAGES="libplacebo sdl2-compat opus openssl json-c miniupnpc libevent speexdsp hidapi fftw vulkan-headers vulkan-loader"
+# amf-headers: AMD's encoder for going live (headers only, the driver brings the rest)
+MSYS2_PACKAGES="libplacebo sdl2-compat opus openssl json-c miniupnpc libevent speexdsp hidapi fftw vulkan-headers vulkan-loader amf-headers"
 # The compiler and its runtime come from llvm-mingw
 MSYS2_SKIP="clang,llvm,llvm-libs,lld,compiler-rt,crt,headers,winpthreads,python"
 MSYS2_RUNTIME_ONLY="libc++,libunwind,libwinpthread"
@@ -124,7 +126,9 @@ if [ ! -f "$ROOT/ffmpeg/lib/pkgconfig/libavcodec.pc" ]; then
 	(
 		cd "$WORK/ffmpeg"
 		patch -p1 < "$SCRIPT_DIR/../flatpak/0001-vulkan-ignore-frames-without-hw-context.patch"
-		# The decoder list is the one of scripts/build-ffmpeg-windows.sh
+		# The decoder and encoder lists are the ones of scripts/build-ffmpeg-windows.sh.
+		# Going live: H.264 from NVIDIA, AMD or Windows' own encoder (Media Foundation, which
+		# also uses Intel's), AAC, FLV over RTMP or RTMPS (TLS through Windows' Schannel)
 		PKG_CONFIG_LIBDIR="$ROOT/ffmpeg/lib/pkgconfig:$ROOT/msys2/clang64/lib/pkgconfig:$ROOT/msys2/clang64/share/pkgconfig" \
 		./configure \
 			--prefix="$ROOT/ffmpeg" \
@@ -139,7 +143,14 @@ if [ ! -f "$ROOT/ffmpeg/lib/pkgconfig/libavcodec.pc" ]; then
 			--enable-hwaccel=h264_vulkan --enable-hwaccel=hevc_vulkan \
 			--enable-hwaccel=h264_d3d11va --enable-hwaccel=hevc_d3d11va \
 			--enable-hwaccel=h264_nvdec --enable-hwaccel=hevc_nvdec \
-			--enable-cuvid --enable-nvdec --enable-ffnvcodec
+			--enable-cuvid --enable-nvdec --enable-ffnvcodec \
+			--enable-encoder=aac \
+			--enable-nvenc --enable-encoder=h264_nvenc \
+			--enable-amf --enable-encoder=h264_amf \
+			--enable-mediafoundation --enable-encoder=h264_mf \
+			--enable-muxer=flv --enable-schannel \
+			--enable-protocol=rtmp --enable-protocol=rtmps --enable-protocol=tcp \
+			--enable-protocol=tls --enable-protocol=file
 		make -j"$(nproc)" >/dev/null
 		make install >/dev/null
 	)

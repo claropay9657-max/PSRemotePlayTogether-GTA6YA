@@ -377,7 +377,7 @@ Rectangle {
         }
     }
 
-    /** A tag on a player's tile: HOST, WEB, WATCHING, MUTED. */
+    /** A tag on a player's tile: LIVE, HOST, WEB, WATCHING, MUTED. */
     component Tag: Rectangle {
         property alias text: tagText.text
         implicitWidth: tagText.implicitWidth + 14
@@ -504,11 +504,25 @@ Rectangle {
                     source: tile.player.camera ? "image://coplaycam/" + tile.player.slot + "/" + panel.camSerial : ""
                 }
 
-                // Host, from a browser, only watching
+                // Live right now, host, from a browser, only watching
                 Row {
                     x: 6
                     y: 6
                     spacing: 4
+
+                    Tag {
+                        // Streams the session live (Twitch, say): everybody sees it
+                        visible: !!tile.player.live
+                        color: "#e91916"
+                        text: qsTr("LIVE")
+                    }
+
+                    Tag {
+                        // We are live and this player asked to be left out of streams: not in ours
+                        visible: Chiaki.live.live && !!tile.player.noStreams && !tile.player.you
+                        color: Qt.rgba(0, 0, 0, 0.65)
+                        text: qsTr("NOT IN STREAM")
+                    }
 
                     Tag {
                         visible: !!tile.player.host
