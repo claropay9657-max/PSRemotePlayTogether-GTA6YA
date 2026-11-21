@@ -901,8 +901,8 @@ DialogView {
                                     onToggled: Chiaki.settings.coplayGuestsMaySleep = checked
                                 }
 
-                                // The same setting as "Picture and sound" in the settings, where the two can
-                                // also be switched off one by one
+                                // The same setting as "On this computer" (Settings › General), where picture and
+                                // sound can also be switched off one by one
                                 C.ToggleRow {
                                     iconName: "tv"
                                     title: qsTr("I play on the TV")

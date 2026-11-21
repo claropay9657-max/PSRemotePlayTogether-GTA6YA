@@ -12,11 +12,14 @@ Slider {
 
     implicitWidth: 260
     implicitHeight: 32
+    // Whole steps only, also when dragged: the settings behind are whole numbers
+    snapMode: QQC.Slider.SnapAlways
     padding: 0
     leftPadding: 9
     rightPadding: (valueText.length > 0 ? valueWidth + 12 : 0) + 9
     hoverEnabled: true
-    opacity: enabled ? 1 : 0.5
+    // Greyed out on its own; inside something greyed out already (a row), not a second time
+    opacity: enabled || (parent && !parent.enabled) ? 1 : 0.5
 
     background: Rectangle {
         x: control.leftPadding

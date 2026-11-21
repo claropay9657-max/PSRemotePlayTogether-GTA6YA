@@ -56,6 +56,26 @@ DialogView {
             page = pages[index].key;
     }
 
+    /** For a link on one page to another: opens the page by its key and, when given,
+     *  scrolls to and lights up the row with that title. `byKeys`: the focus goes onto
+     *  that row's control (or into the page), as after Return on a link. */
+    function openPage(key, rowTitle, byKeys) {
+        const index = pages.findIndex((p) => p.key === key);
+        if (index < 0)
+            return;
+        // Off the page that is about to be switched off first, or the focus is stranded there
+        side.forceActiveFocus(byKeys ? Qt.TabFocusReason : Qt.MouseFocusReason);
+        searchField.text = "";
+        showPage(index);
+        Qt.callLater(() => {
+            const row = rowTitle ? dialog.rowByTitle(rowTitle) : null;
+            if (row)
+                dialog.revealRow(row, byKeys);
+            else if (byKeys)
+                dialog.enterPage();
+        });
+    }
+
     /** The scrolling area of the page shown. */
     function pageFlick() {
         // Worked out here: in onPageChanged, pageIndex may not have followed yet
@@ -104,10 +124,10 @@ DialogView {
         const flick = pageFlick();
         if (!flick || !row || !inside(row, flick))
             return;
-        const top = row.mapToItem(flick.contentItem, 0, 0).y;
-        const max = Math.max(0, flick.contentHeight - flick.height);
-        flick.contentY = Math.max(0, Math.min(max, top - Math.round(flick.height / 4)));
-        flash.show(row, flick);
+        revealing = row;
+        placeReveal();
+        // A page just shown may still be laying itself out: placed once more a moment later
+        revealSettle.restart();
         if (focusIt) {
             const first = row.nextItemInFocusChain(true);
             if (first && inside(first, row))
@@ -115,6 +135,20 @@ DialogView {
             else
                 side.forceActiveFocus(Qt.TabFocusReason);
         }
+    }
+
+    /** The row revealRow() shows. */
+    property Item revealing: null
+
+    function placeReveal() {
+        const flick = pageFlick();
+        const row = revealing;
+        if (!flick || !row || !inside(row, flick))
+            return;
+        const top = row.mapToItem(flick.contentItem, 0, 0).y;
+        const max = Math.max(0, flick.contentHeight - flick.height);
+        flick.contentY = Math.max(0, Math.min(max, top - Math.round(flick.height / 4)));
+        flash.show(row, flick);
     }
 
     /** Every row of every page, for the search: what it is called and where it is. */
@@ -205,6 +239,12 @@ DialogView {
 
     Item {
         // DialogView's content; the window below covers DialogView's own bar as well
+
+        Timer {
+            id: revealSettle
+            interval: 80
+            onTriggered: dialog.placeReveal()
+        }
 
         Shortcut {
             sequences: [StandardKey.Find]
@@ -374,11 +414,14 @@ DialogView {
                             event.accepted = true;
                         }
                         Keys.onReturnPressed: (event) => {
-                            // Only while typing (TextField.qml takes Return otherwise): opens the first thing found
+                            // With something found, Return opens the first of it
                             if (dialog.search !== "" && resultRepeater.count > 0) {
                                 const first = resultRepeater.itemAt(0);
                                 dialog.openResult(first.result, true);
                                 event.accepted = true;
+                            } else {
+                                // To TextField.qml: Return starts or ends typing
+                                event.accepted = false;
                             }
                         }
                         Keys.onEscapePressed: (event) => {

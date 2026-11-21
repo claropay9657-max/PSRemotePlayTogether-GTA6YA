@@ -4974,7 +4974,7 @@ void QmlMainWindow::init(Settings *settings, bool exit_app_on_stream_exit)
             // Vulkan driver or a third-party Vulkan layer looks; keep OpenGL until switched back
             settings->SetRenderBackend(RenderBackend::OpenGL);
             fallbackToOpenGL(tr("PSRemotePlayTogether closed while starting Vulkan last time, so it now uses OpenGL. "
-                                "You can switch back under Settings > Video > Renderer."));
+                                "You can switch back under Settings > Picture > Renderer."));
             goto renderer_backend_ready;
         }
         settings->SetVulkanStartupPending(true);

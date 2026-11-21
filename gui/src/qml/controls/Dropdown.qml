@@ -17,10 +17,13 @@ ComboBox {
     hoverEnabled: true
     font.pixelSize: 14
     font.weight: Font.DemiBold
-    opacity: enabled ? 1 : 0.5
+    // Greyed out on its own; inside something greyed out already (a row), not a second time
+    opacity: enabled || (parent && !parent.enabled) ? 1 : 0.5
 
-    // A text input, so that WidestText can measure the entries
+    // A text input, so that WidestText can measure the entries; it is not drawn, the
+    // text over it is, shortened with "…" where the dropdown is narrower than the entry
     contentItem: T.TextField {
+        id: measure
         leftPadding: 12
         rightPadding: 0
         topPadding: 0
@@ -28,10 +31,22 @@ ComboBox {
         text: control.displayText
         enabled: false
         readOnly: true
-        color: Theme.text
+        autoScroll: false
+        color: "transparent"
+        selectionColor: "transparent"
         font: control.font
         verticalAlignment: TextInput.AlignVCenter
         background: null
+
+        Text {
+            anchors.fill: parent
+            leftPadding: measure.leftPadding
+            text: control.displayText
+            elide: Text.ElideRight
+            verticalAlignment: Text.AlignVCenter
+            color: Theme.text
+            font: control.font
+        }
     }
 
     background: Rectangle {

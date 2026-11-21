@@ -17,7 +17,8 @@ QQC.AbstractButton {
     implicitWidth: content.implicitWidth + 24
     font.pixelSize: 13
     font.weight: Font.ExtraBold
-    opacity: enabled ? 1 : 0.5
+    // Greyed out on its own; inside something greyed out already (a row), not a second time
+    opacity: enabled || (parent && !parent.enabled) ? 1 : 0.5
     Accessible.role: Accessible.CheckBox
     Accessible.checked: checked
 

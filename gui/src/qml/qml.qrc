@@ -11,13 +11,11 @@
     <file>RemindDialog.qml</file>
     <file>DialogView.qml</file>
     <file>ManualHostDialog.qml</file>
-    <file>PlayTogetherDialog.qml</file>
         <file>HostDialog.qml</file>
         <file>JoinDialog.qml</file>
     <file>PlayTogetherBar.qml</file>
     <file>RegistDialog.qml</file>
     <file>SteamShortcutDialog.qml</file>
-    <file>SettingsDialog.qml</file>
     <file>SettingsView.qml</file>
     <file>settings/ProfilePage.qml</file>
     <file>settings/GeneralPage.qml</file>
@@ -36,7 +34,6 @@
     <file>DisplaySettingsDialog.qml</file>
     <file>PlaceboSettingsDialog.qml</file>
     <file>PlaceboColorMappingDialog.qml</file>
-    <file>ProfileDialog.qml</file>
     <file>ConsolePinDialog.qml</file>
     <file>PSNLoginDialog.qml</file>
     <file>PSNTokenDialog.qml</file>

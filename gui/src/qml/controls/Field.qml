@@ -23,7 +23,8 @@ TextField {
     placeholderTextColor: Theme.textDim
     font.pixelSize: 14
     font.weight: Font.DemiBold
-    opacity: enabled ? 1 : 0.5
+    // Greyed out on its own; inside something greyed out already (a row), not a second time
+    opacity: enabled || (parent && !parent.enabled) ? 1 : 0.5
 
     // The style's own placeholder would float onto the border: drawn here instead
     background: Rectangle {

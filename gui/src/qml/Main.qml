@@ -211,10 +211,6 @@ Item {
         stack.push(settingsViewComponent, { page: page || "general", showRow: row });
     }
 
-    function showDisplaySettingsDialog() {
-        stack.push(displaySettingsDialogComponent);
-    }
-
     function showPlaceboSettingsDialog() {
         stack.push(placeboSettingsDialogComponent);
     }
@@ -241,10 +237,6 @@ Item {
         }
         else
             stack.push(placeboColorMappingDialogComponent);
-    }
-
-    function showProfileDialog() {
-        stack.push(profileDialogComponent)
     }
 
     function showConsolePinDialog(consoleIndex) {
@@ -663,11 +655,6 @@ Item {
     Component {
         id: placeboColorMappingDialogComponent
         PlaceboColorMappingDialog { }
-    }
-
-    Component {
-        id: profileDialogComponent
-        ProfileDialog { }
     }
 
     Component {

@@ -15,7 +15,8 @@ QQC.AbstractButton {
     implicitHeight: Math.max(24, content.implicitHeight + 4)
     font.pixelSize: 13
     font.weight: Font.Bold
-    opacity: enabled ? 1 : 0.5
+    // Greyed out on its own; inside something greyed out already (a row), not a second time
+    opacity: enabled || (parent && !parent.enabled) ? 1 : 0.5
 
     Keys.onPressed: (event) => FocusChain.handle(link, event)
 

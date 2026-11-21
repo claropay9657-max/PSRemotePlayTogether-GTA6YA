@@ -3,7 +3,7 @@
 // Tells the user of an older build that a newer release exists. Once per start
 // the app asks GitHub for the project's latest release and compares version
 // numbers; it never downloads or installs anything, it only offers to open the
-// release page in the browser. Settings > General has the switch for it.
+// release page in the browser. Settings > Updates & logs has the switch for it.
 
 #include "qmlbackend.h"
 #include "qmlmainwindow.h"
