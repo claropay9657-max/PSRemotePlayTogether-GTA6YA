@@ -62,7 +62,7 @@ reads another one when `DEFAULT_ROOMS_URL` in `web/js/rooms.js` names it.
 | `title` | The host's title for the room, up to 60 characters. Empty in the app becomes "Alex's room". |
 | `lang` | The language the room speaks, two letters (`de`, `en`), or empty for any. |
 | `game` | What runs on the console, as the console names it; empty on the home screen. |
-| `title_id`, `cover` | The game's id (`PPSA12345`, `CUSA12345`) and a picture of it. A cover can only be an address on `image.api.playstation.com`, so a list never makes anybody load a picture from anywhere else. The app does not send covers yet. |
+| `title_id`, `cover` | The game's id (`PPSA12345`, `CUSA12345`) and a picture of it. The host's app finds the picture in Sony's public catalog by the title id (`m.np.playstation.com/api/catalog/v2/titles/<id>_00/concepts`, no login) and sends its address. A cover can only be an address on `image.api.playstation.com`, so a list never makes anybody load a picture from anywhere else; viewers ask Sony's server for a small copy (`?w=192`). |
 | `host` | The host's name. |
 | `players`, `max` | How many are in the session, the host included, and how many fit. |
 | `policy` | Who gets in: `ask` (the host lets each player in), `watch` (everybody, watching until the host lets them play), `open` (everybody, playing at once). |

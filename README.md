@@ -224,7 +224,7 @@ It can be switched off on the **Host…** page (**Friends without the app can jo
 
 ### Public rooms
 
-A session can be found by people you have never sent an invite to. Choose **Public** on the **Host…** page and give the room a title and a language; the game that runs on the console is shown by itself.
+A session can be found by people you have never sent an invite to. Choose **Public** on the **Host…** page and give the room a title and a language; the game that runs on the console is shown by itself, with its picture from Sony's public catalog.
 
 - **Finding one:** **Join… → Public rooms** in the app, or the page for web browsers without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms where the host lets each player in; the app also sorts them by players, free places or age. Every room shows the game, how many play, who controls (everybody at once, one at a time, or only the host), and whether browsers are welcome.
 - **Getting in** works like with an invite: straight to the host, nothing passes through the list. If the host lets each player in, you wait at the door until they do.
