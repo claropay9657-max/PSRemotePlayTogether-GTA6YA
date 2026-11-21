@@ -641,7 +641,7 @@ Pane {
                 ToolTip.delay: 600
                 ToolTip.text: qsTr("Profile & settings…")
                 Keys.onPressed: (event) => C.FocusChain.handle(profileButton, event)
-                onClicked: root.showPlayTogetherDialog()
+                onClicked: root.showSettingsDialog("profile")
 
                 background: Item {
                     Rectangle {

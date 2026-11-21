@@ -1238,8 +1238,8 @@ DialogView {
                             kind: "ghost"
                             small: true
                             iconName: "sliders"
-                            text: qsTr("Profile & network settings…")
-                            onClicked: root.showPlayTogetherDialog()
+                            text: qsTr("Network settings…")
+                            onClicked: root.showSettingsDialog("network")
                         }
                     }
                 }

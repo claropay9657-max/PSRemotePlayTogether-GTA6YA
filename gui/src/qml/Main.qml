@@ -158,11 +158,6 @@ Item {
         stack.push(manualHostDialogComponent);
     }
 
-    /** Play Together settings: profile, network, voice, webcam, overlays. */
-    function showPlayTogetherDialog() {
-        stack.push(playTogetherDialogComponent);
-    }
-
     /** Host: a session friends join, set up before it starts. */
     function showHostDialog() {
         stack.push(hostDialogComponent);
@@ -210,8 +205,10 @@ Item {
         stack.push(registDialogComponent, {host: host, ps5: ps5});
     }
 
-    function showSettingsDialog() {
-        stack.push(settingsDialogComponent);
+    /** The settings window, on a page ("general", "profile", "network", … as SettingsView.qml lists them),
+     *  scrolled to a setting by its title if one is given. */
+    function showSettingsDialog(page = "", row = "") {
+        stack.push(settingsViewComponent, { page: page || "general", showRow: row });
     }
 
     function showDisplaySettingsDialog() {
@@ -639,11 +636,6 @@ Item {
     }
 
     Component {
-        id: playTogetherDialogComponent
-        PlayTogetherDialog { }
-    }
-
-    Component {
         id: hostDialogComponent
         HostDialog { }
     }
@@ -654,8 +646,8 @@ Item {
     }
 
     Component {
-        id: settingsDialogComponent
-        SettingsDialog { }
+        id: settingsViewComponent
+        SettingsView { }
     }
 
     Component {

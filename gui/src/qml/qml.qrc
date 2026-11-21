@@ -18,6 +18,21 @@
     <file>RegistDialog.qml</file>
     <file>SteamShortcutDialog.qml</file>
     <file>SettingsDialog.qml</file>
+    <file>SettingsView.qml</file>
+    <file>settings/ProfilePage.qml</file>
+    <file>settings/GeneralPage.qml</file>
+    <file>settings/PicturePage.qml</file>
+    <file>settings/QualityPage.qml</file>
+    <file>settings/SoundPage.qml</file>
+    <file>settings/ControllersPage.qml</file>
+    <file>settings/KeyboardPage.qml</file>
+    <file>settings/VoicePage.qml</file>
+    <file>settings/OverlaysPage.qml</file>
+    <file>settings/NetworkPage.qml</file>
+    <file>settings/ConsolesPage.qml</file>
+    <file>settings/PsnPage.qml</file>
+    <file>settings/SetsPage.qml</file>
+    <file>settings/UpdatesPage.qml</file>
     <file>DisplaySettingsDialog.qml</file>
     <file>PlaceboSettingsDialog.qml</file>
     <file>PlaceboColorMappingDialog.qml</file>
@@ -61,5 +76,14 @@
     <file>controls/RadioButton.qml</file>
     <file>controls/Slider.qml</file>
     <file>controls/TextField.qml</file>
+    <file>controls/ChipToggle.qml</file>
+    <file>controls/Dropdown.qml</file>
+    <file>controls/Field.qml</file>
+    <file>controls/Keycap.qml</file>
+    <file>controls/SettingsGroup.qml</file>
+    <file>controls/SettingsPage.qml</file>
+    <file>controls/SettingsRow.qml</file>
+    <file>controls/TextLink.qml</file>
+    <file>controls/ValueSlider.qml</file>
   </qresource>
 </RCC>

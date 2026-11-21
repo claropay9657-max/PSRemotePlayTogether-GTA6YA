@@ -949,7 +949,7 @@ FocusScope {
                             kind: "ghost"
                             small: true
                             text: qsTr("Change…")
-                            onClicked: root.showPlayTogetherDialog()
+                            onClicked: root.showSettingsDialog("profile")
                         }
                     }
 
