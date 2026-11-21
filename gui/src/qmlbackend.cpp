@@ -439,6 +439,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     connect(settings, &Settings::ManualHostsUpdated, this, &QmlBackend::hostsChanged);
     connect(settings, &Settings::CurrentProfileChanged, this, &QmlBackend::profileChanged);
     connect(&discovery_manager, &DiscoveryManager::HostsUpdated, this, &QmlBackend::updateDiscoveryHosts);
+    connect(&discovery_manager, &DiscoveryManager::LocalNetworkBlockedChanged, this, &QmlBackend::localNetworkBlockedChanged);
     discovery_manager.SetSettings(settings);
     setDiscoveryEnabled(true);
     connect(ControllerManager::GetInstance(), &ControllerManager::AvailableControllersUpdated, this, &QmlBackend::updateControllers);
@@ -2205,7 +2206,11 @@ bool QmlBackend::sendWakeup(const QString &host, const QByteArray &regist_key, b
         discovery_manager.SendWakeup(host, regist_key, ps5);
         return true;
     } catch (const Exception &e) {
-        emit error(tr("Wakeup failed"), tr("Failed to send Wakeup packet:\n%1").arg(e.what()));
+        // Blocked by macOS or a firewall: the text says what to do, nothing to put in front of it
+        if (discovery_manager.GetLocalNetworkBlocked())
+            emit error(tr("Wakeup failed"), QString::fromUtf8(e.what()));
+        else
+            emit error(tr("Wakeup failed"), tr("Failed to send Wakeup packet:\n%1").arg(e.what()));
         return false;
     }
 }

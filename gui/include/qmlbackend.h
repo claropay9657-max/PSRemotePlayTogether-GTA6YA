@@ -90,6 +90,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(StreamSession* session READ qmlSession NOTIFY sessionChanged)
     Q_PROPERTY(QList<QmlController*> controllers READ qmlControllers NOTIFY controllersChanged)
     Q_PROPERTY(bool discoveryEnabled READ discoveryEnabled WRITE setDiscoveryEnabled NOTIFY discoveryEnabledChanged)
+    /** macOS: the system (Local Network privacy) or a firewall keeps the app from the consoles in its network. */
+    Q_PROPERTY(bool localNetworkBlocked READ localNetworkBlocked NOTIFY localNetworkBlockedChanged)
     Q_PROPERTY(QVariantList hosts READ hosts NOTIFY hostsChanged)
     Q_PROPERTY(QVariantList hiddenHosts READ hiddenHosts NOTIFY hiddenHostsChanged)
     Q_PROPERTY(bool autoConnect READ autoConnect NOTIFY autoConnectChanged)
@@ -135,6 +137,7 @@ public:
     QList<QmlController*> qmlControllers() const;
 
     bool discoveryEnabled() const;
+    bool localNetworkBlocked() const { return discovery_manager.GetLocalNetworkBlocked(); }
     void setDiscoveryEnabled(bool enabled);
     void refreshAuth();
 
@@ -227,6 +230,8 @@ public:
     /** Asks GitHub for the latest release; see qmlbackend_update.cpp. */
     Q_INVOKABLE void checkForUpdate();
     Q_INVOKABLE void openUpdatePage();
+    /** macOS: System Settings at Privacy & Security › Local Network. */
+    Q_INVOKABLE void openLocalNetworkSettings();
     /** "Later": the start does not ask about this version again. */
     Q_INVOKABLE void skipUpdate();
     /** Joins a session somebody else shares. Answers with coplayJoinFinished. */
@@ -289,6 +294,7 @@ signals:
     void controllerMappingSteamControllerSelected();
     void enableAnalogStickMappingChanged();
     void discoveryEnabledChanged();
+    void localNetworkBlockedChanged();
     void hostsChanged();
     void hiddenHostsChanged();
     void psnTokenChanged();

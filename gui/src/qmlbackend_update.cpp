@@ -79,6 +79,13 @@ void QmlBackend::openUpdatePage()
     QDesktopServices::openUrl(QUrl(update_url.isEmpty() ? kReleasesPage : update_url));
 }
 
+void QmlBackend::openLocalNetworkSettings()
+{
+#ifdef __APPLE__
+    QDesktopServices::openUrl(QUrl(QStringLiteral("x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork")));
+#endif
+}
+
 void QmlBackend::skipUpdate()
 {
     if (!update_version.isEmpty())

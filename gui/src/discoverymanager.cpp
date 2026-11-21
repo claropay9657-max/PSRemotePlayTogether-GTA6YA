@@ -4,7 +4,17 @@
 #include <exception.h>
 #include <settings.h>
 
+#include <QSocketNotifier>
+#include <QTimer>
+
+#include <cerrno>
 #include <cstring>
+
+#ifdef __APPLE__
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -36,16 +46,288 @@ HostMAC DiscoveryHost::GetHostMAC() const
 static void DiscoveryServiceHostsCallback(ChiakiDiscoveryHost *hosts, size_t hosts_count, void *user);
 static void DiscoveryServiceHostsManualCallback(ChiakiDiscoveryHost *hosts, size_t hosts_count, void *user);
 
+#ifdef __APPLE__
+/**
+ * What blocking looks like to the sender: macOS without Local Network permission refuses a
+ * packet to a single device with EHOSTUNREACH ("No route to host"); a firewall such as LuLu
+ * that blocks the app fails every send, broadcasts too, with EPIPE ("Broken pipe") or EPERM.
+ */
+static bool SendRefused(int error)
+{
+	return error == EHOSTUNREACH || error == EPIPE || error == EPERM || error == EACCES;
+}
+
+/**
+ * One search packet, as the broadcast search sends it, from a new socket: straight to a
+ * console, or to a subnet's broadcast address. A firewall may also take a packet and drop
+ * it: then only the missing answer tells. Returns the socket (non-blocking, for the answer),
+ * -2 when refused, -1 otherwise.
+ */
+static int LocalNetworkProbeSendTo(struct sockaddr_in to, bool ps5, bool broadcast)
+{
+	to.sin_family = AF_INET;
+	to.sin_port = htons(ps5 ? CHIAKI_DISCOVERY_PORT_PS5 : CHIAKI_DISCOVERY_PORT_PS4);
+	ChiakiDiscoveryPacket packet = {};
+	packet.cmd = CHIAKI_DISCOVERY_CMD_SRCH;
+	// Only read by chiaki_discovery_packet_fmt, which the C struct does not say
+	packet.protocol_version = const_cast<char *>(ps5 ? CHIAKI_DISCOVERY_PROTOCOL_VERSION_PS5 : CHIAKI_DISCOVERY_PROTOCOL_VERSION_PS4);
+	char buf[512];
+	int len = chiaki_discovery_packet_fmt(buf, sizeof(buf), &packet);
+	if(len < 0 || (size_t)len >= sizeof(buf))
+		return -1;
+	int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if(s < 0)
+		return -1;
+	const int on = 1;
+	// A firewall that blocks the app answers sends with EPIPE, and with it the signal SIGPIPE,
+	// which would end the app: the error is what this wants to see, the signal is not
+	setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+	if(broadcast)
+		setsockopt(s, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on));
+	fcntl(s, F_SETFL, fcntl(s, F_GETFL, 0) | O_NONBLOCK);
+	ssize_t sent = sendto(s, buf, (size_t)len + 1, 0, (struct sockaddr *)&to, sizeof(to));
+	int error = errno;
+	if(sent >= 0)
+		return s;
+	close(s);
+	return SendRefused(error) ? -2 : -1;
+}
+
+/** Straight to a console's IPv4 address. */
+static int LocalNetworkProbeSend(const QString &address, bool ps5)
+{
+	struct sockaddr_in to = {};
+	if(inet_pton(AF_INET, address.toUtf8().constData(), &to.sin_addr) != 1)
+		return -1;
+	return LocalNetworkProbeSendTo(to, ps5, false);
+}
+
+/**
+ * While no console is found: is even the search to this computer's own subnets refused? On a
+ * socket kept from one check to the next (fd): a firewall such as LuLu lets the first send on
+ * a new socket pass and blocks the socket a moment later, so only the following sends tell.
+ * 0 refused on every subnet (fd closed, the next check starts anew), 1 sent, -1 nothing to try.
+ */
+static int LocalNetworkProbeBroadcast(int &fd)
+{
+	ChiakiDiscoveryPacket packet = {};
+	packet.cmd = CHIAKI_DISCOVERY_CMD_SRCH;
+	packet.protocol_version = const_cast<char *>(CHIAKI_DISCOVERY_PROTOCOL_VERSION_PS5);
+	char buf[512];
+	int len = chiaki_discovery_packet_fmt(buf, sizeof(buf), &packet);
+	if(len < 0 || (size_t)len >= sizeof(buf))
+		return -1;
+	if(fd < 0)
+	{
+		fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		if(fd < 0)
+			return -1;
+		const int on = 1;
+		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+		setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on));
+		fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+	}
+	struct ifaddrs *addrs;
+	if(getifaddrs(&addrs) != 0)
+		return -1;
+	int result = -1;
+	for(struct ifaddrs *a = addrs; a; a = a->ifa_next)
+	{
+		if(!a->ifa_addr || a->ifa_addr->sa_family != AF_INET || !a->ifa_broadaddr)
+			continue;
+		if((a->ifa_flags & (IFF_UP | IFF_RUNNING | IFF_LOOPBACK | IFF_BROADCAST)) != (IFF_UP | IFF_RUNNING | IFF_BROADCAST))
+			continue;
+		struct sockaddr_in to = *(struct sockaddr_in *)a->ifa_broadaddr;
+		to.sin_family = AF_INET;
+		to.sin_port = htons(CHIAKI_DISCOVERY_PORT_PS5);
+		if(sendto(fd, buf, (size_t)len + 1, 0, (struct sockaddr *)&to, sizeof(to)) >= 0)
+		{
+			result = 1;
+			break;
+		}
+		if(SendRefused(errno))
+			result = 0;
+	}
+	freeifaddrs(addrs);
+	if(result == 0)
+	{
+		close(fd);
+		fd = -1;
+	}
+	return result;
+}
+
+/** Only whether a send straight to a console is refused outright: 0 refused, 1 sent, -1 something else. */
+static int LocalNetworkProbe(const QString &address, bool ps5)
+{
+	int s = LocalNetworkProbeSend(address, ps5);
+	if(s >= 0)
+	{
+		close(s);
+		return 1;
+	}
+	return s == -2 ? 0 : -1;
+}
+#endif
+
 DiscoveryManager::DiscoveryManager(QObject *parent) : QObject(parent)
 {
 	chiaki_log_init(&log, CHIAKI_LOG_ALL & ~CHIAKI_LOG_VERBOSE, chiaki_log_cb_print, nullptr);
 
 	service_active = false;
 	service_active_ipv6 = false;
+
+#ifdef __APPLE__
+	// Asked again now and then: the user may allow the app in the meantime
+	local_network_timer = new QTimer(this);
+	local_network_timer->setInterval(10000);
+	connect(local_network_timer, &QTimer::timeout, this, &DiscoveryManager::ProbeLocalNetwork);
+	probe_timeout = new QTimer(this);
+	probe_timeout->setSingleShot(true);
+	probe_timeout->setInterval(2500);
+	connect(probe_timeout, &QTimer::timeout, this, &DiscoveryManager::ProbeTimedOut);
+#endif
+}
+
+QString DiscoveryManager::LocalNetworkBlockedText()
+{
+	return tr("Your Mac does not let PSRemotePlayTogether reach your console, so it can neither wake nor play it.\n\n"
+		"Open System Settings → Privacy & Security → Local Network and switch on PSRemotePlayTogether. If it is on already, switch it off and on again: macOS asks again after every update. "
+		"A firewall such as LuLu or Little Snitch has to allow it as well. Then start the app again.");
+}
+
+void DiscoveryManager::SetLocalNetworkBlocked(bool blocked)
+{
+	local_network_probed = true;
+	if(blocked == local_network_blocked)
+		return;
+	local_network_blocked = blocked;
+	if(blocked)
+		CHIAKI_LOGW(&log, "A console in this network does not answer what is sent straight to it: Local Network permission or a firewall");
+	else
+		CHIAKI_LOGI(&log, "A console in this network answers straight again");
+	emit LocalNetworkBlockedChanged();
+}
+
+void DiscoveryManager::CloseProbe()
+{
+#ifdef __APPLE__
+	if(probe_notifier)
+	{
+		probe_notifier->setEnabled(false);
+		probe_notifier->deleteLater();
+		probe_notifier = nullptr;
+	}
+	if(probe_fd >= 0)
+	{
+		close(probe_fd);
+		probe_fd = -1;
+	}
+	if(probe_timeout)
+		probe_timeout->stop();
+#endif
+}
+
+void DiscoveryManager::CloseBroadcastProbe()
+{
+#ifdef __APPLE__
+	if(broadcast_probe_fd >= 0)
+	{
+		close(broadcast_probe_fd);
+		broadcast_probe_fd = -1;
+	}
+	broadcast_probe_ok = 0;
+#endif
+}
+
+void DiscoveryManager::ProbeLocalNetwork()
+{
+#ifdef __APPLE__
+	if(probe_fd >= 0)
+		return; // the last one is still waiting for its answer
+	bool console_found = false;
+	for(const DiscoveryHost &host : std::as_const(hosts))
+		console_found = console_found || !host.host_addr.contains(':');
+	if(!console_found)
+	{
+		// Nothing to ask straight: then at least whether the search itself goes out
+		const int result = LocalNetworkProbeBroadcast(broadcast_probe_fd);
+		if(result == 0)
+		{
+			broadcast_probe_ok = 0;
+			local_network_all_refused = true;
+			SetLocalNetworkBlocked(true);
+		}
+		// A new socket's first send passes in any case: twice in a row before it counts
+		else if(result == 1 && local_network_all_refused && ++broadcast_probe_ok >= 2)
+		{
+			broadcast_probe_ok = 0;
+			local_network_all_refused = false;
+			SetLocalNetworkBlocked(false);
+		}
+		return;
+	}
+	for(const DiscoveryHost &host : std::as_const(hosts))
+	{
+		if(host.host_addr.contains(':'))
+			continue;
+		int s = LocalNetworkProbeSend(host.host_addr, host.ps5);
+		if(s == -2)
+		{
+			// Refused by macOS at once: no need to wait for anything
+			local_network_misses = 0;
+			SetLocalNetworkBlocked(true);
+			return;
+		}
+		if(s < 0)
+			continue;
+		probe_fd = s;
+		probe_host = host.host_addr;
+		probe_notifier = new QSocketNotifier(s, QSocketNotifier::Read, this);
+		connect(probe_notifier, &QSocketNotifier::activated, this, &DiscoveryManager::ProbeAnswered);
+		probe_timeout->start();
+		return;
+	}
+#endif
+}
+
+void DiscoveryManager::ProbeAnswered()
+{
+#ifdef __APPLE__
+	bool from_console = false;
+	char buf[1024];
+	struct sockaddr_in from = {};
+	socklen_t from_len = sizeof(from);
+	while(probe_fd >= 0 && recvfrom(probe_fd, buf, sizeof(buf), 0, (struct sockaddr *)&from, &from_len) >= 0)
+	{
+		char addr[INET_ADDRSTRLEN] = {};
+		if(inet_ntop(AF_INET, &from.sin_addr, addr, sizeof(addr)) && probe_host == QString::fromLatin1(addr))
+			from_console = true;
+		from_len = sizeof(from);
+	}
+	if(!from_console)
+		return;
+	CloseProbe();
+	local_network_misses = 0;
+	local_network_all_refused = false;
+	SetLocalNetworkBlocked(false);
+#endif
+}
+
+void DiscoveryManager::ProbeTimedOut()
+{
+#ifdef __APPLE__
+	CloseProbe();
+	// A console found by the broadcast search answers straight at once: twice no answer is not chance
+	if(++local_network_misses >= 2)
+		SetLocalNetworkBlocked(true);
+#endif
 }
 
 DiscoveryManager::~DiscoveryManager()
 {
+	CloseProbe();
+	CloseBroadcastProbe();
 	if(service_active)
 		chiaki_discovery_service_fini(&service);
 	if(service_active_ipv6)
@@ -210,7 +492,15 @@ void DiscoveryManager::SetActive(bool active)
 				return;
 			}
 			else
+			{
 				service_active = true;
+				if(local_network_timer)
+				{
+					local_network_timer->start();
+					// Soon after the start, before the first ten seconds are over
+					QTimer::singleShot(2000, this, &DiscoveryManager::ProbeLocalNetwork);
+				}
+			}
 		}
 		if(!service_active_ipv6)
 		{
@@ -258,6 +548,20 @@ void DiscoveryManager::SetActive(bool active)
 
 		hosts = {};
 		emit HostsUpdated();
+
+		// Without the search there is no console to try: nothing known about the network
+		if(local_network_timer)
+			local_network_timer->stop();
+		CloseProbe();
+		CloseBroadcastProbe();
+		local_network_misses = 0;
+		local_network_all_refused = false;
+		local_network_probed = false;
+		if(local_network_blocked)
+		{
+			local_network_blocked = false;
+			emit LocalNetworkBlockedChanged();
+		}
 	}
 
 }
@@ -298,7 +602,17 @@ void DiscoveryManager::SendWakeup(const QString &host, const QByteArray &regist_
 		err = chiaki_discovery_wakeup(&log, service_active ? &service.discovery : nullptr, host.toUtf8().constData(), credential, ps5);
 
 	if(err != CHIAKI_ERR_SUCCESS)
+	{
+#ifdef __APPLE__
+		// "Network error" alone says nothing: when macOS or a firewall refused it, say what to do
+		if(!ipv6 && LocalNetworkProbe(host, ps5) == 0)
+		{
+			SetLocalNetworkBlocked(true);
+			throw Exception(LocalNetworkBlockedText());
+		}
+#endif
 		throw Exception(QString("Failed to send Packet: %1").arg(chiaki_error_string(err)));
+	}
 }
 
 const QList<DiscoveryHost> DiscoveryManager::GetHosts() const
@@ -317,6 +631,9 @@ void DiscoveryManager::DiscoveryServiceHosts(QList<DiscoveryHost> hosts)
 {
 	this->hosts = std::move(hosts);
 	emit HostsUpdated();
+	// The first console found: find out at once whether the app may reach it
+	if(!local_network_probed)
+		ProbeLocalNetwork();
 }
 
 void DiscoveryManager::UpdateManualServices()

@@ -34,6 +34,8 @@
 	<string>PSRemotePlayTogether uses your microphone to talk to the console and to the players you share a session with.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>PSRemotePlayTogether shows your webcam to the players you share a session with, when you switch it on.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PSRemotePlayTogether finds your PlayStation in your network, wakes it up and connects to it, and connects you with friends in the same network.</string>
 	<key>NSCameraUseContinuityCameraDeviceType</key>
 	<true/>
 	<key>LSApplicationCategoryType</key>

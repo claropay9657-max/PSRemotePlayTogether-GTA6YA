@@ -54,6 +54,29 @@ class DiscoveryManager : public QObject
 		QList<DiscoveryHost> hosts;
 		Settings *settings = {};
 		QHash<QString, ManualService*> manual_services;
+		/**
+		 * macOS: a console that the broadcast search finds does not answer a search sent straight
+		 * to it: refused by macOS ("No route to host", Local Network privacy) or dropped by a
+		 * firewall such as LuLu. Waking and playing need that direct way.
+		 */
+		bool local_network_blocked = false;
+		bool local_network_probed = false;
+		int local_network_misses = 0;
+		/** Even the search to this computer's subnets is refused: a firewall blocks the app. */
+		bool local_network_all_refused = false;
+		int broadcast_probe_fd = -1;
+		int broadcast_probe_ok = 0;
+		int probe_fd = -1;
+		QString probe_host;
+		class QTimer *local_network_timer = nullptr;
+		class QTimer *probe_timeout = nullptr;
+		class QSocketNotifier *probe_notifier = nullptr;
+		void ProbeLocalNetwork();
+		void ProbeAnswered();
+		void ProbeTimedOut();
+		void CloseProbe();
+		void CloseBroadcastProbe();
+		void SetLocalNetworkBlocked(bool blocked);
 
 	private slots:
 		void DiscoveryServiceHosts(QList<DiscoveryHost> hosts);
@@ -70,9 +93,14 @@ class DiscoveryManager : public QObject
 
 		bool GetActive() const { return service_active; }
 		const QList<DiscoveryHost> GetHosts() const;
+		/** macOS only: the system (Local Network privacy) or a firewall keeps this app from its network. */
+		bool GetLocalNetworkBlocked() const { return local_network_blocked; }
+		/** What to do about it, for the user. */
+		static QString LocalNetworkBlockedText();
 
 	signals:
 		void HostsUpdated();
+		void LocalNetworkBlockedChanged();
 };
 
 #endif //CHIAKI_DISCOVERYMANAGER_H

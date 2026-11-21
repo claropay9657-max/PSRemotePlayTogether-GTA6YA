@@ -34,6 +34,9 @@ int main(int argc, char *argv[]) { return real_main(argc, argv); }
 
 #include <stdio.h>
 #include <string.h>
+#ifndef _WIN32
+#include <signal.h>
+#endif
 
 #ifdef CHIAKI_HAVE_WEBENGINE
 #include <QtWebEngineQuick>
@@ -120,6 +123,11 @@ static void ImportChiakiSettings()
 
 int real_main(int argc, char *argv[])
 {
+#ifndef _WIN32
+	// A send on a connection that is gone or that a firewall (LuLu) blocks raises SIGPIPE,
+	// which would end the app; ignored, the send just fails with EPIPE and says so
+	signal(SIGPIPE, SIG_IGN);
+#endif
 	qRegisterMetaType<DiscoveryHost>();
 	qRegisterMetaType<RegisteredHost>();
 	qRegisterMetaType<HostMAC>();

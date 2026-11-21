@@ -3,6 +3,11 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.3.3
+
+- **Waking the console failed with "Network error" on macOS.** After an update macOS can keep the app away from the devices in your network (Privacy & Security → Local Network): the app still finds the console, but cannot wake it or play. A firewall such as LuLu can do the same, or keep the app from finding the console at all. The app now notices both and says so on the start page, with a button to the macOS settings, and a failed wake-up says what to do instead of "Network error". The app also tells macOS why it needs your network, for the question macOS asks.
+- **Fixed: the app could quit while a firewall blocked it.** A blocked send no longer ends the app.
+
 ## 0.3.2
 
 - **Fixed: questions in the top left corner.** "Update available", "Quit?" and the other questions of the app opened squeezed into the top left corner, too small for their text, with their buttons hanging out below and the window behind them not dimmed. They now open in the middle, dimmed behind. The same fix puts the About window (Settings → Updates & logs) and the window of a controller (Settings → Controllers) in the middle.

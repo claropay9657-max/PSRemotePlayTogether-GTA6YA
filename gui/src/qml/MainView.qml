@@ -1063,6 +1063,69 @@ Pane {
                     }
                 }
 
+                // macOS (Local Network privacy) or a firewall lets the search through but not a packet
+                // straight to the console, which waking and playing need (DiscoveryManager)
+                Rectangle {
+                    Layout.fillWidth: true
+                    visible: Chiaki.localNetworkBlocked
+                    implicitHeight: blockedRow.implicitHeight + 32
+                    radius: 18
+                    color: Qt.rgba(245 / 255, 185 / 255, 66 / 255, 0.10)
+                    border.width: 1
+                    border.color: Qt.rgba(245 / 255, 185 / 255, 66 / 255, 0.45)
+
+                    RowLayout {
+                        id: blockedRow
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            verticalCenter: parent.verticalCenter
+                            leftMargin: 18
+                            rightMargin: 16
+                        }
+                        spacing: 14
+
+                        C.Icon {
+                            Layout.alignment: Qt.AlignTop
+                            Layout.topMargin: 2
+                            iconName: "shield"
+                            size: 22
+                            color: C.Theme.wait
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 15
+                                font.weight: Font.ExtraBold
+                                color: "#fde4a8"
+                                text: qsTr("Your Mac keeps this app away from your console")
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 13
+                                lineHeight: 1.15
+                                color: "#e3d6b4"
+                                text: qsTr("Waking and playing need it. Switch on PSRemotePlayTogether under Local Network in the macOS settings (if it is on, switch it off and on: macOS asks again after every update), allow it in a firewall such as LuLu, then start the app again.")
+                            }
+                        }
+
+                        PageButton {
+                            Layout.alignment: Qt.AlignVCenter
+                            small: true
+                            iconName: "sliders"
+                            text: qsTr("Open Local Network")
+                            onClicked: Chiaki.openLocalNetworkSettings()
+                        }
+                    }
+                }
+
                 GridLayout {
                     Layout.fillWidth: true
                     columns: consolePane.wide && consolePane.shownConsoles > 1 ? 2 : 1
