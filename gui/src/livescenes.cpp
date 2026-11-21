@@ -1,15 +1,26 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
 #include "livescenes.h"
+#include "scenemusic.h"
 #include "settings.h"
 #include "streamsession.h"
 
 #include "qrcodegen.hpp"
 
+#include <QApplication>
 #include <QClipboard>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
+#include <QSettings>
+#include <QStandardPaths>
 #include <QRegularExpression>
 #include <QUrl>
 
@@ -73,6 +84,23 @@ LiveScenes::LiveScenes(Settings *settings, QObject *parent)
 		{ "difficulties_line", tr("We lost the picture for a moment. The app is reconnecting by itself.") },
 		{ "difficulties_footer", tr("Chat is still open – say hi while we wait.") },
 		{ "ending_title", tr("Thanks for watching!") },
+		// Music while Starting soon, Be right back and Thanks for watching are on the stream:
+		// the app's own loop ("builtin") or the player's own files ("own")
+		{ "music_starting_on", true },
+		{ "music_starting_volume", 70 },
+		{ "music_starting_source", QStringLiteral("builtin") },
+		{ "music_starting_files", QStringList() },
+		{ "music_starting_shuffle", false },
+		{ "music_brb_on", true },
+		{ "music_brb_volume", 70 },
+		{ "music_brb_source", QStringLiteral("builtin") },
+		{ "music_brb_files", QStringList() },
+		{ "music_brb_shuffle", false },
+		{ "music_ending_on", true },
+		{ "music_ending_volume", 70 },
+		{ "music_ending_source", QStringLiteral("builtin") },
+		{ "music_ending_files", QStringList() },
+		{ "music_ending_shuffle", false },
 	};
 	for(const Key &k : keys)
 	{
@@ -81,6 +109,8 @@ LiveScenes::LiveScenes(Settings *settings, QObject *parent)
 			v = v.toBool();
 		else if(k.default_value.typeId() == QMetaType::Int)
 			v = v.toInt();
+		else if(k.default_value.typeId() == QMetaType::QStringList)
+			v = v.toStringList();
 		else
 			v = v.toString();
 		map.insert(QLatin1String(k.name), v);
@@ -88,6 +118,7 @@ LiveScenes::LiveScenes(Settings *settings, QObject *parent)
 	connect(&map, &QQmlPropertyMap::valueChanged, this, [this](const QString &key, const QVariant &value) {
 		Store(key, value);
 	});
+	music = new SceneMusic(this, this);
 	timer.setInterval(250);
 	connect(&timer, &QTimer::timeout, this, &LiveScenes::Refresh);
 	Refresh();
@@ -232,6 +263,198 @@ QVariantMap LiveScenes::obsUrls() const
 void LiveScenes::copy(const QString &text) const
 {
 	QGuiApplication::clipboard()->setText(text);
+}
+
+namespace {
+
+/** A source of an OBS scene collection, with what OBS writes for every source. */
+QJsonObject ObsSource(const QString &name, const QString &id, const QJsonObject &settings, bool audio)
+{
+	QJsonObject o;
+	o["balance"] = 0.5;
+	o["deinterlace_field_order"] = 0;
+	o["deinterlace_mode"] = 0;
+	o["enabled"] = true;
+	o["flags"] = 0;
+	o["hotkeys"] = QJsonObject();
+	o["id"] = id;
+	o["versioned_id"] = id;
+	o["mixers"] = audio ? 255 : 0;
+	o["monitoring_type"] = 0;
+	o["muted"] = false;
+	o["name"] = name;
+	o["private_settings"] = QJsonObject();
+	o["push-to-mute"] = false;
+	o["push-to-mute-delay"] = 0;
+	o["push-to-talk"] = false;
+	o["push-to-talk-delay"] = 0;
+	o["settings"] = settings;
+	o["sync"] = 0;
+	o["volume"] = 1.0;
+	return o;
+}
+
+/** A source placed in a scene: at the top left, its own size, or fitted into 1920 x 1080. */
+QJsonObject ObsItem(const QString &source, int id, bool fit)
+{
+	auto vec = [](double x, double y) {
+		QJsonObject v;
+		v["x"] = x;
+		v["y"] = y;
+		return v;
+	};
+	QJsonObject o;
+	o["align"] = 5;
+	o["blend_method"] = QStringLiteral("default");
+	o["blend_type"] = QStringLiteral("normal");
+	o["bounds"] = vec(1920.0, 1080.0);
+	o["bounds_align"] = 0;
+	// 2: scaled into the bounds, keeping its shape
+	o["bounds_type"] = fit ? 2 : 0;
+	o["crop_bottom"] = 0;
+	o["crop_left"] = 0;
+	o["crop_right"] = 0;
+	o["crop_top"] = 0;
+	o["group_item_backup"] = false;
+	o["id"] = id;
+	o["locked"] = false;
+	o["name"] = source;
+	o["pos"] = vec(0.0, 0.0);
+	o["private_settings"] = QJsonObject();
+	o["rot"] = 0.0;
+	o["scale"] = vec(1.0, 1.0);
+	o["scale_filter"] = QStringLiteral("disable");
+	o["visible"] = true;
+	return o;
+}
+
+QJsonObject ObsBrowser(const QString &url, bool sound, bool only_while_shown = false)
+{
+	QJsonObject s;
+	s["url"] = url;
+	s["width"] = 1920;
+	s["height"] = 1080;
+	// "Control audio via OBS": the voices, the alert sounds and the scenes' music go into the stream
+	s["reroute_audio"] = sound;
+	// A scene's page runs only while its scene is shown: its music starts with it, faded in
+	s["shutdown"] = only_while_shown;
+	s["restart_when_active"] = only_while_shown;
+	return s;
+}
+
+} // namespace
+
+QString LiveScenes::exportObs()
+{
+	QString base = overlay_url;
+	if(base.isEmpty())
+	{
+		int port = settings->GetOverlayPort();
+		if(port < 1 || port > 65535)
+			port = 9412;
+		base = QStringLiteral("http://localhost:%1/").arg(port);
+	}
+	if(!base.endsWith(QLatin1Char('/')))
+		base += QLatin1Char('/');
+
+	QJsonArray sources;
+	QJsonArray order;
+	const QString overlay_name = tr("Overlay and Twitch elements");
+	const QString alerts_name = tr("Twitch alerts");
+	const QString game_name = tr("PSRemotePlayTogether window");
+	const QString sound_name = tr("PSRemotePlayTogether sound");
+	sources.append(ObsSource(overlay_name, QStringLiteral("browser_source"), ObsBrowser(base, true), true));
+	sources.append(ObsSource(alerts_name, QStringLiteral("browser_source"), ObsBrowser(base + QStringLiteral("alerts"), true), true));
+
+	// The game: this app's window (and on macOS its sound), as OBS captures it on each system.
+	// OBS may still ask once which window it is.
+	bool with_sound_source = false;
+#if defined(Q_OS_MACOS)
+	QSettings plist(QCoreApplication::applicationDirPath() + QStringLiteral("/../Info.plist"), QSettings::NativeFormat);
+	const QString bundle = plist.value(QStringLiteral("CFBundleIdentifier"), QStringLiteral("net.gamernova.psremoteplaytogether")).toString();
+	QJsonObject capture;
+	capture["type"] = 2; // the application, whichever window it shows
+	capture["application"] = bundle;
+	capture["show_cursor"] = false;
+	sources.append(ObsSource(game_name, QStringLiteral("screen_capture"), capture, false));
+	QJsonObject sound;
+	sound["type"] = 1; // the application's sound
+	sound["application"] = bundle;
+	sources.append(ObsSource(sound_name, QStringLiteral("sck_audio_capture"), sound, true));
+	with_sound_source = true;
+#elif defined(Q_OS_WIN)
+	QJsonObject capture;
+	// "title:class:program"; 2: found by its program, whatever the title says
+	capture["window"] = QStringLiteral("PSRemotePlayTogether::") + QFileInfo(QCoreApplication::applicationFilePath()).fileName();
+	capture["priority"] = 2;
+	capture["method"] = 2; // Windows Graphics Capture
+	capture["capture_audio"] = true;
+	capture["cursor"] = false;
+	sources.append(ObsSource(game_name, QStringLiteral("window_capture"), capture, true));
+#else
+	sources.append(ObsSource(game_name, QStringLiteral("pipewire-screen-capture-source"), QJsonObject(), false));
+#endif
+
+	auto scene = [&](const QString &name, const QList<QPair<QString, bool>> &items) {
+		QJsonArray list;
+		int id = 0;
+		for(const auto &item : items)
+			list.append(ObsItem(item.first, ++id, item.second));
+		QJsonObject s;
+		s["custom_size"] = false;
+		s["id_counter"] = id;
+		s["items"] = list;
+		sources.append(ObsSource(name, QStringLiteral("scene"), s, false));
+		QJsonObject o;
+		o["name"] = name;
+		order.append(o);
+	};
+
+	const QString game_scene = tr("Game with overlay");
+	QList<QPair<QString, bool>> game_items = { { game_name, true } };
+	if(with_sound_source)
+		game_items.append({ sound_name, false });
+	game_items.append({ overlay_name, false });
+	game_items.append({ alerts_name, false });
+	scene(game_scene, game_items);
+
+	for(const QVariant &v : scenes())
+	{
+		const QVariantMap m = v.toMap();
+		const QString id = m.value("id").toString();
+		if(id == QLatin1String("game"))
+			continue;
+		const QString page = m.value("name").toString() + QStringLiteral(" – ") + tr("page");
+		sources.append(ObsSource(page, QStringLiteral("browser_source"), ObsBrowser(base + QStringLiteral("scene/") + id, true, true), true));
+		scene(m.value("name").toString(), { { page, false }, { alerts_name, false } });
+	}
+
+	QJsonObject collection;
+	collection["name"] = QStringLiteral("PSRemotePlayTogether");
+	collection["current_scene"] = game_scene;
+	collection["current_program_scene"] = game_scene;
+	collection["current_transition"] = QStringLiteral("Fade");
+	collection["transition_duration"] = 300;
+	collection["transitions"] = QJsonArray();
+	collection["groups"] = QJsonArray();
+	collection["modules"] = QJsonObject();
+	collection["preview_locked"] = false;
+	collection["quick_transitions"] = QJsonArray();
+	collection["saved_projectors"] = QJsonArray();
+	collection["scaling_enabled"] = false;
+	collection["scene_order"] = order;
+	collection["sources"] = sources;
+
+	const QString start = QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).filePath(QStringLiteral("PSRemotePlayTogether OBS.json"));
+	const QString file = QFileDialog::getSaveFileName(QApplication::focusWidget(), tr("Save the OBS layout"), start,
+		tr("OBS scene collection (*.json)"), nullptr, QFileDialog::DontUseNativeDialog);
+	if(file.isEmpty())
+		return QString();
+	QSaveFile out(file);
+	if(!out.open(QIODevice::WriteOnly))
+		return QString();
+	out.write(QJsonDocument(collection).toJson(QJsonDocument::Indented));
+	return out.commit() ? file : QString();
 }
 
 void LiveScenes::SetPageClients(int count)
@@ -542,6 +765,24 @@ void LiveScenes::Refresh()
 	page.remove("qrRows");
 	page["qr"] = qr_svg.isEmpty() ? QString() : QStringLiteral("/scene/qr.svg?v=%1").arg(qHash(qr_url));
 	page["gamePicture"] = has_picture ? QStringLiteral("/scene/game.jpg?v=%1").arg(picture_serial) : QString();
+	// The music, for the pages to play: how loud, and how many of the player's own files
+	// (their names stay here: the page asks for them by number)
+	QVariantMap music;
+	for(const char *id : { "starting", "brb", "ending" })
+	{
+		const QString s = QString::fromLatin1(id);
+		QVariantMap m;
+		m["on"] = map.value(QStringLiteral("music_%1_on").arg(s)).toBool();
+		m["volume"] = map.value(QStringLiteral("music_%1_volume").arg(s)).toInt();
+		const QStringList files = map.value(QStringLiteral("music_%1_files").arg(s)).toStringList();
+		const bool own = map.value(QStringLiteral("music_%1_source").arg(s)).toString() == QLatin1String("own") && !files.isEmpty();
+		m["own"] = own ? files.size() : 0;
+		m["shuffle"] = map.value(QStringLiteral("music_%1_shuffle").arg(s)).toBool();
+		// A new list of files: the pages load them anew
+		m["serial"] = static_cast<int>(qHash(files.join(QLatin1Char('\n'))) & 0x7fffffff);
+		music[s] = m;
+	}
+	page["music"] = music;
 
 	const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(page)).toJson(QJsonDocument::Compact);
 	// The page's data names the picture by its number, so this covers a new picture too
@@ -550,4 +791,72 @@ void LiveScenes::Refresh()
 	qml_data = qml;
 	if(changed)
 		emit dataChanged();
+}
+
+// ------------------------------------------------------------------ music
+
+void LiveScenes::chooseMusicFiles(const QString &scene)
+{
+	if(!SceneMusic::HasMusic(scene))
+		return;
+	const QStringList files = QFileDialog::getOpenFileNames(QApplication::focusWidget(), tr("Music for this scene"), QString(),
+		tr("Music (*.mp3 *.ogg *.opus *.flac *.wav)"), nullptr, QFileDialog::DontUseNativeDialog);
+	if(files.isEmpty())
+		return;
+	const QString key = QStringLiteral("music_%1_files").arg(scene);
+	QStringList list = map.value(key).toStringList();
+	for(const QString &f : files)
+	{
+		if(!list.contains(f))
+			list.append(f);
+	}
+	set(key, list);
+	set(QStringLiteral("music_%1_source").arg(scene), QStringLiteral("own"));
+	music_notes.remove(scene);
+	emit musicNotesChanged();
+}
+
+void LiveScenes::removeMusicFile(const QString &scene, int index)
+{
+	const QString key = QStringLiteral("music_%1_files").arg(scene);
+	QStringList list = map.value(key).toStringList();
+	if(index < 0 || index >= list.size())
+		return;
+	list.removeAt(index);
+	set(key, list);
+	music_notes.remove(scene);
+	emit musicNotesChanged();
+}
+
+void LiveScenes::SetMusicNote(const QString &scene, const QString &note)
+{
+	if(music_notes.value(scene).toString() == note)
+		return;
+	music_notes[scene] = note;
+	emit musicNotesChanged();
+}
+
+QByteArray LiveScenes::MusicFile(const QString &scene, const QString &which, QByteArray *type) const
+{
+	if(!SceneMusic::HasMusic(scene))
+		return QByteArray();
+	if(which == QLatin1String("builtin"))
+	{
+		QFile file(QStringLiteral(":/sounds/music-%1.flac").arg(scene));
+		*type = "audio/flac";
+		return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+	}
+	bool ok = false;
+	const int index = which.toInt(&ok);
+	const QStringList files = map.value(QStringLiteral("music_%1_files").arg(scene)).toStringList();
+	if(!ok || index < 0 || index >= files.size())
+		return QByteArray();
+	// Only the files the player chose for this scene, by their number
+	QFile file(files.at(index));
+	if(!file.open(QIODevice::ReadOnly) || file.size() > 128 * 1024 * 1024)
+		return QByteArray();
+	const QString ext = QFileInfo(files.at(index)).suffix().toLower();
+	*type = ext == QLatin1String("mp3") ? "audio/mpeg" : ext == QLatin1String("flac") ? "audio/flac"
+		: ext == QLatin1String("wav") ? "audio/wav" : "audio/ogg";
+	return file.readAll();
 }

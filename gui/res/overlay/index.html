@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Play Together overlay</title>
   <link rel="stylesheet" href="/overlay.css">
+  <link rel="stylesheet" href="/twitch.css">
 </head>
 <body>
   <!--
@@ -25,9 +26,13 @@
       &layout=row|column        how the players are arranged
       &scale=30                 controller size in percent
       &skin=PS5                 one skin for everybody (default: by controller type)
-      &demo=1                   made-up players, to arrange a scene without a session
+      &demo=1                   made-up players and Twitch elements, to arrange a scene without a session
+
+    The Twitch elements (latest follower, goals, poll, chat, ...) are switched on and placed
+    in the app under Twitch elements; they show here while you are live.
   -->
   <div id="root"></div>
+  <script src="/twitch.js"></script>
   <script src="/overlay.js"></script>
 </body>
 </html>

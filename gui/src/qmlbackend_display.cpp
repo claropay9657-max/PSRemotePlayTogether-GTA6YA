@@ -6,6 +6,9 @@
 #include "qmlbackend.h"
 #include "livecontroller.h"
 #include "livescenes.h"
+#include "livealerts.h"
+#include "twitch.h"
+#include "twitchelements.h"
 #include "overlayserver.h"
 #include "presetsettings.h"
 
@@ -126,11 +129,18 @@ void QmlBackend::initDisplays()
     connect(settings_qml, &QmlSettings::overlayChanged, overlay_settings, &PresetSettings::Reload);
     connect(overlay_settings, &PresetSettings::changed, this, [this]() {
         overlay->ApplySettings();
+        // The Twitch elements are drawn in the overlay's look
+        twitch_elements->Refresh();
         emit settings_qml->overlayChanged();
     });
     connect(overlay, &OverlayServer::LayoutEdited, overlay_settings, [this](const QVariantMap &values) {
-        for (auto it = values.constBegin(); it != values.constEnd(); ++it)
-            overlay_settings->set(it.key(), it.value());
+        for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
+            // The Twitch elements keep their places themselves, once for everywhere
+            if (it.key().startsWith(QLatin1String("tw_")))
+                twitch_elements->SetPlace(it.key().mid(3), it.value().toDouble());
+            else
+                overlay_settings->set(it.key(), it.value());
+        }
     });
 }
 
@@ -147,6 +157,21 @@ QObject *QmlBackend::liveController() const
 QObject *QmlBackend::liveScenes() const
 {
     return live_scenes;
+}
+
+QObject *QmlBackend::twitchClient() const
+{
+    return twitch;
+}
+
+QObject *QmlBackend::liveAlerts() const
+{
+    return live_alerts;
+}
+
+QObject *QmlBackend::twitchElementsObject() const
+{
+    return twitch_elements;
 }
 
 QObject *QmlBackend::overlayLayoutSettings() const

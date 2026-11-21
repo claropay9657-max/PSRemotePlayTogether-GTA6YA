@@ -1,4 +1,56 @@
 <RCC>
+  <qresource prefix="/sounds">
+    <file alias="follow.flac">sounds/follow.flac</file>
+    <file alias="subscribe.flac">sounds/subscribe.flac</file>
+    <file alias="resub.flac">sounds/resub.flac</file>
+    <file alias="giftsubs.flac">sounds/giftsubs.flac</file>
+    <file alias="bits.flac">sounds/bits.flac</file>
+    <file alias="raid.flac">sounds/raid.flac</file>
+    <file alias="channelpoints.flac">sounds/channelpoints.flac</file>
+    <file alias="hypetrain.flac">sounds/hypetrain.flac</file>
+    <file alias="poll.flac">sounds/poll.flac</file>
+    <file alias="prediction.flac">sounds/prediction.flac</file>
+    <file alias="goal.flac">sounds/goal.flac</file>
+    <file alias="charity.flac">sounds/charity.flac</file>
+    <file alias="shoutout.flac">sounds/shoutout.flac</file>
+    <file alias="adbreak.flac">sounds/adbreak.flac</file>
+    <file alias="chat.flac">sounds/chat.flac</file>
+    <file alias="music-starting.flac">sounds/music-starting.flac</file>
+    <file alias="music-brb.flac">sounds/music-brb.flac</file>
+    <file alias="music-ending.flac">sounds/music-ending.flac</file>
+  </qresource>
+  <qresource prefix="/twitch">
+    <file alias="follow-big.svg">twitch/follow-big.svg</file>
+    <file alias="sub-big.svg">twitch/sub-big.svg</file>
+    <file alias="resub-big.svg">twitch/resub-big.svg</file>
+    <file alias="gift-big.svg">twitch/gift-big.svg</file>
+    <file alias="gem-big.svg">twitch/gem-big.svg</file>
+    <file alias="raid-big.svg">twitch/raid-big.svg</file>
+    <file alias="points-big.svg">twitch/points-big.svg</file>
+    <file alias="ad.svg">twitch/ad.svg</file>
+    <file alias="broadcaster.svg">twitch/broadcaster.svg</file>
+    <file alias="charity.svg">twitch/charity.svg</file>
+    <file alias="chat.svg">twitch/chat.svg</file>
+    <file alias="clock.svg">twitch/clock.svg</file>
+    <file alias="crown.svg">twitch/crown.svg</file>
+    <file alias="gem.svg">twitch/gem.svg</file>
+    <file alias="gift.svg">twitch/gift.svg</file>
+    <file alias="heart.svg">twitch/heart.svg</file>
+    <file alias="hype.svg">twitch/hype.svg</file>
+    <file alias="mod.svg">twitch/mod.svg</file>
+    <file alias="move.svg">twitch/move.svg</file>
+    <file alias="points.svg">twitch/points.svg</file>
+    <file alias="poll.svg">twitch/poll.svg</file>
+    <file alias="recent.svg">twitch/recent.svg</file>
+    <file alias="prediction.svg">twitch/prediction.svg</file>
+    <file alias="raid.svg">twitch/raid.svg</file>
+    <file alias="shoutout.svg">twitch/shoutout.svg</file>
+    <file alias="star-badge.svg">twitch/star-badge.svg</file>
+    <file alias="star.svg">twitch/star.svg</file>
+    <file alias="target.svg">twitch/target.svg</file>
+    <file alias="viewer.svg">twitch/viewer.svg</file>
+    <file alias="vip.svg">twitch/vip.svg</file>
+  </qresource>
   <qresource prefix="/fonts">
     <file alias="PlusJakartaSans.ttf">fonts/PlusJakartaSans.ttf</file>
   </qresource>

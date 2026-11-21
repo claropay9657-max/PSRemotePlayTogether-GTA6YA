@@ -150,7 +150,9 @@ if [ ! -f "$ROOT/ffmpeg/lib/pkgconfig/libavcodec.pc" ]; then
 			--enable-mediafoundation --enable-encoder=h264_mf \
 			--enable-muxer=flv --enable-schannel \
 			--enable-protocol=rtmp --enable-protocol=rtmps --enable-protocol=tcp \
-			--enable-protocol=tls --enable-protocol=file
+			--enable-protocol=tls --enable-protocol=file \
+			--enable-decoder=flac,mp3float,mp3,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
+			--enable-demuxer=flac,mp3,ogg,wav --enable-parser=flac,mpegaudio,opus,vorbis
 		make -j"$(nproc)" >/dev/null
 		make install >/dev/null
 	)

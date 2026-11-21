@@ -147,6 +147,136 @@ C.SettingsPage {
         }
     }
 
+    // ------------------------------------------------ music
+
+    C.SettingsGroup {
+        title: qsTr("Music")
+        note: qsTr("Plays in your stream and in OBS while the scene is on, fading in and out.")
+
+        Repeater {
+            model: [
+                { id: "starting", name: qsTr("Starting soon") },
+                { id: "brb", name: qsTr("Be right back") },
+                { id: "ending", name: qsTr("Thanks for watching") },
+            ]
+
+            ColumnLayout {
+                id: musicRows
+                required property var modelData
+                required property int index
+                readonly property string id: modelData.id
+                readonly property bool own: page.values["music_" + id + "_source"] === "own"
+                readonly property var files: page.values["music_" + id + "_files"] || []
+                readonly property string note: page.scenes && page.scenes.musicNotes ? (page.scenes.musicNotes[id] || "") : ""
+                Layout.fillWidth: true
+                spacing: 0
+
+                // Counts as a row above this one: the line between two scenes stays
+                Item {
+                    readonly property bool isSettingRow: true
+                    visible: musicRows.index > 0
+                    Layout.preferredHeight: 0
+                }
+
+                C.SettingsRow {
+                    title: musicRows.modelData.name
+                    // Said once when something chosen could not be played
+                    subtitle: musicRows.note
+                    keywords: qsTr("music background loop song sound") + " " + musicRows.id
+                    textMinimum: 180
+                    switchItem: musicOn
+
+                    C.ValueSlider {
+                        Layout.preferredWidth: 170
+                        valueWidth: 48
+                        enabled: musicOn.checked
+                        Accessible.name: qsTr("Volume of the music of %1").arg(musicRows.modelData.name)
+                        from: 0
+                        to: 100
+                        stepSize: 5
+                        value: page.values["music_" + musicRows.id + "_volume"] || 0
+                        valueText: qsTr("%1 %").arg(Math.round(value))
+                        onMoved: page.set("music_" + musicRows.id + "_volume", Math.round(value))
+                    }
+
+                    C.Toggle {
+                        id: musicOn
+                        Accessible.name: qsTr("Music on %1").arg(musicRows.modelData.name)
+                        checked: !!page.values["music_" + musicRows.id + "_on"]
+                        onToggled: page.set("music_" + musicRows.id + "_on", checked)
+                    }
+                }
+
+                C.SettingsRow {
+                    sub: true
+                    enabled: musicOn.checked
+                    title: qsTr("Music")
+                    subtitle: musicRows.own ? qsTr("Pick one or more files; they play in order and start over.")
+                                            : qsTr("Our own music, safe to stream.")
+                    textMinimum: 150
+
+                    C.Segmented {
+                        model: [qsTr("Built-in track"), qsTr("Your own music")]
+                        currentIndex: musicRows.own ? 1 : 0
+                        onActivated: (index) => {
+                            if (index === 1 && musicRows.files.length === 0)
+                                page.scenes.chooseMusicFiles(musicRows.id);
+                            else
+                                page.set("music_" + musicRows.id + "_source", index === 1 ? "own" : "builtin");
+                        }
+                    }
+                }
+
+                // The player's own files: each can be removed
+                Repeater {
+                    model: musicRows.own ? musicRows.files : []
+
+                    C.SettingsRow {
+                        required property string modelData
+                        required property int index
+                        sub: true
+                        enabled: musicOn.checked
+                        title: modelData.split(/[\\/]/).pop()
+                        textMinimum: 150
+
+                        C.PillButton {
+                            small: true
+                            iconName: "trash"
+                            text: qsTr("Remove")
+                            // The row goes away with it: the focus must not, or the page jumps to the top
+                            focusPolicy: Qt.NoFocus
+                            onClicked: page.scenes.removeMusicFile(musicRows.id, index)
+                        }
+                    }
+                }
+
+                C.SettingsRow {
+                    visible: musicRows.own
+                    sub: true
+                    enabled: musicOn.checked
+                    title: qsTr("Shuffle")
+                    subtitle: qsTr("Only use music you are allowed to stream – Twitch may mute or flag copyrighted songs.")
+                    textMinimum: 150
+                    switchItem: shuffleToggle
+
+                    C.PillButton {
+                        small: true
+                        iconName: "plus"
+                        text: qsTr("Choose files…")
+                        onClicked: page.scenes.chooseMusicFiles(musicRows.id)
+                    }
+
+                    C.Toggle {
+                        id: shuffleToggle
+                        Accessible.name: qsTr("Shuffle the music of %1").arg(musicRows.modelData.name)
+                        checked: !!page.values["music_" + musicRows.id + "_shuffle"]
+                        onToggled: page.set("music_" + musicRows.id + "_shuffle", checked)
+                    }
+                }
+            }
+        }
+    }
+
     // ------------------------------------------------ OBS
 
     C.SettingsGroup {

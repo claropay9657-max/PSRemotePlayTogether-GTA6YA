@@ -20,14 +20,17 @@ Item {
     property bool sub: false
     /** A Toggle in the row: a click on the text switches it as well. */
     property var switchItem: null
+    /** A picture in front of the text (an element's icon, say); empty for none. */
+    property url image: ""
     /** The text keeps at least this much room before the control moves under it. */
     property int textMinimum: 240
     default property alias content: controls.data
     readonly property bool isSettingRow: true
 
     readonly property int leftPad: sub ? 34 : 18
+    readonly property int imagePad: image.toString().length > 0 ? 42 : 0
     readonly property int rightPad: 18
-    readonly property bool stacked: width - leftPad - rightPad < textMinimum + 20 + controls.implicitWidth
+    readonly property bool stacked: width - leftPad - imagePad - rightPad < textMinimum + 20 + controls.implicitWidth
     /** No line above the first row of a group. */
     readonly property bool firstInColumn: {
         const kids = parent ? parent.visibleChildren : [];
@@ -52,10 +55,10 @@ Item {
 
     ColumnLayout {
         id: texts
-        x: row.leftPad
+        x: row.leftPad + row.imagePad
         y: row.stacked ? 12 : Math.round((row.height - height) / 2)
-        width: row.stacked ? row.width - row.leftPad - row.rightPad
-                           : row.width - row.leftPad - row.rightPad - 20 - controls.implicitWidth
+        width: row.stacked ? row.width - row.leftPad - row.imagePad - row.rightPad
+                           : row.width - row.leftPad - row.imagePad - row.rightPad - 20 - controls.implicitWidth
         spacing: 2
 
         Text {
@@ -97,6 +100,16 @@ Item {
             }
         }
 
+    }
+
+    Image {
+        visible: row.imagePad > 0
+        x: row.leftPad
+        y: texts.y + Math.min(texts.height, 40) / 2 - height / 2
+        width: 28
+        height: 28
+        sourceSize: Qt.size(56, 56)
+        source: row.image
     }
 
     // Over the text, outside its layout

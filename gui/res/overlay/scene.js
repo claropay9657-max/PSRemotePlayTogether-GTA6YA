@@ -400,6 +400,7 @@ function layoutKey(d, id) {
 
 function render() {
   if (!data) return;
+  if (!demo) music.update(wanted === 'current' ? data.scene : wanted, data.music);
   const id = wanted === 'current' ? data.scene : wanted;
   const make = SCENES[id];
   if (!make) {
@@ -466,6 +467,99 @@ if (demo) {
     }
   }, 1000);
 }
+
+// ------------------------------------------------------------------ music
+
+// Starting soon, Be right back and Thanks for watching have music: the app's own loop or the
+// player's own files, at the level set in the app. A single track loops sample-exact (Web
+// Audio, not <audio loop>); several play in order and start over. A scene change fades out
+// and in over 1.5 s. The files come from the app by scene and number only.
+const music = (() => {
+  const FADE = 1.5;
+  let ctx = null;
+  let playing = null; // { key, scene, gain, source, list, at, stopped }
+
+  const level = (v) => { const x = Math.max(0, Math.min(1, (v || 0) / 100)); return x * x; };
+
+  async function load(scene, which) {
+    const r = await fetch(`/music/${scene}/${which}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error('missing');
+    return ctx.decodeAudioData(await r.arrayBuffer());
+  }
+
+  function fadeOut(p) {
+    if (!p || p.stopped) return;
+    p.stopped = true;
+    const now = ctx.currentTime;
+    p.gain.gain.cancelScheduledValues(now);
+    p.gain.gain.setValueAtTime(p.gain.gain.value, now);
+    p.gain.gain.linearRampToValueAtTime(0, now + FADE);
+    setTimeout(() => { try { if (p.source) p.source.stop(); } catch (e) { /* already */ } p.gain.disconnect(); }, FADE * 1000 + 100);
+  }
+
+  async function playNext(p, volume) {
+    // The player's files in order (one that cannot be played is skipped); the app's own if none can
+    for (let tries = 0; tries < p.list.length && !p.stopped; tries++) {
+      p.at = (p.at + 1) % p.list.length;
+      if (p.at === 0 && p.shuffle) p.list.sort(() => Math.random() - 0.5);
+      try {
+        const buffer = await load(p.scene, p.list[p.at]);
+        if (p.stopped) return;
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = p.list.length === 1;
+        source.connect(p.gain);
+        source.onended = () => { if (!p.stopped && p.source === source) playNext(p, volume); };
+        p.source = source;
+        source.start();
+        return;
+      } catch (e) {
+        // the next one
+      }
+    }
+    if (!p.stopped && p.list[0] !== 'builtin') {
+      p.list = ['builtin'];
+      p.at = -1;
+      playNext(p, volume);
+    }
+  }
+
+  function update(scene, all) {
+    const m = scene && all && all[scene];
+    const want = m && m.on ? m : null;
+    const key = want ? `${scene}/${want.own}/${want.serial}` : '';
+    if (!want) {
+      fadeOut(playing);
+      playing = null;
+      return;
+    }
+    if (!ctx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      ctx = new Ctx({ sampleRate: 48000 });
+    }
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    if (playing && playing.key === key) {
+      // Only the level changed
+      const now = ctx.currentTime;
+      playing.gain.gain.cancelScheduledValues(now);
+      playing.gain.gain.setValueAtTime(playing.gain.gain.value, now);
+      playing.gain.gain.linearRampToValueAtTime(level(want.volume), now + 0.3);
+      return;
+    }
+    fadeOut(playing);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(level(want.volume), ctx.currentTime + FADE);
+    gain.connect(ctx.destination);
+    const list = want.own > 0 ? Array.from({ length: want.own }, (_, i) => String(i)) : ['builtin'];
+    if (want.shuffle) list.sort(() => Math.random() - 0.5);
+    playing = { key, scene, gain, source: null, list, at: -1, shuffle: !!want.shuffle, stopped: false };
+    playNext(playing, want.volume);
+  }
+
+  return { update };
+})();
 
 fetch('/scene/data').then((r) => r.text()).then(receive).catch(() => {});
 const events = new EventSource('/events?scene=1');

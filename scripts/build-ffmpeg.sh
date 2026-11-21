@@ -48,6 +48,13 @@ FFMPEG_LIVE_FLAGS=(
     --enable-protocol=tls
     --enable-protocol=file
 )
+# Sounds (gui/src/sounddecoder.cpp): the app's own alert sounds and scene music are FLAC;
+# players may pick their own music as MP3, Ogg (Vorbis, Opus), FLAC or WAV
+FFMPEG_LIVE_FLAGS+=(
+    --enable-decoder=flac,mp3float,mp3,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8
+    --enable-demuxer=flac,mp3,ogg,wav
+    --enable-parser=flac,mpegaudio,opus,vorbis
+)
 # Cisco's OpenH264 for computers without a hardware encoder, where the system has it
 if pkg-config --exists openh264
 then

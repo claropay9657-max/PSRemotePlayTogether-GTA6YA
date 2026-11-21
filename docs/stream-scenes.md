@@ -53,6 +53,27 @@ addresses (with Copy), and every text. Texts take `{game}`, `{host}`, `{me}`,
 `{players}` and `{channel}`; a line whose name is not known is left out. They are kept in
 `scenes/<key>` of the settings.
 
+## Music
+
+Starting soon, Be right back and Thanks for watching have music: the app's own loops
+(`gui/res/sounds/music-*.flac`, 16 bars, made by `scripts/sounds/make_scene_music.py`, safe
+to stream) or the player's own files (MP3, Ogg Vorbis or Opus, FLAC, WAV; in order or
+shuffled, starting over). **Settings → Stream scenes → Music** has a switch and a volume for
+each, and the choice of the built-in track or own files, with the note that only music one
+may stream belongs there. Settings: `scenes/music_<scene>_on`, `_volume`, `_source`
+(`builtin` or `own`), `_files`, `_shuffle`.
+
+- In the app's own stream `SceneMusic` (`gui/src/scenemusic.cpp`) decodes with FFmpeg
+  (`gui/src/sounddecoder.cpp`) a quarter of a second ahead into the stream's mix
+  (`live::Engine::PushMusic`), fading in and out over 1.5 s when the scene changes. A single
+  FLAC or WAV loops sample-exact; an MP3 may have a tiny gap at the loop.
+- In OBS each scene page plays it with Web Audio (`AudioBufferSourceNode`, `loop` for a
+  single track). The overlay server hands out the files only by scene and number,
+  `/music/<scene>/builtin` or `/music/<scene>/<n>`, never by path. The exported OBS layout
+  runs a scene's page only while its scene is shown, so its music starts with it.
+- A file that cannot be played is skipped; when none can, the app's own track plays and
+  the settings page says so. Nothing about it shows on the stream.
+
 ## How it works
 
 - `gui/src/livescenes.cpp`: the data, the texts, the QR code (Project Nayuki's

@@ -3,10 +3,12 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Window
+import QtQuick.Shapes
 
 import org.streetpea.chiaking
 
 import "controls" as C
+import "scenes"
 
 // The display on top of the game picture: who is playing, their webcams, what
 // everybody presses and what the console gets out of it. Four elements, each
@@ -78,7 +80,7 @@ Item {
      */
     readonly property bool shown: allowed && !!session && (editing || playersElement.wanted || camsElement.wanted || padsElement.wanted
                                       || combinedElement.wanted || (separatePads && cfg.pads_show && players.length > 0)
-                                      || toasts.count > 0 || chatNotes.count > 0)
+                                      || toasts.count > 0 || chatNotes.count > 0 || twitchLayer.shown)
     visible: shown
 
     Keys.onEscapePressed: editing = false
@@ -186,15 +188,27 @@ Item {
             transformOrigin: Item.TopLeft
         }
 
-        // Arrange mode: a frame to grab, and the element's own switches
-        Rectangle {
+        // Arrange mode: a dashed frame to grab, and the element's own switches
+        Shape {
+            visible: hud.editing
+            x: -6
+            y: -6
+            width: el.width + 12
+            height: el.height + 12
+            ShapePath {
+                strokeColor: mover.pressed ? "white" : Qt.rgba(0, 242 / 255, 1, 0.85)
+                strokeWidth: 2
+                strokeStyle: ShapePath.DashLine
+                dashPattern: [3, 2]
+                fillColor: mover.pressed ? Qt.rgba(0, 242 / 255, 1, 0.10) : "transparent"
+                PathRectangle { x: 1; y: 1; width: el.width + 10; height: el.height + 10; radius: 14 }
+            }
+        }
+
+        Item {
             visible: hud.editing
             anchors.fill: parent
             anchors.margins: -6
-            radius: 10
-            color: mover.pressed ? Qt.rgba(140 / 255, 82 / 255, 255 / 255, 0.25) : Qt.rgba(140 / 255, 82 / 255, 255 / 255, 0.10)
-            border.width: 2
-            border.color: hud.cyan
 
             MouseArea {
                 id: mover
@@ -239,16 +253,28 @@ Item {
 
                 Rectangle {
                     height: 24
-                    width: titleText.implicitWidth + 16
-                    radius: 6
-                    color: hud.cyan
-                    Text {
-                        id: titleText
+                    width: titleRow.implicitWidth + 20
+                    radius: 12
+                    color: "#7ff5ff"
+                    Row {
+                        id: titleRow
                         anchors.centerIn: parent
-                        color: "#04262a"
-                        font.pixelSize: 12
-                        font.bold: true
-                        text: el.title
+                        spacing: 6
+                        Image {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 12
+                            height: 12
+                            sourceSize: Qt.size(24, 24)
+                            source: "qrc:/twitch/move.svg"
+                        }
+                        Text {
+                            id: titleText
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: "#04262a"
+                            font.pixelSize: 12
+                            font.bold: true
+                            text: el.title
+                        }
                     }
                 }
 
@@ -262,11 +288,11 @@ Item {
                     Rectangle {
                         required property var modelData
                         height: 24
-                        width: Math.max(24, tool.implicitWidth + 14)
-                        radius: 6
-                        color: toolArea.containsMouse ? hud.accent : Qt.rgba(0, 0, 0, 0.75)
+                        width: Math.max(24, tool.implicitWidth + 16)
+                        radius: 12
+                        color: toolArea.containsMouse ? hud.accent : Qt.rgba(8 / 255, 6 / 255, 20 / 255, 0.88)
                         border.width: 1
-                        border.color: Qt.rgba(1, 1, 1, 0.3)
+                        border.color: Qt.rgba(0, 242 / 255, 1, 0.5)
                         Text {
                             id: tool
                             anchors.centerIn: parent
@@ -294,6 +320,16 @@ Item {
     }
 
     // ------------------------------------------------------------ the elements
+
+    // The Twitch elements (latest follower, goals, poll, chat, ...): placed on a 16:9 stage of
+    // their own, the same as in the app's own stream and on the OBS overlay page
+    TwitchLayer {
+        id: twitchLayer
+        anchors.fill: parent
+        editing: hud.editing
+        visible: shown
+        enabled: hud.editing
+    }
 
     Element {
         id: playersElement
@@ -812,54 +848,84 @@ Item {
         color: Qt.rgba(0, 0, 0, 0.35)
     }
 
+    // "Arranging – drag anything where you want it", with Reset and Done
     Rectangle {
         visible: hud.editing
-        anchors {
-            horizontalCenter: parent.horizontalCenter
-            verticalCenter: parent.verticalCenter
-        }
-        width: Math.min(parent.width - 40, editColumn.implicitWidth + 48)
-        height: editColumn.implicitHeight + 36
-        radius: 16
-        color: Qt.rgba(13 / 255, 11 / 255, 31 / 255, 0.94)
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: Math.round(parent.height * 0.8 - height / 2)
+        width: Math.min(parent.width - 40, editRow.implicitWidth + 28)
+        height: 42
+        radius: 21
+        color: Qt.rgba(8 / 255, 6 / 255, 20 / 255, 0.88)
         border.width: 1
-        border.color: hud.accent
+        border.color: Qt.rgba(0, 242 / 255, 1, 0.5)
 
-        ColumnLayout {
-            id: editColumn
-            anchors.centerIn: parent
-            spacing: 12
+        // Takes the clicks that would otherwise reach an element below
+        MouseArea {
+            anchors.fill: parent
+        }
+
+        RowLayout {
+            id: editRow
+            anchors.verticalCenter: parent.verticalCenter
+            x: 18
+            spacing: 10
 
             Label {
-                Layout.alignment: Qt.AlignHCenter
-                font.pixelSize: 20
+                font.pixelSize: 15
                 font.bold: true
-                text: qsTr("Arrange the display")
+                color: "white"
+                text: qsTr("Arranging – drag anything where you want it")
             }
 
-            Label {
-                Layout.alignment: Qt.AlignHCenter
-                Layout.maximumWidth: 460
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-                opacity: 0.75
-                font.pixelSize: 14
-                text: qsTr("Drag an element to where you want it. The buttons above it show or hide it and change its size (the mouse wheel does too). Everything is saved in the preset “%1”.").arg(Chiaki.hud.presets[Chiaki.hud.active] || "")
-            }
-
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                spacing: 10
-
-                Button {
-                    text: qsTr("Reset places and sizes")
-                    flat: true
-                    onClicked: Chiaki.hud.resetPlacement()
+            Rectangle {
+                Layout.preferredHeight: 30
+                Layout.preferredWidth: resetText.implicitWidth + 28
+                radius: 15
+                color: resetArea.containsMouse ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.07)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.16)
+                Text {
+                    id: resetText
+                    anchors.centerIn: parent
+                    color: "white"
+                    font.pixelSize: 14
+                    font.bold: true
+                    text: qsTr("Reset")
                 }
+                MouseArea {
+                    id: resetArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    ToolTip.visible: containsMouse
+                    ToolTip.text: qsTr("Everything back to its first place and size")
+                    onClicked: {
+                        Chiaki.hud.resetPlacement();
+                        if (Chiaki.twitchElements)
+                            Chiaki.twitchElements.resetPlaces();
+                    }
+                }
+            }
 
-                Button {
+            Rectangle {
+                Layout.preferredHeight: 30
+                Layout.preferredWidth: doneText.implicitWidth + 28
+                radius: 15
+                color: doneArea.containsMouse ? "#7ff5ff" : hud.cyan
+                Text {
+                    id: doneText
+                    anchors.centerIn: parent
+                    color: "#04262a"
+                    font.pixelSize: 15
+                    font.bold: true
                     text: qsTr("Done")
-                    highlighted: true
+                }
+                MouseArea {
+                    id: doneArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: hud.editing = false
                 }
             }

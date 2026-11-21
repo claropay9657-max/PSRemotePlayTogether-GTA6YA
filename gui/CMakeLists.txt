@@ -72,6 +72,18 @@ set(SOURCE_FILES
 	src/keystore.cpp
 	include/livescenes.h
 	src/livescenes.cpp
+	include/websocketclient.h
+	src/websocketclient.cpp
+	include/twitch.h
+	src/twitch.cpp
+	include/livealerts.h
+	src/livealerts.cpp
+	include/twitchelements.h
+	src/twitchelements.cpp
+	include/sounddecoder.h
+	src/sounddecoder.cpp
+	include/scenemusic.h
+	src/scenemusic.cpp
 	${CMAKE_SOURCE_DIR}/third-party/qrcodegen/qrcodegen.cpp
 	include/coplaycamera.h
 	src/coplaycamera.cpp
@@ -127,6 +139,10 @@ add_executable(chiaki WIN32
 		${SOURCE_FILES}
 )
 target_include_directories(chiaki PRIVATE include)
+# The app's id at Twitch (a public client: no secret). Registered by the project on dev.twitch.tv;
+# without one, logging in to Twitch is off. Builds of your own can set theirs.
+set(PSRPT_TWITCH_CLIENT_ID "" CACHE STRING "Client id of the app at Twitch (dev.twitch.tv), for logging in")
+target_compile_definitions(chiaki PRIVATE PSRPT_TWITCH_CLIENT_ID="${PSRPT_TWITCH_CLIENT_ID}")
 # Nayuki's QR code generator (MIT): the code to the room on the Play with us scene
 target_include_directories(chiaki PRIVATE ${CMAKE_SOURCE_DIR}/third-party/qrcodegen)
 
@@ -150,7 +166,7 @@ endif()
 endif()
 if (${Qt6Multimedia_FOUND})
 	target_link_libraries(chiaki Qt::Multimedia)
-	target_compile_definitions(chiaki PRIVATE CHIAKI_GUI_ENABLE_CAMERA=1)
+	target_compile_definitions(chiaki PRIVATE CHIAKI_GUI_ENABLE_CAMERA=1 CHIAKI_HAVE_MULTIMEDIA=1)
 	message(STATUS "Play Together webcam capture enabled")
 else()
 	message(STATUS "Play Together webcam capture disabled (Qt Multimedia not found)")

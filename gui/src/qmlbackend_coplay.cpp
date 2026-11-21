@@ -6,6 +6,7 @@
 #include "qmlmainwindow.h"
 #include "overlayserver.h"
 #include "livescenes.h"
+#include "livealerts.h"
 
 #include <coplay/client.h>
 #include <coplay/invite.h>
@@ -195,6 +196,8 @@ void QmlBackend::initOverlay()
 {
     overlay = new OverlayServer(settings, this);
     overlay->SetScenes(live_scenes);
+    overlay->SetAlerts(live_alerts);
+    overlay->SetTwitchElements(twitch_elements);
     connect(overlay, &OverlayServer::StateChanged, this, &QmlBackend::overlayStateChanged);
     connect(overlay, &OverlayServer::StateChanged, this, [this]() { live_scenes->SetOverlayUrl(overlay->Url()); });
     connect(settings_qml, &QmlSettings::overlayChanged, overlay, &OverlayServer::ApplySettings);

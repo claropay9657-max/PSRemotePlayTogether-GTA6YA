@@ -2,6 +2,8 @@
 
 #include "overlayserver.h"
 #include "livescenes.h"
+#include "livealerts.h"
+#include "twitchelements.h"
 #include "settings.h"
 #include "streamsession.h"
 
@@ -178,6 +180,7 @@ void OverlayServer::OnNewConnection()
 			event_clients.removeAll(socket);
 			if(scene_clients.removeAll(socket) && scenes)
 				scenes->SetPageClients(static_cast<int>(scene_clients.size()));
+			alert_clients.removeAll(socket);
 			cam_clients.remove(socket);
 			if(voice_clients.removeAll(socket))
 				UpdateVoiceTap();
@@ -262,6 +265,50 @@ void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const Q
 	// chosen in the stream menu. One page that reads which one from its address.
 	else if(path == "/scene.css" || path == "/scene.js")
 		ServeResource(socket, path, false);
+	// The Twitch elements' icons, for the overlay page and the alerts
+	else if(path.startsWith("/twitch/") && path.endsWith(".svg"))
+	{
+		static const QRegularExpression name("^/twitch/[a-z-]+\\.svg$");
+		if(name.match(path).hasMatch())
+			ServeFile(socket, ":" + path, "image/svg+xml");
+		else
+			Respond(socket, 404, "text/plain", "Not found");
+	}
+	else if(path == "/twitch/data")
+		Respond(socket, 200, "application/json", twitch_elements ? twitch_elements->PageJson() : QByteArray("{}"));
+	else if(path == "/twitch.css" || path == "/twitch.js")
+		ServeResource(socket, path, false);
+	// Twitch alerts: /alerts, transparent, one card at a time with its sound
+	else if(path == "/alerts")
+		ServeResource(socket, "/alerts.html", false);
+	else if(path == "/alerts.css" || path == "/alerts.js")
+		ServeResource(socket, path, false);
+	else if(path == "/alerts/data")
+		Respond(socket, 200, "application/json", alerts ? alerts->PageJson() : QByteArray("{}"));
+	else if(path.startsWith("/alerts/sound/"))
+	{
+		// By kind only ("/alerts/sound/follow", "/alerts/sound/chat"): never a path
+		static const QRegularExpression kind_name("^[a-z]{2,12}$");
+		const QString kind = path.mid(14);
+		QByteArray type;
+		QByteArray data = alerts && kind_name.match(kind).hasMatch() ? alerts->SoundFile(kind, &type) : QByteArray();
+		if(data.isEmpty())
+			Respond(socket, 404, "text/plain", "Not found");
+		else
+			Respond(socket, 200, type, data);
+	}
+	// The music of a scene, by scene and number only (/music/brb/builtin, /music/brb/0)
+	else if(path.startsWith("/music/"))
+	{
+		static const QRegularExpression music_path("^/music/(starting|brb|ending)/(builtin|[0-9]{1,3})$");
+		const auto m = music_path.match(path);
+		QByteArray type;
+		QByteArray data = m.hasMatch() && scenes ? scenes->MusicFile(m.captured(1), m.captured(2), &type) : QByteArray();
+		if(data.isEmpty())
+			Respond(socket, 404, "text/plain", "Not found");
+		else
+			Respond(socket, 200, type, data);
+	}
 	else if(path == "/scene/data")
 		Respond(socket, 200, "application/json", scenes ? scenes->PageJson() : QByteArray("{}"));
 	else if(path == "/scene/qr.svg")
@@ -300,7 +347,7 @@ void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const Q
 	{
 		// The page in arrange mode (?edit=1) reports where things were dragged to.
 		// Only placements are accepted, and only as numbers between 0 and 1.
-		static const QRegularExpression allowed_key("^(combined|p[0-8])_(x|y)$");
+		static const QRegularExpression allowed_key("^(combined|p[0-8]|tw_[a-z_]+)_(x|y)$");
 		QVariantMap values;
 		const QStringList pairs = query.split('&', Qt::SkipEmptyParts);
 		for(const QString &pair : pairs)
@@ -323,7 +370,7 @@ void OverlayServer::Handle(QTcpSocket *socket, const QByteArray &method, const Q
 	else if(path == "/state")
 		Respond(socket, 200, "application/json", StateJson());
 	else if(path == "/events")
-		StartEvents(socket, query.split('&').contains(QStringLiteral("scene=1")));
+		StartEvents(socket, query.split('&').contains(QStringLiteral("scene=1")), query.split('&').contains(QStringLiteral("alerts=1")));
 	else if(path == "/voice")
 		StartVoice(socket);
 	else if(path.startsWith("/cam/"))
@@ -432,6 +479,16 @@ void OverlayServer::SetScenes(LiveScenes *new_scenes)
 	scenes = new_scenes;
 }
 
+void OverlayServer::SetAlerts(LiveAlerts *new_alerts)
+{
+	alerts = new_alerts;
+}
+
+void OverlayServer::SetTwitchElements(TwitchElements *elements)
+{
+	twitch_elements = elements;
+}
+
 void OverlayServer::ServeFile(QTcpSocket *socket, const QString &path, const QByteArray &type)
 {
 	QFile file(path);
@@ -443,7 +500,7 @@ void OverlayServer::ServeFile(QTcpSocket *socket, const QString &path, const QBy
 	Respond(socket, 200, type, file.readAll(), true);
 }
 
-void OverlayServer::StartEvents(QTcpSocket *socket, bool scene_page)
+void OverlayServer::StartEvents(QTcpSocket *socket, bool scene_page, bool alert_page)
 {
 	socket->write("HTTP/1.1 200 OK\r\n"
 		"Content-Type: text/event-stream\r\n"
@@ -454,11 +511,18 @@ void OverlayServer::StartEvents(QTcpSocket *socket, bool scene_page)
 	SendEvent(socket, "config", ConfigJson());
 	SendEvent(socket, "state", StateJson());
 	SendEvent(socket, "chat", ChatJson());
+	if(twitch_elements && !scene_page && !alert_page)
+		SendEvent(socket, "twitch", twitch_elements->PageJson());
 	if(scene_page && scenes)
 	{
 		scene_clients.append(socket);
 		scenes->SetPageClients(static_cast<int>(scene_clients.size()));
 		SendEvent(socket, "scene", scenes->PageJson());
+	}
+	if(alert_page && alerts)
+	{
+		alert_clients.append(socket);
+		SendEvent(socket, "alert", alerts->PageJson());
 	}
 	UpdateTimer();
 }
@@ -525,6 +589,34 @@ void OverlayServer::Tick()
 
 	if(event_clients.isEmpty())
 		return;
+	// A new alert, at once
+	if(!alert_clients.isEmpty() && alerts)
+	{
+		QByteArray alert = alerts->PageJson();
+		if(alert != last_alert)
+		{
+			last_alert = alert;
+			for(QTcpSocket *socket : std::as_const(alert_clients))
+			{
+				if(socket->bytesToWrite() < 256 * 1024)
+					SendEvent(socket, "alert", alert);
+			}
+		}
+	}
+	// The Twitch elements, when something changed
+	if(twitch_elements)
+	{
+		QByteArray tw = twitch_elements->PageJson();
+		if(tw != last_twitch)
+		{
+			last_twitch = tw;
+			for(QTcpSocket *socket : std::as_const(event_clients))
+			{
+				if(!scene_clients.contains(socket) && !alert_clients.contains(socket) && socket->bytesToWrite() < 256 * 1024)
+					SendEvent(socket, "twitch", tw);
+			}
+		}
+	}
 	// The scenes' data, a few times a second at most: countdowns, who talks
 	if(!scene_clients.isEmpty() && scenes && ++scene_tick * kTickMs >= 250)
 	{

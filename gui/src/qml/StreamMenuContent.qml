@@ -977,6 +977,55 @@ FocusScope {
                         }
                     }
                 }
+
+                // Twitch alerts: what is up now and waiting, and a pause
+                DockButton {
+                    id: alertsButton
+                    readonly property int waiting: Chiaki.alerts ? Chiaki.alerts.waiting + (Chiaki.alerts.current.kind ? 1 : 0) : 0
+                    visible: !!Chiaki.twitch && Chiaki.twitch.state === "logged_in"
+                    iconName: "heart"
+                    text: waiting > 0 ? qsTr("Alerts · %1").arg(waiting) : qsTr("Alerts")
+                    checked: !!Chiaki.alerts && Chiaki.alerts.paused
+                    chevron: true
+                    onClicked: panel.openMenu(alertsMenu, alertsButton, "above", streamMenu)
+
+                    C.Menu {
+                        id: alertsMenu
+                        property var placement: null
+                        onAboutToShow: if (placement) placement()
+                        padding: 6
+                        font.pixelSize: 14
+                        background: PlayTogetherBar.MenuGround {}
+
+                        PlayTogetherBar.MenuEntry {
+                            enabled: !!Chiaki.alerts && !!Chiaki.alerts.current.kind
+                            iconName: "forward"
+                            text: qsTr("Skip this alert")
+                            onTriggered: Chiaki.alerts.skip()
+                        }
+
+                        PlayTogetherBar.MenuEntry {
+                            enabled: alertsButton.waiting > 0
+                            iconName: "trash"
+                            text: qsTr("Clear all (%1)").arg(alertsButton.waiting)
+                            onTriggered: Chiaki.alerts.clear()
+                        }
+
+                        PlayTogetherBar.MenuEntry {
+                            iconName: Chiaki.alerts && Chiaki.alerts.paused ? "play" : "moon"
+                            text: Chiaki.alerts && Chiaki.alerts.paused ? qsTr("Show alerts again") : qsTr("Hold alerts for now")
+                            onTriggered: Chiaki.alerts.paused = !Chiaki.alerts.paused
+                        }
+
+                        PlayTogetherBar.MenuLine {}
+
+                        PlayTogetherBar.MenuEntry {
+                            iconName: "heart"
+                            text: qsTr("Test an alert")
+                            onTriggered: Chiaki.alerts.test("follow")
+                        }
+                    }
+                }
             }
 
             DockLine {

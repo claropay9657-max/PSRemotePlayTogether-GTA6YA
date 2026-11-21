@@ -28,6 +28,9 @@
     <file>settings/OverlaysPage.qml</file>
     <file>settings/StreamingPage.qml</file>
     <file>settings/ScenesPage.qml</file>
+    <file>settings/TwitchPage.qml</file>
+    <file>settings/AlertsPage.qml</file>
+    <file>settings/TwitchElementsPage.qml</file>
     <file>settings/NetworkPage.qml</file>
     <file>settings/ConsolesPage.qml</file>
     <file>settings/PsnPage.qml</file>
@@ -44,6 +47,8 @@
     <file>PsnView.qml</file>
     <file>StreamHud.qml</file>
     <file>scenes/StreamScene.qml</file>
+    <file>scenes/StreamAlert.qml</file>
+    <file>scenes/TwitchLayer.qml</file>
     <file>StreamHudWindow.qml</file>
     <file>StreamDisplayPanel.qml</file>
     <file>DisplayOptions.qml</file>

@@ -87,6 +87,11 @@ class QmlBackend : public QObject
     Q_PROPERTY(QObject* live READ liveController CONSTANT)
     // Stream scenes (Starting soon, Be right back, ...) for the live stream and for OBS
     Q_PROPERTY(QObject* scenes READ liveScenes CONSTANT)
+    // The player's Twitch account and its events, and the alerts made of them
+    Q_PROPERTY(QObject* twitch READ twitchClient CONSTANT)
+    Q_PROPERTY(QObject* alerts READ liveAlerts CONSTANT)
+    // What the Twitch channel shows on the game picture: latest follower, goals, poll, chat, ...
+    Q_PROPERTY(QObject* twitchElements READ twitchElementsObject CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
     Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
     // A release newer than this build, found by the check at start; empty if there is none
@@ -230,6 +235,9 @@ public:
     QObject *hudSettings() const;
     QObject *liveController() const;
     QObject *liveScenes() const;
+    QObject *twitchClient() const;
+    QObject *liveAlerts() const;
+    QObject *twitchElementsObject() const;
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
     QString updateVersion() const { return update_version; }
@@ -431,6 +439,9 @@ private:
     class PresetSettings *hud_settings = {};
     class LiveController *live_controller = {};
     class LiveScenes *live_scenes = {};
+    class TwitchClient *twitch = {};
+    class LiveAlerts *live_alerts = {};
+    class TwitchElements *twitch_elements = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};

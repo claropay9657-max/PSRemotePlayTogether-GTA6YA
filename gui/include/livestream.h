@@ -110,6 +110,14 @@ class Engine
 		void PushVoices(const int16_t *mono, size_t samples);
 		/** Our own microphone while it is sending: 48 kHz mono. Any thread. */
 		void PushOwnVoice(const int16_t *mono, size_t samples);
+		/** A sound of our own (an alert): played out whole, after anything still playing. Any thread. */
+		void PushEffects(const int16_t *pcm, size_t frames, int channels, int rate);
+		/**
+		 * Background music (a scene's loop): 48 kHz stereo, already at its level and faded.
+		 * The player keeps a little ahead, MusicQueued() says how much is waiting. Any thread.
+		 */
+		void PushMusic(const int16_t *pcm, size_t frames);
+		size_t MusicQueued();
 		/** Loudness of each part in the stream, percent (0..200). */
 		void SetLevels(int game_percent, int voices_percent, int mic_percent);
 
@@ -127,14 +135,17 @@ class Engine
 		struct Fifo
 		{
 			std::vector<float> ring; // interleaved stereo
-			size_t read_pos = 0;     // in samples (two floats each)
+			size_t capacity = 0;     // in samples (two floats each)
+			size_t read_pos = 0;
 			size_t fill = 0;
 			bool primed = false;
+			/** Sounds that come whole (alerts): no waiting for a reserve, no catching up. */
+			bool whole = false;
 			// a simple resampler for sound that does not come at 48 kHz
 			double phase = 0.0;
 			float last[2] = {0.0f, 0.0f};
 
-			void Reset();
+			void Reset(size_t samples);
 			void WriteSample(float l, float r);
 			/** Adds `count` samples, multiplied by `gain`, to `out`; pads with silence if it runs dry. */
 			void MixInto(float *out, size_t count, float gain);
@@ -179,6 +190,8 @@ class Engine
 		Fifo game;
 		Fifo voices;
 		Fifo own;
+		Fifo effects;
+		Fifo music;
 		std::atomic<int> game_level{100};
 		std::atomic<int> voices_level{100};
 		std::atomic<int> mic_level{100};

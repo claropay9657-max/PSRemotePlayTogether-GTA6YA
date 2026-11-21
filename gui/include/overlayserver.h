@@ -16,6 +16,8 @@ class QTcpSocket;
 class Settings;
 class StreamSession;
 class LiveScenes;
+class LiveAlerts;
+class TwitchElements;
 
 /**
  * Serves the stream overlay: a web page for an OBS browser source that shows
@@ -40,6 +42,10 @@ class OverlayServer : public QObject
 		void SetSession(StreamSession *session);
 		/** The stream scenes, for the scene pages (/scene/<id>). */
 		void SetScenes(LiveScenes *scenes);
+		/** The Twitch alerts, for the alerts page (/alerts). */
+		void SetAlerts(LiveAlerts *alerts);
+		/** The Twitch elements, for the overlay page (event "twitch"). */
+		void SetTwitchElements(TwitchElements *elements);
 
 		bool IsRunning() const { return server.isListening(); }
 		QString Url() const;
@@ -60,7 +66,7 @@ class OverlayServer : public QObject
 		void Respond(QTcpSocket *socket, int status, const QByteArray &content_type, const QByteArray &body, bool cacheable = false);
 		void ServeResource(QTcpSocket *socket, const QString &resource, bool cacheable);
 		void ServePad(QTcpSocket *socket, const QString &skin);
-		void StartEvents(QTcpSocket *socket, bool scenes);
+		void StartEvents(QTcpSocket *socket, bool scenes, bool alerts);
 		void ServeFile(QTcpSocket *socket, const QString &path, const QByteArray &type);
 		void SendEvent(QTcpSocket *socket, const QByteArray &event, const QByteArray &json);
 		void StartCam(QTcpSocket *socket, int slot);
@@ -80,6 +86,12 @@ class OverlayServer : public QObject
 		/** Event clients that are scene pages: they also get the scenes' data. */
 		QList<QTcpSocket *> scene_clients;
 		QPointer<LiveScenes> scenes;
+		/** Event clients that are alert pages. */
+		QList<QTcpSocket *> alert_clients;
+		QPointer<LiveAlerts> alerts;
+		QByteArray last_alert;
+		QPointer<TwitchElements> twitch_elements;
+		QByteArray last_twitch;
 		QByteArray last_scene;
 		int scene_tick = 0;
 		struct CamClient

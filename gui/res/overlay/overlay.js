@@ -382,7 +382,7 @@
   }
 
   if (editing) {
-    const hint = el('div', 'edit-hint', 'Drag each player and the console’s controller to where you want them. It is saved at once, and OBS follows.');
+    const hint = el('div', 'edit-hint', 'Drag each player, the console’s controller and the Twitch elements to where you want them. It is saved at once, and OBS and the app’s own stream follow.');
     document.body.append(hint);
   }
 
@@ -520,6 +520,10 @@
       config = Object.assign(config, JSON.parse(event.data));
       render();
       updateVoice();
+    });
+    // The Twitch elements are drawn by twitch.js
+    source.addEventListener('twitch', function (event) {
+      if (window.psrptTwitch) window.psrptTwitch(JSON.parse(event.data));
     });
     source.addEventListener('chat', function (event) {
       const list = JSON.parse(event.data) || [];

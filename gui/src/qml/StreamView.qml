@@ -594,7 +594,9 @@ Item {
         anchors.fill: parent
         /** A stream scene (Starting soon, Be right back, ...) takes the place of the game picture. */
         readonly property bool sceneUp: !!Chiaki.scenes && Chiaki.scenes.shown !== "game"
-        active: Chiaki.live.live && !useSeparateMenuWindow && (!!Chiaki.live.values.overlays || sceneUp)
+        /** A Twitch alert is up: it goes on top of whatever the stream shows. */
+        readonly property bool alertUp: !!Chiaki.alerts && !!Chiaki.alerts.current.kind
+        active: Chiaki.live.live && !useSeparateMenuWindow && (!!Chiaki.live.values.overlays || sceneUp || alertUp)
         onSceneUpChanged: if (active) Chiaki.window.setLiveScene(sceneUp)
         onActiveChanged: Chiaki.window.setLiveScene(active && sceneUp)
         sourceComponent: Component {
@@ -624,6 +626,12 @@ Item {
                         transformOrigin: Item.TopLeft
                         enabled: false
                     }
+
+                    StreamAlert {
+                        scale: liveCanvas.height / 1080
+                        transformOrigin: Item.TopLeft
+                        enabled: false
+                    }
                 }
 
                 ShaderEffectSource {
@@ -642,6 +650,24 @@ Item {
                     opacity: 0.01
                     Component.onCompleted: Chiaki.window.setLiveOverlay(liveTexture)
                     Component.onDestruction: Chiaki.window.setLiveOverlay(null)
+                }
+            }
+        }
+    }
+
+    // Twitch alerts on the streamer's own screen too, if they want (Settings → Alerts)
+    Loader {
+        active: !useSeparateMenuWindow && !!Chiaki.alerts && !!Chiaki.alerts.values.on_screen
+        anchors.fill: parent
+        sourceComponent: Component {
+            Item {
+                StreamAlert {
+                    // As wide as 16:9 makes it, in the middle
+                    readonly property real fit: Math.min(parent.width / 1920, parent.height / 1080)
+                    x: (parent.width - 1920 * fit) / 2
+                    scale: fit
+                    transformOrigin: Item.TopLeft
+                    enabled: false
                 }
             }
         }

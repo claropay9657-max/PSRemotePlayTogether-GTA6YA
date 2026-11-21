@@ -49,6 +49,8 @@ class LiveScenes : public QObject
 	Q_PROPERTY(QObject *values READ valuesObject CONSTANT)
 	/** Everything the scenes show; see BuildData(). */
 	Q_PROPERTY(QVariantMap data READ data NOTIFY dataChanged)
+	/** A word about a scene's music that could not be played as chosen: scene -> text. */
+	Q_PROPERTY(QVariantMap musicNotes READ musicNotes NOTIFY musicNotesChanged)
 
 	public:
 		LiveScenes(Settings *settings, QObject *parent = nullptr);
@@ -70,6 +72,27 @@ class LiveScenes : public QObject
 		Q_INVOKABLE QVariantMap obsUrls() const;
 		/** Puts an address on the clipboard (for OBS). */
 		Q_INVOKABLE void copy(const QString &text) const;
+		/**
+		 * Writes a scene collection for OBS (Scene Collection → Import): "Game with overlay"
+		 * (this app's window, the overlay with the Twitch elements, the alerts) and every scene
+		 * as a browser source of the overlay server, the alerts on each. Asks where to save it;
+		 * gives the file, or nothing when cancelled or it could not be written.
+		 */
+		Q_INVOKABLE QString exportObs();
+		/** Asks for music files of the player's own for a scene (MP3, Ogg, FLAC, WAV); adds them. */
+		Q_INVOKABLE void chooseMusicFiles(const QString &scene);
+		Q_INVOKABLE void removeMusicFile(const QString &scene, int index);
+
+		QVariantMap musicNotes() const { return music_notes; }
+		/** A setting, for SceneMusic. */
+		QVariant Value(const QString &key) const { return map.value(key); }
+		/** Said once in the app (the Stream scenes page), never on the stream. */
+		void SetMusicNote(const QString &scene, const QString &note);
+		/**
+		 * A scene's music for the OBS pages: "builtin" (the app's own) or the number of one of
+		 * the player's files, never a path; type: its media type. Empty when there is none.
+		 */
+		QByteArray MusicFile(const QString &scene, const QString &which, QByteArray *type) const;
 
 		void SetSession(StreamSession *session);
 		/** The game on the console, as the console's own list says (empty: unknown). */
@@ -97,6 +120,7 @@ class LiveScenes : public QObject
 		void sceneChanged();
 		void dataChanged();
 		void valuesChanged();
+		void musicNotesChanged();
 
 	private:
 		void Store(const QString &key, const QVariant &value);
@@ -106,6 +130,8 @@ class LiveScenes : public QObject
 
 		Settings *settings;
 		QQmlPropertyMap map;
+		QVariantMap music_notes;
+		class SceneMusic *music = nullptr;
 		QPointer<StreamSession> session;
 		QString scene = QStringLiteral("game");
 		bool reconnecting = false;

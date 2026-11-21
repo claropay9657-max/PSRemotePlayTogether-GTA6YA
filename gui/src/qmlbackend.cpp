@@ -1,6 +1,9 @@
 #include "qmlbackend.h"
 #include "livecontroller.h"
 #include "livescenes.h"
+#include "livealerts.h"
+#include "twitch.h"
+#include "twitchelements.h"
 
 #include <coplay/invite.h>
 #include "qmlsettings.h"
@@ -408,6 +411,18 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     live_scenes = new LiveScenes(settings, this);
     connect(this, &QmlBackend::sessionChanged, live_scenes, &LiveScenes::SetSession);
     connect(this, &QmlBackend::reconnectingChanged, live_scenes, [this]() { live_scenes->SetReconnecting(reconnecting()); });
+    twitch = new TwitchClient(settings, this);
+    live_alerts = new LiveAlerts(settings, live_scenes, this);
+    connect(twitch, &TwitchClient::Event, live_alerts, &LiveAlerts::OnTwitchEvent);
+    // The chat sound is for the room's chat too
+    connect(this, &QmlBackend::sessionChanged, live_alerts, [this](StreamSession *s) {
+        if (s)
+            connect(s, &StreamSession::coplayChatMessage, live_alerts, &LiveAlerts::OnRoomChat, Qt::UniqueConnection);
+    });
+    twitch_elements = new TwitchElements(settings, twitch, live_controller, live_alerts, this);
+    connect(twitch, &TwitchClient::Event, twitch_elements, &TwitchElements::OnTwitchEvent);
+    // With the saved login, a moment after start (it reads the password store)
+    QTimer::singleShot(3000, twitch, &TwitchClient::Start);
 
     QObject *frame_obj = new QObject();
     frame_thread = new QThread(frame_obj);

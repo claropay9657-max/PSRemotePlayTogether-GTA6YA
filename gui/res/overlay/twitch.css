@@ -1,0 +1,165 @@
+/* The Twitch elements of qml/scenes/TwitchLayer.qml, for the OBS overlay page. Laid out on a
+   1920 x 1080 stage that twitch.js scales to the browser source. */
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('/fonts/PlusJakartaSans.ttf') format('truetype');
+  font-weight: 200 800;
+}
+
+#twitch {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 0 0;
+  pointer-events: none;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: #f3f1ff;
+  --box: rgba(14, 12, 30, 0.74);
+  --border: rgba(255, 255, 255, 0.13);
+  --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  --track: rgba(255, 255, 255, 0.12);
+  --soft: #b9b4d6;
+}
+#twitch.look-solid { --box: #10101a; --border: rgba(255, 255, 255, 0.16); --shadow: 0 12px 30px rgba(0, 0, 0, 0.45); }
+#twitch.look-transparent { --box: transparent; --border: transparent; --shadow: none; --track: rgba(0, 0, 0, 0.45); }
+#twitch.look-transparent .tw { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.75); }
+#twitch.look-transparent .tw img { filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.7)); }
+#twitch.look-transparent .tile { background: transparent !important; }
+
+.tw { position: absolute; transform-origin: 0 0; }
+.tw * { box-sizing: border-box; }
+.box { background-color: var(--box); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 18px; }
+.caps { font-size: 13px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.caps.l { font-size: 14px; }
+.soft { color: var(--soft); }
+.num { font-variant-numeric: tabular-nums; }
+.ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Latest … */
+.latest { width: 440px; height: 72px; display: flex; align-items: center; gap: 14px; padding: 10px 18px 10px 10px; }
+.latest .tile { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.latest .tile img { width: 34px; height: 34px; }
+.latest .mid { display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0; }
+.latest .name { font-size: 24px; line-height: 1.15; font-weight: 800; letter-spacing: -0.01em; }
+.latest .right { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex-shrink: 0; }
+.latest .value { font-size: 24px; line-height: 1.1; font-weight: 800; }
+.latest .unit { font-size: 13px; font-weight: 700; color: var(--soft); }
+.latest.empty { background: rgba(14, 12, 30, 0.4); border: 2px dashed currentColor; box-shadow: none; }
+.latest.empty .tile { opacity: 0.6; }
+.latest.empty .name { font-size: 19px; font-weight: 600; color: #9c97bd; }
+
+/* Pills: viewers, uptime, ad break */
+.pill { display: inline-flex; align-items: center; gap: 14px; height: 50px; padding: 0 20px 0 14px; border-radius: 25px; white-space: nowrap; }
+.pill .dot { width: 12px; height: 12px; border-radius: 6px; background: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.28), 0 0 14px rgba(239, 68, 68, 0.8); }
+.pill .big { font-size: 22px; font-weight: 800; }
+.pill .small { font-size: 16px; font-weight: 600; color: var(--soft); }
+.pill .live { font-size: 15px; font-weight: 800; letter-spacing: 0.16em; color: #fecaca; }
+.pill .sep { width: 1px; height: 24px; background: rgba(255, 255, 255, 0.18); }
+.pill img { width: 20px; height: 20px; }
+.pill.ad { height: 54px; border-radius: 27px; padding: 0 22px 0 14px; gap: 12px; }
+.pill.ad img { width: 28px; height: 28px; }
+
+/* Goals and charity */
+.goal { width: 620px; padding: 14px 20px 16px; display: flex; flex-direction: column; gap: 10px; }
+.goal .head { display: flex; align-items: center; gap: 12px; }
+.goal .head img { width: 26px; height: 26px; }
+.goal .grow { flex-grow: 1; }
+.goal .amount { font-size: 24px; font-weight: 800; white-space: nowrap; }
+.goal .amount span { font-size: 18px; color: var(--soft); }
+.bar { height: 14px; border-radius: 7px; background: var(--track); overflow: hidden; }
+.bar div { height: 14px; border-radius: 7px; min-width: 14px; }
+.goal .text { font-size: 16px; font-weight: 600; color: var(--soft); }
+
+/* Hype train */
+.hype { width: 480px; padding: 14px 20px 16px 16px; display: flex; align-items: center; gap: 18px; }
+.hype .lvl { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 84px; height: 84px; border-radius: 16px; background: rgba(244, 122, 110, 0.16); flex-shrink: 0; }
+.hype .lvl .l { font-size: 12px; font-weight: 800; letter-spacing: 0.2em; color: #ffd6c8; }
+.hype .lvl .n { font-size: 52px; line-height: 0.95; font-weight: 800; letter-spacing: -0.04em; background-image: linear-gradient(90deg, #f0469b, #f5b942); -webkit-background-clip: text; background-clip: text; color: transparent; }
+#twitch.look-transparent .hype .lvl .n { text-shadow: none; }
+.hype .rest { flex-grow: 1; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.hype .top { display: flex; align-items: center; gap: 10px; }
+.hype .top img { width: 22px; height: 22px; }
+.hype .left { font-size: 17px; font-weight: 700; }
+.hype .steps { display: flex; gap: 5px; }
+.hype .steps span { flex-grow: 1; height: 14px; border-radius: 7px; background: var(--track); }
+.hype .text { font-size: 16px; font-weight: 600; color: var(--soft); }
+
+/* Poll and prediction */
+.poll, .pred { padding: 16px 18px 18px; border-radius: 20px; display: flex; flex-direction: column; gap: 10px; }
+.poll { width: 440px; }
+.pred { width: 500px; gap: 12px; }
+.poll .head, .pred .head { display: flex; align-items: center; gap: 10px; }
+.poll .head img { width: 24px; height: 24px; }
+.pred .head img { width: 26px; height: 26px; }
+.chip { height: 28px; padding: 0 12px; border-radius: 14px; display: flex; align-items: center; font-size: 15px; font-weight: 800; white-space: nowrap; }
+.question { font-size: 24px; line-height: 1.2; font-weight: 800; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.choice { position: relative; height: 44px; border-radius: 12px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+#twitch.look-transparent .choice { background: transparent; }
+.choice.lead { box-shadow: 0 0 0 1.5px rgba(96, 165, 250, 0.7) inset; }
+.choice .fill { position: absolute; left: 0; top: 0; height: 44px; background: rgba(96, 165, 250, 0.22); }
+.choice.lead .fill { background: rgba(96, 165, 250, 0.55); }
+.choice .row { position: absolute; left: 14px; right: 14px; top: 0; height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 19px; font-weight: 700; }
+.choice.lead .row { font-weight: 800; }
+.choice .row span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.votes { font-size: 15px; font-weight: 600; color: var(--soft); }
+.split { display: flex; height: 16px; border-radius: 8px; overflow: hidden; gap: 3px; }
+.outs { display: flex; flex-wrap: wrap; gap: 12px; }
+.out { flex: 1 1 calc(50% - 6px); max-width: calc(50% - 6px); border-radius: 14px; padding: 10px 14px; }
+.out .t { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.out .t span:first-child { font-size: 22px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.out .t span:last-child { font-size: 24px; font-weight: 800; }
+.out .s { font-size: 15px; font-weight: 600; color: var(--soft); }
+
+/* Top cheerer, this stream */
+.cheer { width: 560px; padding: 16px 20px; border-radius: 20px; display: flex; align-items: center; gap: 16px; }
+.cheer .face { position: relative; flex-shrink: 0; width: 68px; height: 68px; }
+.cheer .face .pic { width: 68px; height: 68px; border-radius: 34px; object-fit: cover; box-shadow: 0 0 0 3px #f5b942, 0 0 18px rgba(245, 185, 66, 0.55); background: #2a2350; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 800; color: #ffd27a; }
+.cheer .face .crown { position: absolute; left: 18px; top: -24px; width: 32px; height: 32px; }
+.cheer .mid { display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0; }
+.cheer .name { font-size: 28px; font-weight: 800; letter-spacing: -0.01em; }
+.cheer .bits { display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 28px; font-weight: 800; color: #ffd27a; }
+.cheer .bits img { width: 26px; height: 26px; }
+.session { width: 560px; padding: 14px 20px 16px; border-radius: 20px; display: flex; flex-direction: column; gap: 12px; }
+.session .stats { display: flex; gap: 10px; }
+.session .stat { flex: 1; display: flex; align-items: center; gap: 10px; }
+.session .stat .tile { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+.session .stat .tile img { width: 28px; height: 28px; }
+.session .stat b { display: block; font-size: 26px; line-height: 1.05; font-weight: 800; }
+.session .stat i { display: block; font-style: normal; font-size: 14px; font-weight: 700; color: var(--soft); }
+
+/* Recent events */
+.recent { position: relative; width: 1856px; height: 56px; border-radius: 28px; display: flex; align-items: center; overflow: hidden; }
+.recent .tab { height: 56px; padding: 0 18px 0 20px; display: flex; align-items: center; flex-shrink: 0; background: rgba(140, 82, 255, 0.3); font-size: 14px; font-weight: 800; letter-spacing: 0.18em; color: #e2d6ff; }
+.recent .items { display: flex; align-items: center; gap: 18px; padding-left: 18px; }
+.recent .item { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; font-size: 19px; font-weight: 600; color: #e7e4fa; }
+.recent .item img { width: 22px; height: 22px; }
+.recent .dotsep { width: 5px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.35); flex-shrink: 0; }
+.recent .fade { position: absolute; right: 0; top: 0; width: 120px; height: 56px; background-image: linear-gradient(90deg, rgba(14, 12, 30, 0), rgba(14, 12, 30, 0.95)); }
+#twitch.look-solid .recent .fade { background-image: linear-gradient(90deg, rgba(16, 16, 26, 0), #10101a); }
+#twitch.look-transparent .recent .fade { display: none; }
+
+/* Twitch chat */
+.chat { width: 480px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.chat .head { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 8px; border-radius: 15px; background: rgba(14, 12, 30, 0.6); font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #dfe2ff; }
+#twitch.look-transparent .chat .head { background: transparent; }
+.chat .head img { width: 18px; height: 18px; }
+.chat .line { display: flex; align-items: flex-start; gap: 8px; padding: 8px 14px; border-radius: 14px; max-width: 480px; }
+.chat .badges { display: inline-flex; gap: 4px; margin-top: 2px; flex-shrink: 0; }
+.chat .badges img { width: 20px; height: 20px; }
+.chat .msg { font-size: 18px; line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.chat .msg b { font-weight: 800; margin-right: 6px; }
+
+/* Arranging in the browser */
+#twitch.editing { pointer-events: auto; }
+#twitch.editing .tw { cursor: grab; outline: 3px dashed rgba(0, 242, 255, 0.85); outline-offset: 4px; border-radius: 22px; }
+#twitch.editing .tw.dragging { cursor: grabbing; outline-color: #ffffff; }
+.tw .tag { position: absolute; left: 14px; top: -24px; height: 32px; padding: 0 14px; border-radius: 16px; background: #7ff5ff; display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; color: #04262a; white-space: nowrap; z-index: 2; text-shadow: none; }
+.tw .tag img { width: 16px; height: 16px; filter: none !important; }
+.tw .tag.below { top: auto; bottom: -46px; }
+.guide { position: absolute; display: none; z-index: 5; }
+.guide.x { top: 0; width: 0; height: 1080px; border-left: 3px dashed rgba(240, 70, 155, 0.95); }
+.guide.y { left: 0; height: 0; width: 1920px; border-top: 3px dashed rgba(240, 70, 155, 0.95); }
+.where { position: absolute; display: none; z-index: 6; height: 44px; padding: 0 18px; border-radius: 22px; background: #f0469b; align-items: center; font-size: 21px; font-weight: 800; color: #ffffff; white-space: nowrap; }

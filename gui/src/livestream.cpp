@@ -139,9 +139,10 @@ const char *StateName(State state)
 
 // ------------------------------------------------------------------ sound
 
-void Engine::Fifo::Reset()
+void Engine::Fifo::Reset(size_t samples)
 {
-	ring.assign(kFifoSamples * 2, 0.0f);
+	capacity = samples;
+	ring.assign(samples * 2, 0.0f);
 	read_pos = 0;
 	fill = 0;
 	primed = false;
@@ -153,12 +154,12 @@ void Engine::Fifo::WriteSample(float l, float r)
 {
 	if(ring.empty())
 		return;
-	if(fill == kFifoSamples)
+	if(fill == capacity)
 	{
-		read_pos = (read_pos + 1) % kFifoSamples;
+		read_pos = (read_pos + 1) % capacity;
 		fill--;
 	}
-	size_t at = (read_pos + fill) % kFifoSamples;
+	size_t at = (read_pos + fill) % capacity;
 	ring[at * 2] = l;
 	ring[at * 2 + 1] = r;
 	fill++;
@@ -168,27 +169,30 @@ void Engine::Fifo::MixInto(float *out, size_t count, float gain)
 {
 	if(ring.empty())
 		return;
-	// Its clock runs a little faster than ours, or it came in a burst: catch up
-	if(fill > kMaxSamples)
+	if(!whole)
 	{
-		size_t drop = fill - kPrimeSamples;
-		read_pos = (read_pos + drop) % kFifoSamples;
-		fill -= drop;
-	}
-	if(!primed)
-	{
-		if(fill < kPrimeSamples)
-			return;
-		primed = true;
+		// Its clock runs a little faster than ours, or it came in a burst: catch up
+		if(fill > kMaxSamples)
+		{
+			size_t drop = fill - kPrimeSamples;
+			read_pos = (read_pos + drop) % capacity;
+			fill -= drop;
+		}
+		if(!primed)
+		{
+			if(fill < kPrimeSamples)
+				return;
+			primed = true;
+		}
 	}
 	size_t take = std::min(count, fill);
 	for(size_t i = 0; i < take; i++)
 	{
-		size_t at = (read_pos + i) % kFifoSamples;
+		size_t at = (read_pos + i) % capacity;
 		out[i * 2] += ring[at * 2] * gain;
 		out[i * 2 + 1] += ring[at * 2 + 1] * gain;
 	}
-	read_pos = (read_pos + take) % kFifoSamples;
+	read_pos = (read_pos + take) % capacity;
 	fill -= take;
 	if(take < count)
 		primed = false; // ran dry: wait for a little reserve again
@@ -244,6 +248,50 @@ void Engine::PushOwnVoice(const int16_t *mono, size_t samples)
 		const float v = mono[i] / 32768.0f;
 		own.WriteSample(v, v);
 	}
+}
+
+void Engine::PushEffects(const int16_t *pcm, size_t frames, int channels, int rate)
+{
+	if(!running || !pcm || channels < 1 || rate < 8000)
+		return;
+	std::lock_guard<std::mutex> locker(audio_mutex);
+	const double step = static_cast<double>(rate) / kRate;
+	effects.phase = 0.0;
+	effects.last[0] = effects.last[1] = 0.0f;
+	for(size_t i = 0; i < frames; i++)
+	{
+		const float l = pcm[i * channels] / 32768.0f;
+		const float r = channels > 1 ? pcm[i * channels + 1] / 32768.0f : l;
+		if(rate == kRate)
+		{
+			effects.WriteSample(l, r);
+			continue;
+		}
+		while(effects.phase < 1.0)
+		{
+			const float t = static_cast<float>(effects.phase);
+			effects.WriteSample(effects.last[0] + (l - effects.last[0]) * t, effects.last[1] + (r - effects.last[1]) * t);
+			effects.phase += step;
+		}
+		effects.phase -= 1.0;
+		effects.last[0] = l;
+		effects.last[1] = r;
+	}
+}
+
+void Engine::PushMusic(const int16_t *pcm, size_t frames)
+{
+	if(!running || !pcm)
+		return;
+	std::lock_guard<std::mutex> locker(audio_mutex);
+	for(size_t i = 0; i < frames; i++)
+		music.WriteSample(pcm[i * 2] / 32768.0f, pcm[i * 2 + 1] / 32768.0f);
+}
+
+size_t Engine::MusicQueued()
+{
+	std::lock_guard<std::mutex> locker(audio_mutex);
+	return music.fill;
 }
 
 void Engine::SetLevels(int game_percent, int voices_percent, int mic_percent)
@@ -328,9 +376,15 @@ bool Engine::Start(const Config &new_config)
 	}
 	{
 		std::lock_guard<std::mutex> locker(audio_mutex);
-		game.Reset();
-		voices.Reset();
-		own.Reset();
+		game.Reset(kFifoSamples);
+		voices.Reset(kFifoSamples);
+		own.Reset(kFifoSamples);
+		// Up to 20 seconds of alert sounds may wait
+		effects.Reset(kRate * 20);
+		effects.whole = true;
+		// The music player keeps a fraction of a second ahead
+		music.Reset(kRate * 2);
+		music.whole = true;
 	}
 	{
 		std::lock_guard<std::mutex> locker(stats_mutex);
@@ -817,6 +871,8 @@ void Engine::EncodeAudio(int64_t first_sample)
 		game.MixInto(mix_buf.data(), count, game_level / 100.0f);
 		voices.MixInto(mix_buf.data(), count, voices_level / 100.0f);
 		own.MixInto(mix_buf.data(), count, mic_level / 100.0f);
+		effects.MixInto(mix_buf.data(), count, 1.0f);
+		music.MixInto(mix_buf.data(), count, 1.0f);
 	}
 	if(av_frame_make_writable(aframe) < 0)
 		return;

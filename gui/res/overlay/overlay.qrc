@@ -151,6 +151,11 @@
     <file>scene.html</file>
     <file>scene.css</file>
     <file>scene.js</file>
+    <file>alerts.html</file>
+    <file>alerts.css</file>
+    <file>alerts.js</file>
+    <file>twitch.css</file>
+    <file>twitch.js</file>
     <file>cryptopad/static/images/PS5 (nova pink)/base.png</file>
     <file>cryptopad/static/images/PS5 (nova pink)/button.png</file>
     <file>cryptopad/static/ps5-nova-pink-controller.css</file>
