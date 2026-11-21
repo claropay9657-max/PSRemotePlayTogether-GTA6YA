@@ -122,6 +122,8 @@ struct GuestInfo
 	uint8_t battery = kBatteryUnknown;
 	/** Joined from a web browser. */
 	bool web = false;
+	/** The guest is live on Twitch and wants it shown in the public room list: its login, else empty. */
+	std::string twitch;
 };
 
 /**
@@ -302,6 +304,8 @@ class Host
 			std::vector<uint8_t> welcome_packet;
 			uint8_t media = 0;
 			bool silenced = false;
+			/** The guest's Twitch login for the public room list, or empty. */
+			std::string twitch;
 			VoiceSequence voice_seq;
 			CamAssembler cam;
 			/** Chat messages it has not acknowledged yet. */

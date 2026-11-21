@@ -2647,6 +2647,27 @@ TEST(net_live_flags_reach_everyone)
 	CHECK(WaitFor([&] { return media_of(b, slot_a) == kMediaVoice; }, 2000));
 }
 
+TEST(net_guest_twitch_login_reaches_the_host)
+{
+	// A guest live on Twitch tells the host its channel, for the public room list
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll);
+	CHECK(a.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+	auto login = [&]() { auto guests = h.host->Guests(); return guests.empty() ? std::string("?") : guests[0].twitch; };
+	CHECK(login().empty());
+	a.client->SetTwitch("nova_plays");
+	CHECK(WaitFor([&] { return login() == "nova_plays"; }, 2000));
+	// Anything but a login is not sent at all
+	a.client->SetTwitch("https://example.com/x");
+	CHECK(WaitFor([&] { return login().empty(); }, 2000));
+	a.client->SetTwitch("nova_plays");
+	CHECK(WaitFor([&] { return login() == "nova_plays"; }, 2000));
+	a.client->SetTwitch("");
+	CHECK(WaitFor([&] { return login().empty(); }, 2000));
+	CHECK(ValidTwitchLogin("abc") && !ValidTwitchLogin("ab") && !ValidTwitchLogin("Nova") && !ValidTwitchLogin(std::string(26, 'a')));
+}
+
 TEST(net_voice_reaches_everyone_but_the_speaker)
 {
 	TestHost h;

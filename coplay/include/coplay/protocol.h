@@ -44,6 +44,10 @@
 namespace coplay {
 
 constexpr uint8_t kProtocolVersion = 4;
+/** The longest Twitch login a guest may announce (see MediaFlags). */
+constexpr size_t kMaxTwitchLogin = 25;
+/** A Twitch login: 3 to kMaxTwitchLogin of a-z, 0-9 and _. */
+bool ValidTwitchLogin(const std::string &login);
 constexpr uint16_t kDefaultPort = 9410;
 
 constexpr size_t kHeaderSize = 14;
@@ -185,6 +189,9 @@ enum MediaFlags : uint8_t
 	 * webcam and name do not go into them. Ignored like kMediaLive.
 	 */
 	kMediaNoStreams = 1 << 5,
+	// A guest that is live on Twitch and wants it shown in the public room list adds its
+	// channel's login (Str8, a-z0-9_, at most kMaxTwitchLogin) after the battery in its
+	// Ping. Hosts that do not know it never read that far.
 	/** What a player may say about itself. */
 	kMediaOwnMask = kMediaVoice | kMediaMuted | kMediaCamera | kMediaLive | kMediaNoStreams
 };

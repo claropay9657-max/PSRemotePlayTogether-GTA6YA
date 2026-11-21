@@ -407,6 +407,17 @@ void Client::SetMedia(uint8_t new_media)
 		ping_now = true;
 }
 
+void Client::SetTwitch(const std::string &login)
+{
+	const std::string value = ValidTwitchLogin(login) ? login : std::string();
+	std::lock_guard<std::mutex> lock(twitch_mutex);
+	if(twitch != value)
+	{
+		twitch = value;
+		ping_now = true;
+	}
+}
+
 void Client::SendVoice(const uint8_t *data, size_t size)
 {
 	if(!data || !size || size > kMaxVoiceFrameSize || !connected || lost)
@@ -527,6 +538,10 @@ void Client::SendPing(uint64_t now_ms)
 	w.U8(controller);
 	w.U8(media);
 	w.U8(battery);
+	{
+		std::lock_guard<std::mutex> lock(twitch_mutex);
+		w.Str8(twitch);
+	}
 	Send(PacketType::Ping, payload);
 	(void)now_ms;
 }

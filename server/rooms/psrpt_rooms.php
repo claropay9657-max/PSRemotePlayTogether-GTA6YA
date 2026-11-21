@@ -35,7 +35,8 @@
 //         proto=<protocol version>
 //         title_id=<CUSA12345|PPSA12345, optional> cover=<https://image.api.playstation.com/..., optional>
 //         initials=<one letter or digit (or "?") for each player, the host first, optional>
-//         twitch=<the host's Twitch login while they stream there and want it shown, optional>
+//         twitch=<the Twitch logins of the players who stream there right now and want it shown,
+//                 the host first, comma-separated, at most 9, optional>
 //   (control: everybody plays at once, one at a time, or only the host. A cover can only be
 //   a picture on Sony's image server, so that the list never makes a viewer load anything else.)
 //     v=1 action=preview id=<16 hex> token=<32 hex> image=<JPEG, base64url without padding>
@@ -295,7 +296,7 @@ if ($method !== 'POST') {
             'cover' => $room['cover'] ?? '',
             'initials' => $room['initials'] ?? '',
             // A channel name only, never an address: the pages build the link to twitch.tv themselves
-            'twitch' => $room['twitch'] ?? '',
+            'twitch' => $room['twitch'] ?? [],
             'faces' => $room['faces'] ?? [],
             'preview' => $preview_ms > 0 ? (int) ($room['preview'] ?? 0) : 0,
             'since' => max(0, $now - (int) $room['created']),
@@ -443,7 +444,7 @@ $title_id = $_POST['title_id'] ?? '';
 $cover = $_POST['cover'] ?? '';
 // Who plays, as initials only: never names
 $initials = $_POST['initials'] ?? '';
-// The Twitch channel the host streams on right now, if they want it shown: only a login
+// The Twitch channels the players stream on right now, if they want them shown: only logins
 $twitch = $_POST['twitch'] ?? '';
 $twitch = is_string($twitch) ? strtolower($twitch) : $twitch;
 if ($title === null || $title === '' || $host === null || $host === '' || $game === null
@@ -455,7 +456,7 @@ if ($title === null || $title === '' || $host === null || $host === '' || $game 
     || !is_string($title_id) || !preg_match('/^([A-Z]{4}[0-9]{5})?$/', $title_id)
     || !is_string($cover) || !preg_match('/^(https:\/\/image\.api\.playstation\.com\/[A-Za-z0-9._~\/%-]{1,300})?$/', $cover)
     || !is_string($initials) || !preg_match('/^[\p{L}\p{N}?]{0,9}$/u', $initials) || mb_strlen($initials, 'UTF-8') > $players
-    || !is_string($twitch) || !preg_match('/^([a-z0-9_]{3,25})?$/', $twitch)
+    || !is_string($twitch) || !preg_match('/^([a-z0-9_]{3,25}(,[a-z0-9_]{3,25}){0,8})?$/', $twitch)
     // No address in a listed invite: the host is found through the meeting point
     || !is_string($invite) || !preg_match('/^psrpt:\/\/-\/[A-Za-z0-9_-]{22}(\?meet=[A-Za-z0-9._~:\/%-]{1,200})?$/', $invite)) {
     psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed room']);
@@ -492,7 +493,7 @@ $room = [
     'title_id' => $title_id,
     'cover' => $cover,
     'initials' => $initials,
-    'twitch' => $twitch,
+    'twitch' => $twitch === '' ? [] : array_values(array_unique(explode(',', $twitch))),
     'created' => $existing !== null ? (int) $existing['created'] : time(),
     't' => time(),
 ];

@@ -95,8 +95,8 @@ export async function fetchRooms(url) {
       picture,
       initials,
       faces,
-      // Live on Twitch: a channel name only, the page builds the link itself
-      twitch: /^[a-z0-9_]{3,25}$/.test(text(r.twitch, 25)) ? text(r.twitch, 25) : '',
+      // Who streams on Twitch: channel names only, the page builds the links itself
+      twitch: (Array.isArray(r.twitch) ? r.twitch : []).filter((t) => typeof t === 'string' && /^[a-z0-9_]{3,25}$/.test(t)).slice(0, 9),
       since: Number(r.since) || 0,
     });
   }
@@ -114,7 +114,7 @@ export function filterRooms(rooms, { search = '', lang = '', hideFull = false, o
       if (lang && r.lang && r.lang !== lang) return false;
       if (hideFull && r.full) return false;
       if (openOnly && r.policy === 'ask') return false;
-      if (twitchOnly && !r.twitch) return false;
+      if (twitchOnly && !r.twitch.length) return false;
       const hay = `${r.title} ${r.game} ${r.host} ${languageName(r.lang)}`.toLowerCase();
       return words.every((w) => hay.includes(w));
     })

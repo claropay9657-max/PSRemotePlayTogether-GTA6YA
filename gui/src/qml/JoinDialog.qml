@@ -286,7 +286,7 @@ FocusScope {
                     return false;
                 if (openOnly && r.policy === "ask")
                     return false;
-                if (twitchOnly && !r.twitch)
+                if (twitchOnly && !(r.twitch && r.twitch.length))
                     return false;
                 const text = (r.title + " " + r.game + " " + r.host + " " + languageName(r.lang)).toLowerCase();
                 return words.every((w) => text.indexOf(w) >= 0);
@@ -1350,7 +1350,7 @@ FocusScope {
 
                                     // The host is live on Twitch: a different thing than the "Live" picture of the game
                                     Rectangle {
-                                        visible: !!roomCard.modelData.twitch
+                                        visible: !!(roomCard.modelData.twitch && roomCard.modelData.twitch.length)
                                         width: twitchRow.implicitWidth + 14
                                         height: 20
                                         radius: 10
@@ -1371,7 +1371,8 @@ FocusScope {
 
                                             Text {
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                text: qsTr("On Twitch")
+                                                text: roomCard.modelData.twitch && roomCard.modelData.twitch.length > 1
+                                                      ? qsTr("%1 on Twitch").arg(roomCard.modelData.twitch.length) : qsTr("On Twitch")
                                                 color: "#ffffff"
                                                 font.pixelSize: 11
                                                 font.weight: Font.ExtraBold
@@ -1541,15 +1542,19 @@ FocusScope {
                                     onClicked: dialog.join(roomCard.modelData.invite, roomCard.modelData.title, true)
                                 }
 
-                                // Only a channel name comes from the list; the address is made here
-                                C.PillButton {
-                                    Layout.alignment: Qt.AlignRight
-                                    visible: !!roomCard.modelData.twitch
-                                    small: true
-                                    kind: "ghost"
-                                    text: qsTr("Watch on Twitch")
-                                    Accessible.description: roomCard.modelData.title
-                                    onClicked: Qt.openUrlExternally("https://www.twitch.tv/" + roomCard.modelData.twitch)
+                                // Only channel names come from the list; the addresses are made here
+                                Repeater {
+                                    model: (roomCard.modelData.twitch || []).slice(0, 3)
+
+                                    C.PillButton {
+                                        required property string modelData
+                                        Layout.alignment: Qt.AlignRight
+                                        small: true
+                                        kind: "ghost"
+                                        text: (roomCard.modelData.twitch || []).length > 1 ? qsTr("Watch %1").arg(modelData) : qsTr("Watch on Twitch")
+                                        Accessible.description: qsTr("%1 on Twitch").arg(modelData)
+                                        onClicked: Qt.openUrlExternally("https://www.twitch.tv/" + modelData)
+                                    }
                                 }
 
                                 Text {

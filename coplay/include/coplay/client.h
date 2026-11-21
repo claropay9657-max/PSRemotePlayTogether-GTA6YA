@@ -148,6 +148,8 @@ class Client
 		void SetBattery(uint8_t battery);
 		/** What we contribute: kMediaVoice, kMediaMuted, kMediaCamera. */
 		void SetMedia(uint8_t media);
+		/** The Twitch login to show in the host's public room list, or empty; see MediaFlags. */
+		void SetTwitch(const std::string &login);
 		uint8_t Media() const { return media; }
 		/** One Opus frame of our microphone. */
 		void SendVoice(const uint8_t *data, size_t size);
@@ -211,6 +213,8 @@ class Client
 		std::atomic<uint8_t> controller{0};
 		std::atomic<uint8_t> battery{kBatteryUnknown};
 		std::atomic<uint8_t> media{0};
+		std::mutex twitch_mutex;
+		std::string twitch;
 		std::atomic<uint32_t> voice_seq{0};
 		std::atomic<uint32_t> cam_seq{0};
 		std::atomic<uint32_t> rtt_ms{0};

@@ -105,7 +105,7 @@ class CoPlayRoomAnnouncer : public QObject
 			QString invite;
 			/** One letter for each player, the host first ("?" without a name): only initials, no names. */
 			QString initials;
-			/** The host's Twitch login while they stream there and want it shown, else empty. */
+			/** Everybody's Twitch login who streams there and wants it shown, host first, as "a,b", else empty. */
 			QString twitch;
 			int players = 1;
 			int max = 5;

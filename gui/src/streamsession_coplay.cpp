@@ -522,7 +522,7 @@ void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info
 	room.web = !coplay->web_page.empty();
 	room.players = 1;
 	room.initials = RoomInitial(coplay->host_name);
-	room.twitch = coplay_room_twitch;
+	room.twitch = CoPlayRoomTwitch();
 	room.max = static_cast<int>(max_guests) + 1;
 	room.proto = coplay::kProtocolVersion;
 	coplay->room->Update(room);
@@ -616,10 +616,34 @@ void StreamSession::SetCoPlayRoomGame(const QString &game, const QString &title_
 void StreamSession::SetCoPlayRoomStream(const QString &twitch_login)
 {
 	coplay_room_twitch = twitch_login;
-	if(!coplay || !coplay->room || coplay->room_info.twitch == twitch_login)
+	// A guest tells the host, whose room carries everybody's channel
+	if(coplay && coplay->client)
+		coplay->client->SetTwitch(twitch_login.toStdString());
+	if(!coplay || !coplay->room)
 		return;
-	coplay->room_info.twitch = twitch_login;
+	const QString all = CoPlayRoomTwitch();
+	if(coplay->room_info.twitch == all)
+		return;
+	coplay->room_info.twitch = all;
 	CoPlayUpdateRoom();
+}
+
+/** Everybody in the room who is live on Twitch and wants it shown: the host first, as "a,b,c". */
+QString StreamSession::CoPlayRoomTwitch()
+{
+	QStringList logins;
+	if(!coplay_room_twitch.isEmpty())
+		logins.append(coplay_room_twitch);
+	if(coplay && coplay->host)
+	{
+		for(const coplay::GuestInfo &g : coplay->host->Guests())
+		{
+			const QString login = QString::fromStdString(g.twitch);
+			if(!login.isEmpty() && !logins.contains(login) && logins.size() < 9)
+				logins.append(login);
+		}
+	}
+	return logins.join(QLatin1Char(','));
 }
 
 /** The game's picture for the list, from Sony's catalog (no login), once it is known. */
@@ -1095,6 +1119,7 @@ void StreamSession::CoPlayUpdatePlayers()
 			p["avatar"] = AvatarId(g.avatar);
 			p["avatarUrl"] = g.avatar.Valid() ? AvatarUrl(coplay->host->Avatar(g.avatar.hash)) : QString();
 			MediaToMap(p, g.media);
+			p["twitch"] = QString::fromStdString(g.twitch);
 			p["mutedHere"] = coplay->voice->PlayerMuted(g.slot);
 			players.append(p);
 		}
@@ -1136,6 +1161,7 @@ void StreamSession::CoPlayUpdatePlayers()
 				it = coplay->room_faces.erase(it);
 		}
 		coplay->room_info.initials = initials;
+		coplay->room_info.twitch = CoPlayRoomTwitch();
 		coplay->room->SetFaces(faces);
 		coplay->room_info.control = ControlName(coplay->host->GetMixMode());
 		CoPlayUpdateRoom();
@@ -1499,6 +1525,7 @@ void StreamSession::CoPlayStartGuest()
 	};
 	// Kept: a connection that replaces this one is started with the same
 	coplay->client_callbacks = callbacks;
+	coplay->client->SetTwitch(coplay_room_twitch.toStdString());
 	coplay->client->Start(callbacks);
 
 	ChiakiEvent event;
@@ -1695,6 +1722,7 @@ void StreamSession::CoPlayRejoinFinished(const std::shared_ptr<CoPlayRejoin> &jo
 	CHIAKI_LOGI(GetChiakiLog(), "Play Together: joined again at %s as player %u",
 		client->HostAddress().c_str(), static_cast<unsigned>(client->Welcome().slot));
 	// The picture comes back by itself: a new connection starts with a key frame
+	client->SetTwitch(coplay_room_twitch.toStdString());
 	client->Start(coplay->client_callbacks);
 	emit CoPlayChanged();
 }

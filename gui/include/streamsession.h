@@ -604,6 +604,7 @@ class StreamSession : public QObject
 		void SetCoPlayRoomGame(const QString &game, const QString &title_id);
 		/** The host's Twitch channel for the public room list, or empty: not streaming, or not shown. */
 		void SetCoPlayRoomStream(const QString &twitch_login);
+		QString CoPlayRoomTwitch();
 		/** True once for each picture of the game the list of public rooms wants (any thread). */
 		bool TakeRoomPictureRequest() { return room_picture_wanted.fetchAndStoreRelaxed(0) != 0; }
 		/** A picture of the game (a small JPEG) for the list of public rooms. */

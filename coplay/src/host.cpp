@@ -591,6 +591,19 @@ bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, 
 			uint8_t battery = r.U8();
 			if(!r.ok())
 				break;
+			// Newer guests add their Twitch login; older ones end here
+			std::string twitch;
+			if(r.remaining() > 0)
+			{
+				twitch = r.Str8();
+				if(!r.ok() || !ValidTwitchLogin(twitch))
+					twitch.clear();
+			}
+			if(twitch != g.twitch)
+			{
+				g.twitch = twitch;
+				d.guests_changed = true;
+			}
 			g.rtt_ms = rtt;
 			if(kind != g.controller || media != g.media || battery != g.battery)
 			{
@@ -1643,6 +1656,7 @@ std::vector<GuestInfo> Host::Guests()
 		info.want = g.want;
 		info.controller = g.controller;
 		info.battery = g.battery;
+		info.twitch = g.twitch;
 		info.can_control = g.can_control;
 		info.in_control = g.in_control;
 		info.rtt_ms = g.rtt_ms;

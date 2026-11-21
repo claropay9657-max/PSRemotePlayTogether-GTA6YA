@@ -315,8 +315,8 @@ function fillBadges(badges, room) {
     el('span', 'badge door', POLICY[room.policy]));
   if (room.web) badges.append(el('span', 'badge web', 'Browsers welcome'));
   // The host is live on Twitch: not the same as the "Live" picture of the game
-  if (room.twitch) {
-    const live = el('span', 'badge twitch', 'On Twitch');
+  if (room.twitch.length) {
+    const live = el('span', 'badge twitch', room.twitch.length > 1 ? `${room.twitch.length} on Twitch` : 'On Twitch');
     live.prepend(el('i'));
     badges.prepend(live);
   }
@@ -354,12 +354,12 @@ function roomCard(room) {
   join.dataset.room = room.invite;
   join.setAttribute('aria-label', `${room.full ? 'Full' : 'Join'}: ${room.title}`);
   action.append(join);
-  if (room.twitch) {
-    const watch = el('a', 'btn ghost small watch-twitch', 'Watch on Twitch');
-    watch.href = `https://www.twitch.tv/${room.twitch}`;
+  for (const login of room.twitch.slice(0, 3)) {
+    const watch = el('a', 'watch-twitch', room.twitch.length > 1 ? `Watch ${login}` : 'Watch on Twitch');
+    watch.href = `https://www.twitch.tv/${login}`;
     watch.target = '_blank';
     watch.rel = 'noopener noreferrer';
-    watch.setAttribute('aria-label', `Watch on Twitch: ${room.title}`);
+    watch.setAttribute('aria-label', `${login} on Twitch`);
     action.append(watch);
   }
   if (!room.compatible || !room.web) {

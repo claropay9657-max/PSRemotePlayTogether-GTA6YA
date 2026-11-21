@@ -491,6 +491,16 @@ bool ReadCamFragmentHeader(ByteReader &r, CamFragmentHeader &h)
 	return r.remaining() == expected;
 }
 
+bool ValidTwitchLogin(const std::string &login)
+{
+	if(login.size() < 3 || login.size() > kMaxTwitchLogin)
+		return false;
+	for(char c : login)
+		if(!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'))
+			return false;
+	return true;
+}
+
 std::string TruncateUtf8(const std::string &s, size_t max)
 {
 	if(s.size() <= max)

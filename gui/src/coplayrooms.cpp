@@ -296,10 +296,16 @@ void CoPlayRoomList::Refresh(const QString &setting)
 			m[QStringLiteral("compatible")] = proto == coplay::kProtocolVersion;
 			m[QStringLiteral("since")] = r.value(QStringLiteral("since")).toInt();
 			m[QStringLiteral("titleId")] = r.value(QStringLiteral("title_id")).toString().left(9);
-			// Streaming on Twitch: a channel name only, the link to it is built here
+			// Who streams on Twitch: channel names only, the links to them are built here
 			static const QRegularExpression twitch_login(QStringLiteral("^[a-z0-9_]{3,25}$"));
-			const QString twitch = r.value(QStringLiteral("twitch")).toString();
-			m[QStringLiteral("twitch")] = twitch_login.match(twitch).hasMatch() ? twitch : QString();
+			QStringList twitch;
+			for(const QJsonValue &login : r.value(QStringLiteral("twitch")).toArray())
+			{
+				const QString s = login.toString();
+				if(twitch_login.match(s).hasMatch() && !twitch.contains(s) && twitch.size() < 9)
+					twitch.append(s);
+			}
+			m[QStringLiteral("twitch")] = twitch;
 			// Only a picture on Sony's image server, as the list itself demands
 			const QString cover = r.value(QStringLiteral("cover")).toString();
 			m[QStringLiteral("cover")] = CoPlayRooms::IsCover(cover) ? cover : QString();

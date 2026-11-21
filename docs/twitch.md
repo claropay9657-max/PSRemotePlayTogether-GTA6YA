@@ -29,11 +29,13 @@ Nothing passes through a server of ours.
 ## In the public room list
 
 **Show my stream in the room list** (Settings → Twitch, off by default): while the channel is
-live (EventSub `stream.online` / `stream.offline`), the host's public room carries the
-channel's login (`twitch=` in the announcement, see `server/rooms/README.md`). The app's Join
+live (EventSub `stream.online` / `stream.offline`), the player's login goes with the public
+room: the host's directly, a guest's in its Ping to the host (after the battery, read only by
+hosts that know it), and the room carries them all, the host first (`twitch=a,b` in the
+announcement, see `server/rooms/README.md`). The app's Join
 dialog and the page for browsers then show **On Twitch** and **Watch on Twitch**, and the
-filter **Only rooms streaming on Twitch**. The list takes only a login (3 to 25 of `a-z0-9_`)
-and returns only that; both clients check it again and build `https://www.twitch.tv/<login>`
+filter **Only rooms streaming on Twitch**. The list takes only logins (3 to 25 of `a-z0-9_`)
+and returns only those; both clients check it again and build `https://www.twitch.tv/<login>`
 themselves, so no other link can get into a public list. The "Live" tag on a room's picture
 is something else: it means the room shares a live picture of the game.
 
