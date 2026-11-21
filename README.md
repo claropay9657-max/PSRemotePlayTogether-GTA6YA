@@ -146,7 +146,7 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
     </td>
     <td width="50%">
       <h3>🚦 You decide who gets in</h3>
-      Let each player in yourself, let newcomers watch until you let them play, or open the door to everybody. Close the room to newcomers at any time, and remove a player, for good if you like.
+      <b>Ask to join</b>: you approve each player first. <b>Join as viewers</b>: they play once you allow it. <b>Join and play</b>: no approval needed. Close the room to newcomers at any time, and remove a player, for good if you like.
     </td>
   </tr>
   <tr>
