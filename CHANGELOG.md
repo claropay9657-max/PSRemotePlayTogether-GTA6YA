@@ -3,7 +3,7 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
-## 0.2.1
+## 0.3.0
 
 - **A new look.** The whole app is redesigned: the start page with its two doors, **Host** and **Join**, the Host and Join pages, the stream menu, the settings and every dialog. In the game, Play Together sits in a panel at the side (who knocks, who controls, the players with their webcams, your voice and webcam, the chat), with sound, picture, quality and overlays in a bar at the bottom. Everything works with a controller as well as with a mouse. The page for browsers looks the same.
 - **One settings window.** The settings and the Play Together settings are one window with a sidebar (Playing, Play Together, Consoles, App) and your profile on top. A search field finds any setting on any page and lights it up there. Every setting is one row in plain words; choices are buttons you see at once, on and off are switches, amounts are sliders with their value. Keys are changed right on the page: click a key, press the new one. The meeting point and public rooms have real switches, and an address of your own comes back when you switch them on again. Each console has its own **Start right away** switch (was auto-connect). "Profiles" are now **Setting sets**, so they are not mixed up with your player profile. **Your profile** shows how the others see you.
