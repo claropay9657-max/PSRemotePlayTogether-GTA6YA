@@ -477,13 +477,13 @@ void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info
 	const QString url = CoPlayRooms::UrlFromSetting(connect_info.coplay_rooms_server);
 	if(url.isEmpty())
 	{
-		coplay->room_problem = tr("Public rooms are switched off (Play Together settings → Network), so this room is not listed.");
+		coplay->room_problem = tr("Public rooms are switched off (Settings › Network & invites), so this room is not listed.");
 		CHIAKI_LOGW(GetChiakiLog(), "Play Together: no list of public rooms, the room is not listed");
 		return;
 	}
 	if(!coplay->meet_on)
 	{
-		coplay->room_problem = tr("A public room needs the meeting point, which is switched off (Play Together settings → Network). The room is not listed.");
+		coplay->room_problem = tr("A public room needs the meeting point, which is switched off (Settings › Network & invites). The room is not listed.");
 		CHIAKI_LOGW(GetChiakiLog(), "Play Together: a public room needs the meeting point, the room is not listed");
 		return;
 	}
@@ -513,6 +513,22 @@ void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info
 	coplay->room->Update(room);
 	CHIAKI_LOGI(GetChiakiLog(), "Play Together: public room \"%s\" is on the list", qPrintable(room.title));
 	CoPlayFindCover();
+	// A picture of the game now and then, when the list takes pictures; the frame thread
+	// takes the next frame shown (QmlBackend), and CoPlayRoomPicture() sends it
+	if(connect_info.coplay_room_preview)
+	{
+		connect(coplay->room, &CoPlayRoomAnnouncer::PictureWanted, this, [this]() {
+			room_picture_wanted.storeRelaxed(1);
+		});
+		coplay->room->SetPictures(true);
+	}
+}
+
+void StreamSession::CoPlayRoomPicture(const QByteArray &jpeg)
+{
+	if(!coplay || !coplay->room || jpeg.isEmpty())
+		return;
+	coplay->room->SendPicture(jpeg);
 }
 
 void StreamSession::CoPlayUpdateRoom()

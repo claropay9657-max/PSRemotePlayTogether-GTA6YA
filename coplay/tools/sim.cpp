@@ -95,6 +95,8 @@ static void Usage()
 		"      --title-id ID       the game's title id (PPSA12345), as a console reports it\n"
 		"      --cover URL         a picture of the game on image.api.playstation.com (the app\n"
 		"                          finds it in Sony's catalog by the title id)\n"
+		"      --preview A.jpg     a picture of the game for the list (a JPEG of at most 640x360),\n"
+		"                          sent as often as the list asks, as the app sends a frame\n"
 		"      --policy ask|watch|open  who gets in (default open); \"ask\" lets each one in\n"
 		"                          after --admit-after seconds, or refuses with --refuse\n"
 		"      --admit-after N     seconds before a guest that knocks is let in (default 3)\n"
@@ -142,7 +144,7 @@ struct Options
 	bool voice = false;
 	bool chat = false;
 	bool guests_may_sleep = false;
-	std::string room_title, rooms, lang = "en", game = "Simulator", policy = "open", title_id, cover;
+	std::string room_title, rooms, lang = "en", game = "Simulator", policy = "open", title_id, cover, preview;
 	int admit_after = 3;
 	bool refuse = false;
 	int max_guests = 4;
@@ -195,6 +197,7 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--game") { if(!value(o.game)) return false; }
 		else if(a == "--title-id") { if(!value(o.title_id)) return false; }
 		else if(a == "--cover") { if(!value(o.cover)) return false; }
+		else if(a == "--preview") { if(!value(o.preview)) return false; }
 		else if(a == "--policy") { if(!value(o.policy)) return false; }
 		else if(a == "--admit-after") { if(!value(v)) return false; o.admit_after = std::atoi(v.c_str()); }
 		else if(a == "--refuse") o.refuse = true;
@@ -797,6 +800,38 @@ static int RunHost(const Options &o)
 	if(listed && room(false))
 		std::printf("[room] \"%s\" is on the list of public rooms (%s)\n", o.room_title.c_str(), o.policy.c_str());
 	auto next_room = clock::now() + std::chrono::seconds(15);
+	// The same picture again and again, as often as the list takes one (the app sends a frame)
+	std::string preview_encoded;
+	if(listed && !o.preview.empty())
+	{
+		std::vector<uint8_t> jpeg = ReadFile(o.preview);
+		static const char kUrl64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+		for(size_t i = 0; i < jpeg.size(); i += 3)
+		{
+			uint32_t n = static_cast<uint32_t>(jpeg[i]) << 16;
+			if(i + 1 < jpeg.size()) n |= static_cast<uint32_t>(jpeg[i + 1]) << 8;
+			if(i + 2 < jpeg.size()) n |= jpeg[i + 2];
+			preview_encoded += kUrl64[(n >> 18) & 63];
+			preview_encoded += kUrl64[(n >> 12) & 63];
+			if(i + 1 < jpeg.size()) preview_encoded += kUrl64[(n >> 6) & 63];
+			if(i + 2 < jpeg.size()) preview_encoded += kUrl64[n & 63];
+		}
+		if(jpeg.empty())
+			std::fprintf(stderr, "--preview: cannot read %s\n", o.preview.c_str());
+	}
+	auto send_preview = [&]() {
+		HttpRequest request;
+		request.url = o.rooms;
+		request.body = FormBody({ { "v", "1" }, { "action", "preview" }, { "id", room_id }, { "token", room_token },
+			{ "image", preview_encoded } });
+		HttpResponse response;
+		std::string why;
+		bool ok = CurlPost(request, response, &why) && response.status == 200 && response.body.find("\"ok\":true") != std::string::npos;
+		std::lock_guard<std::mutex> lock(print_mutex);
+		std::printf("[room] picture %s\n", ok ? "sent" : (why.empty() ? response.body.c_str() : why.c_str()));
+		std::fflush(stdout);
+	};
+	auto next_preview = clock::now() + std::chrono::seconds(2);
 	size_t room_players = 1;
 	// Who knocks: since when, so that they are let in after a moment
 	std::map<uint64_t, clock::time_point> knocks;
@@ -814,6 +849,11 @@ static int RunHost(const Options &o)
 				room_players = players;
 				next_room = now + std::chrono::seconds(15);
 				room(false);
+			}
+			if(!preview_encoded.empty() && now >= next_preview)
+			{
+				next_preview = now + std::chrono::seconds(45);
+				send_preview();
 			}
 		}
 		if(knocked.exchange(false) || !knocks.empty())

@@ -334,6 +334,19 @@ void QmlSettings::setCoplayHostPublic(bool on)
     emit coplayChanged();
 }
 
+bool QmlSettings::coplayRoomPreview() const
+{
+    return settings->GetCoPlayRoomPreview();
+}
+
+void QmlSettings::setCoplayRoomPreview(bool on)
+{
+    if (on == settings->GetCoPlayRoomPreview())
+        return;
+    settings->SetCoPlayRoomPreview(on);
+    emit coplayChanged();
+}
+
 QString QmlSettings::coplayRoomTitle() const
 {
     return settings->GetCoPlayRoomTitle();

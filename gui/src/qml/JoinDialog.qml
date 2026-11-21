@@ -1161,16 +1161,20 @@ FocusScope {
                             columnSpacing: 14
                             rowSpacing: 10
 
-                            // The game's picture where the host's app found one, otherwise its initial
+                            // The game as it is right now, where the host sends pictures; otherwise the
+                            // game's cover where the host's app found one, otherwise its initial
                             Item {
+                                id: tile
+                                readonly property bool live: livePicture.status === Image.Ready
                                 Layout.row: 0
                                 Layout.column: 0
-                                Layout.preferredWidth: 68
+                                Layout.preferredWidth: live ? 121 : 68
                                 Layout.preferredHeight: 68
                                 Layout.alignment: roomCard.narrow ? Qt.AlignTop : Qt.AlignVCenter
 
                                 Rectangle {
                                     anchors.fill: parent
+                                    visible: !tile.live
                                     radius: 14
                                     gradient: Gradient {
                                         GradientStop { position: 0.0; color: C.Theme.brandFrom }
@@ -1201,6 +1205,17 @@ FocusScope {
                                     source: roomCard.modelData.cover ? roomCard.modelData.cover + "?w=192" : ""
                                 }
 
+                                // From the list itself; its address changes with every new picture
+                                Image {
+                                    id: livePicture
+                                    anchors.fill: parent
+                                    visible: false
+                                    layer.enabled: true
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    source: roomCard.modelData.picture || ""
+                                }
+
                                 Rectangle {
                                     id: coverMask
                                     anchors.fill: parent
@@ -1211,10 +1226,46 @@ FocusScope {
 
                                 MultiEffect {
                                     anchors.fill: parent
-                                    source: cover
+                                    source: tile.live ? livePicture : cover
                                     maskEnabled: true
                                     maskSource: coverMask
-                                    visible: cover.status === Image.Ready
+                                    visible: tile.live || cover.status === Image.Ready
+                                }
+
+                                // The picture is the game as it is now
+                                Rectangle {
+                                    visible: tile.live
+                                    anchors {
+                                        left: parent.left
+                                        bottom: parent.bottom
+                                        margins: 6
+                                    }
+                                    width: liveRow.implicitWidth + 12
+                                    height: 18
+                                    radius: 9
+                                    color: Qt.rgba(0, 0, 0, 0.62)
+
+                                    Row {
+                                        id: liveRow
+                                        anchors.centerIn: parent
+                                        spacing: 4
+
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 6
+                                            height: 6
+                                            radius: 3
+                                            color: C.Theme.bad
+                                        }
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: qsTr("Live")
+                                            color: "#ffffff"
+                                            font.pixelSize: 10
+                                            font.weight: Font.ExtraBold
+                                        }
+                                    }
                                 }
                             }
 

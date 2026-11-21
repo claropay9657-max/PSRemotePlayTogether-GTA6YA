@@ -9,8 +9,9 @@ list, in the app under **Join → Public rooms** and on the page for web
 browsers, and join a room from it.
 
 The list only says how to find a room. Joining works like with an invite, and
-nothing of a session passes through this file: no picture, no sound, no
-controller. A listed invite names no address (`psrpt://-/KEY`): the host is
+nothing of a session passes through this file: no stream, no sound, no
+controller. The one picture it keeps is a small still of the game that a host's
+app sends now and then, so that people see what is played (below). A listed invite names no address (`psrpt://-/KEY`): the host is
 found through the [meeting point](../meeting-point), and the list itself holds
 nobody's address. Players still connect to the host directly and so learn its
 internet address, as with every invite; with a listed invite that can be
@@ -40,6 +41,12 @@ after its host last announced it. `PSRPT_ROOMS_POLL_MS` slows all hosts down,
 and the page's list with them (the app's list reads every 15 seconds while it
 is open). `PSRPT_ROOMS_MAX` (500) is how many rooms the list holds at once.
 
+Pictures: a host whose room shows a live picture sends one JPEG of at most
+320×180 every 45 seconds (`PSRPT_ROOMS_PREVIEW_MS`), usually 5 to 20 KB, at
+most `PSRPT_ROOMS_PREVIEW_MAX` (48 KB). Whoever looks at the list loads each
+new picture once. `PSRPT_ROOMS_PREVIEW_MS=0` switches pictures off: the list
+then tells hosts not to send any and shows covers only.
+
 ## Installing
 
 1. Copy `psrpt_rooms.php` to the web server, next to the meeting point, for
@@ -62,6 +69,7 @@ reads another one when `DEFAULT_ROOMS_URL` in `web/js/rooms.js` names it.
 | `title` | The host's title for the room, up to 60 characters. Empty in the app becomes "Alex's room". |
 | `lang` | The language the room speaks, two letters (`de`, `en`), or empty for any. |
 | `game` | What runs on the console, as the console names it; empty on the home screen. |
+| `preview` | 0, or when the host last sent a picture of the game (Unix time). The picture is served by the list itself at `?v=1&preview=<id>&t=<that time>`, so the list never makes anybody load a picture from anywhere else but Sony's image server and the list. |
 | `title_id`, `cover` | The game's id (`PPSA12345`, `CUSA12345`) and a picture of it. The host's app finds the picture in Sony's public catalog by the title id (`m.np.playstation.com/api/catalog/v2/titles/<id>_00/concepts`, no login) and sends its address. A cover can only be an address on `image.api.playstation.com`, so a list never makes anybody load a picture from anywhere else; viewers ask Sony's server for a small copy (`?w=192`). |
 | `host` | The host's name. |
 | `players`, `max` | How many are in the session, the host included, and how many fit. |
@@ -81,13 +89,22 @@ to newcomers or remove and block a player for the rest of the session.
 ```text
 GET  ?v=1
   → {"v":1,"ok":true,"poll":15000,"rooms":[{"id","title","lang","game","host","players","max",
-     "policy","control","web","invite","proto","title_id","cover","since"}, ...]}
+     "policy","control","web","invite","proto","title_id","cover","preview","since"}, ...]}
+GET  ?v=1&preview=<id>&t=<time>
+  → the room's picture (image/jpeg), 404 when it has none
 
 POST v=1 action=announce id=<16 hex> token=<32 hex> title= lang= game= host= players= max=
      policy= control= web=0|1 invite= proto= [title_id=] [cover=]
+POST v=1 action=preview id=<16 hex> token=<32 hex> image=<JPEG, base64url without padding>
 POST v=1 action=remove id=<16 hex> token=<32 hex>
-  → {"v":1,"ok":true,"poll":15000}  or  {"v":1,"ok":false,"error":"..."}
+  → {"v":1,"ok":true,"poll":15000,"preview":45000}  or  {"v":1,"ok":false,"error":"..."}
 ```
+
+`preview` in the answer is how often a host sends a picture, in milliseconds, or 0
+for none; a list that does not answer with it (an older copy of this file) gets
+no pictures. A picture is taken only for a room on the list, from its own host,
+as a JPEG of at least 16×16 and at most 640×360 pixels, and at most one every
+half that time (429 otherwise). It goes when the room goes.
 
 The first announce of an id keeps a hash of its token; only that host can
 change or remove the room afterwards (403 otherwise). A host's app makes a new
@@ -97,15 +114,18 @@ id and token for every session.
 
 The same as for the meeting point ([its README](../meeting-point/README.md#what-to-tell-a-reverse-proxy-or-web-application-firewall)):
 
-- **Methods:** `GET` for the list, `POST` with
-  `application/x-www-form-urlencoded` under 2 KB for a host.
+- **Methods:** `GET` for the list and the pictures, `POST` with
+  `application/x-www-form-urlencoded` for a host: under 2 KB for a room, under
+  64 KB for a picture.
 - **Rate limit:** per client address, at least 1 request per second.
 - **No bot challenge** on this path: the client is an app or a script on the
   page. The app sends `User-Agent: PSRemotePlayTogether/<version>`.
 - **Status codes:** 400 for malformed requests and rooms, 403 for a room that
   belongs to somebody else, 503 when the list is full or cannot write.
   Everything else is 200.
-- **Caching:** none. The script sends `Cache-Control: no-store`.
+- **Caching:** none for the list (`Cache-Control: no-store`). A picture may be
+  kept for ten minutes (`Cache-Control: public, max-age=600`): its address names
+  the moment it was taken.
 
 ## Web browsers
 
@@ -113,17 +133,22 @@ The page for browsers reads the list from another address than its own, so the
 answers need `Access-Control-Allow-Origin`. Set `PSRPT_ROOMS_CORS` to `*` if
 nothing in front of the script adds it; leave it empty if your reverse proxy
 adds it already (two such headers count as none). The page only reads the list;
-it never hosts a room.
+it never hosts a room. It fetches the pictures the same way (and shows them from
+memory), so they need the header as well, and the page's
+Content-Security-Policy needs no address of the list.
 
 ## What it stores, and what it can see
 
-- Stored: per room what the table above lists, a hash of the host's token, and
-  when the room was announced first and last, until 45 seconds after the last
-  announcement. No IP addresses, no log.
+- Stored: per room what the table above lists, a hash of the host's token, when
+  the room was announced first and last, and its newest picture, until 45 seconds
+  after the last announcement. No IP addresses, no log.
 - Everything in a room is public by design: the host chose to list it. What a
   room says is written by its host; the script only checks that it is text of
   the right length, without control characters, and that the invite names no
-  address.
+  address. The same holds for its picture: a still of whatever the host's screen
+  shows of the game, checked only for being a small JPEG. The app sends one only
+  while the host leaves "Live picture in the list" on, and never in streamer
+  mode.
 - Like any web server it sees the IP address a request comes from, and the web
   server in front of it may log that as it logs everything else.
 
@@ -146,8 +171,10 @@ PSRPT_ROOMS_CORS='*' PSRPT_MEET_CORS='*' php -S 127.0.0.1:8765 -t /tmp/psrpt &
 build/coplay/coplay-sim host video.h264 --name Nova --stun off \
   --meet http://127.0.0.1:8765/psrpt_meet.php --web http://127.0.0.1:8765/web/ \
   --public "Evening session" --rooms http://127.0.0.1:8765/psrpt_rooms.php \
-  --lang en --game "A game" --policy ask --admit-after 10
+  --lang en --game "A game" --policy ask --admit-after 10 --preview picture.jpg
 ```
+
+`--preview` sends that JPEG as the room's picture, as often as the list asks.
 
 The simulated host lists its room, lets each player in after ten seconds
 (`--refuse` turns them away instead) and takes the room off the list when it

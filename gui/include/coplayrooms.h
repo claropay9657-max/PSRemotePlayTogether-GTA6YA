@@ -125,13 +125,22 @@ class CoPlayRoomAnnouncer : public QObject
 		void SetListed(bool listed);
 		/** Empty while the list takes the room; otherwise why not. */
 		QString Problem() const { return problem; }
+		/**
+		 * Pictures of the game for the list: when the list takes them, PictureWanted()
+		 * asks for one now and then, as often as the list says (every 45 seconds by default).
+		 */
+		void SetPictures(bool on);
+		/** A small JPEG of the game (at most 640x360, the list takes up to 48 KB). */
+		void SendPicture(const QByteArray &jpeg);
 
 	signals:
 		void Changed();
+		void PictureWanted();
 
 	private:
 		void Announce();
 		void Remove();
+		void UpdatePictureTimer();
 		QNetworkAccessManager *network = nullptr;
 		QString url;
 		QString id;
@@ -143,6 +152,11 @@ class CoPlayRoomAnnouncer : public QObject
 		QTimer timer;
 		QTimer soon;
 		QString problem;
+		/** How often the list takes a picture, in ms; 0 for never (or a list that does not know pictures). */
+		int picture_ms = 0;
+		bool pictures = false;
+		bool picture_asked = false;
+		QTimer picture_timer;
 };
 
 #endif // CHIAKI_COPLAYROOMS_H

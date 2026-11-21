@@ -752,6 +752,20 @@ DialogView {
                                         }
                                     }
 
+                                    // A picture of the game now and then, taken from the stream on this
+                                    // computer (StreamSession, CoPlayRoomAnnouncer); none in streamer mode
+                                    C.ToggleRow {
+                                        visible: dialog.publicRoom && dialog.roomsOn
+                                        iconName: "monitor"
+                                        title: qsTr("Live picture in the list")
+                                        subtitle: Chiaki.settings.streamerMode ? qsTr("Off while streamer mode is on.")
+                                                : (Chiaki.settings.audioVideoDisabled & 0x02) !== 0 ? qsTr("Needs the picture on this computer: “I play on the TV” is on.")
+                                                : qsTr("A small picture of your game every 45 seconds, so that people see what you play.")
+                                        enabled: !Chiaki.settings.streamerMode
+                                        checked: !!Chiaki.settings.coplayRoomPreview && !Chiaki.settings.streamerMode
+                                        onToggled: Chiaki.settings.coplayRoomPreview = checked
+                                    }
+
                                     RowLayout {
                                         Layout.fillWidth: true
                                         visible: dialog.publicRoom && dialog.roomsOn
@@ -1092,7 +1106,7 @@ DialogView {
                                 color: C.Theme.textDim
                                 font.pixelSize: 12
                                 lineHeight: 1.15
-                                text: qsTr("The list shows the title, the language, the game your console runs and how many play. It names no address: players find you through the meeting point. A public room has an invite of its own, which changes when the room closes, so that strangers cannot come back later; your private invite does not lead into it. While playing, the menu shows who knocks, and lets you close the room to newcomers and remove and block a player.")
+                                text: qsTr("The list shows the title, the language, the game your console runs and how many play, and with the live picture on a small picture of your game. It names no address: players find you through the meeting point. A public room has an invite of its own, which changes when the room closes, so that strangers cannot come back later; your private invite does not lead into it. While playing, the menu shows who knocks, and lets you close the room to newcomers and remove and block a player.")
                             }
                         }
 

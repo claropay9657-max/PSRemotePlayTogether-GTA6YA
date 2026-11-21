@@ -47,14 +47,26 @@ export async function fetchRooms(url) {
     throw new Error(answer && answer.error ? answer.error : 'The list of public rooms gave an answer this page does not understand.');
   }
   const rooms = [];
+  const ROOM_ID = /^[0-9a-f]{16}$/;
   for (const r of answer.rooms) {
     const invite = text(r.invite, 300);
     if (!invite.startsWith('psrpt://')) continue;
     const players = Number(r.players) || 0;
     const max = Number(r.max) || 0;
     const cover = text(r.cover, 400);
+    const id = text(r.id, 16);
+    // The game as it is now: a picture the host sent to the list, served by the list itself
+    const taken = Number(r.preview) || 0;
+    let picture = '';
+    if (taken > 0 && ROOM_ID.test(id)) {
+      const pictureAddress = new URL(url);
+      pictureAddress.searchParams.set('v', '1');
+      pictureAddress.searchParams.set('preview', id);
+      pictureAddress.searchParams.set('t', String(Math.floor(taken)));
+      picture = pictureAddress.toString();
+    }
     rooms.push({
-      id: text(r.id, 16),
+      id,
       title: text(r.title, 60),
       lang: text(r.lang, 2),
       game: text(r.game, 80),
@@ -69,6 +81,7 @@ export async function fetchRooms(url) {
       compatible: Number(r.proto) === PROTOCOL_VERSION,
       // Sony's image server makes a small one
       cover: COVER.test(cover) ? `${cover}?w=192` : '',
+      picture,
       since: Number(r.since) || 0,
     });
   }

@@ -288,6 +288,9 @@ class Settings : public QObject
 		void SetCoPlayPublicSecret(const QString &s)	{ settings.setValue("coplay/public_secret", s); }
 		QString GetCoPlayRoomTitle() const		{ return settings.value("coplay/room_title").toString(); }
 		void SetCoPlayRoomTitle(const QString &t)	{ settings.setValue("coplay/room_title", t); }
+		/** A public room shows a small picture of its game in the list now and then (never in streamer mode). */
+		bool GetCoPlayRoomPreview() const		{ return settings.value("coplay/room_preview", true).toBool(); }
+		void SetCoPlayRoomPreview(bool on)		{ settings.setValue("coplay/room_preview", on); }
 		/** Two letters, or empty for "any language". */
 		QString GetCoPlayRoomLanguage() const	{ return settings.value("coplay/room_lang", QLocale::system().name().left(2)).toString(); }
 		void SetCoPlayRoomLanguage(const QString &l)	{ settings.setValue("coplay/room_lang", l); }

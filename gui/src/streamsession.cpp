@@ -365,6 +365,7 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 		this->coplay_secret = settings->GetCoPlayPublicSecret();
 	this->coplay_room_title = settings->GetCoPlayRoomTitle();
 	this->coplay_room_lang = settings->GetCoPlayRoomLanguage();
+	this->coplay_room_preview = settings->GetCoPlayRoomPreview() && !settings->GetStreamerMode();
 	this->coplay_join_policy = settings->GetCoPlayJoinPolicy();
 	this->coplay_rooms_server = settings->GetCoPlayRoomsServer();
 	this->coplay_web_guests = settings->GetCoPlayWebGuests();

@@ -151,6 +151,8 @@ class SdeckHapticsWorker;
 		bool coplay_public = false;
 		QString coplay_room_title;
 		QString coplay_room_lang;
+		/** Send a small picture of the game to the list now and then (off in streamer mode). */
+		bool coplay_room_preview = false;
 		/** The game the console runs, as the host's discovery last saw it; may be empty. */
 		QString coplay_room_game;
 		QString coplay_room_title_id;
@@ -440,6 +442,8 @@ class StreamSession : public QObject
 		void CoPlayStartRoom(const StreamSessionConnectInfo &connect_info, size_t max_guests);
 		void CoPlayUpdateRoom();
 		void CoPlayFindCover();
+		/** Set when the list of public rooms wants a picture of the game; the frame thread takes it. */
+		QAtomicInteger<int> room_picture_wanted = 0;
 		void CoPlayUpdatePending();
 		void CoPlayGuestLost(coplay::DisconnectReason reason);
 		void CoPlayGuestQuit();
@@ -588,6 +592,10 @@ class StreamSession : public QObject
 		QVariantList GetCoPlayPending() const;
 		/** The game the console runs, for the list of public rooms. */
 		void SetCoPlayRoomGame(const QString &game, const QString &title_id);
+		/** True once for each picture of the game the list of public rooms wants (any thread). */
+		bool TakeRoomPictureRequest() { return room_picture_wanted.fetchAndStoreRelaxed(0) != 0; }
+		/** A picture of the game (a small JPEG) for the list of public rooms. */
+		void CoPlayRoomPicture(const QByteArray &jpeg);
 		Q_INVOKABLE void coplaySetCanControl(int slot, bool allowed);
 		Q_INVOKABLE void coplayCopyInvite();
 		Q_INVOKABLE void coplayCopyInviteLan();

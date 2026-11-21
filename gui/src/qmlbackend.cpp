@@ -34,6 +34,9 @@
 #include <QDesktopServices>
 #include <QtConcurrent>
 #include <QTimer>
+#include <QBuffer>
+#include <QImage>
+#include <QThreadPool>
 
 extern "C" {
 #include <chiaki/time.h>
@@ -185,6 +188,106 @@ static void logDecoderFramePtsStats(qint64 now_us, double pts, float duration)
         sum_duration_us = 0;
         samples = 0;
     }
+}
+
+// ------------------------------------------------------------------ a picture for the room list
+//
+// A public room shows a small picture of its game in the list (StreamSession, CoPlayRoomAnnouncer).
+// One decoded frame now and then becomes a JPEG of at most 320x180, off the frame thread. The
+// formats the decoders give (NV12, P010, YUV 4:2:0 in 8 or 10 bits) are turned into RGB here, so
+// that no scaler library is needed; another format simply gives no picture.
+
+static inline uint8_t clamp_byte(int value)
+{
+    return static_cast<uint8_t>(value < 0 ? 0 : value > 255 ? 255 : value);
+}
+
+/** The frame (a hardware one is copied first) as an RGB picture of at most 640 pixels across. */
+static QImage room_picture_rgb(const AVFrame *source)
+{
+    AVFrame *sw = nullptr;
+    const AVFrame *frame = source;
+    if (source->hw_frames_ctx) {
+        sw = av_frame_alloc();
+        if (!sw || av_hwframe_transfer_data(sw, source, 0) < 0) {
+            av_frame_free(&sw);
+            return QImage();
+        }
+        frame = sw;
+    }
+    const AVPixelFormat format = static_cast<AVPixelFormat>(frame->format);
+    const bool semi_planar = format == AV_PIX_FMT_NV12 || format == AV_PIX_FMT_P010LE;
+    const bool planar = format == AV_PIX_FMT_YUV420P || format == AV_PIX_FMT_YUVJ420P || format == AV_PIX_FMT_YUV420P10LE;
+    // How many bits to drop to get 8: P010 keeps its 10 bits at the top of 16, YUV420P10 at the bottom
+    const int shift = format == AV_PIX_FMT_P010LE ? 8 : format == AV_PIX_FMT_YUV420P10LE ? 2 : 0;
+    const bool wide = format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_YUV420P10LE;
+    if ((!semi_planar && !planar) || frame->width < 16 || frame->height < 16 || !frame->data[0] || !frame->data[1]
+            || (planar && !frame->data[2])) {
+        av_frame_free(&sw);
+        return QImage();
+    }
+
+    const int out_w = qMin(640, frame->width);
+    const int out_h = qMax(1, static_cast<int>(static_cast<qint64>(frame->height) * out_w / frame->width));
+    QImage image(out_w, out_h, QImage::Format_RGB888);
+    const bool full_range = frame->color_range == AVCOL_RANGE_JPEG || format == AV_PIX_FMT_YUVJ420P;
+    const bool bt601 = frame->colorspace == AVCOL_SPC_BT470BG || frame->colorspace == AVCOL_SPC_SMPTE170M;
+    // Y'CbCr to R'G'B' (BT.709, or BT.601 where the frame says so), times 1024
+    const int kr = bt601 ? 1436 : 1613, kgu = bt601 ? 352 : 192, kgv = bt601 ? 731 : 479, kb = bt601 ? 1815 : 1901;
+    auto sample = [&](int plane, int x, int y) -> int {
+        const uint8_t *row = frame->data[plane] + static_cast<qint64>(y) * frame->linesize[plane];
+        if (!wide)
+            return row[x];
+        const uint16_t value = reinterpret_cast<const uint16_t *>(row)[x];
+        return value >> shift;
+    };
+    for (int oy = 0; oy < out_h; ++oy) {
+        const int y = static_cast<int>(static_cast<qint64>(oy) * frame->height / out_h);
+        uchar *line = image.scanLine(oy);
+        for (int ox = 0; ox < out_w; ++ox) {
+            const int x = static_cast<int>(static_cast<qint64>(ox) * frame->width / out_w);
+            int luma = sample(0, x, y);
+            int u, v;
+            if (semi_planar) {
+                u = sample(1, (x / 2) * 2, y / 2);
+                v = sample(1, (x / 2) * 2 + 1, y / 2);
+            } else {
+                u = sample(1, x / 2, y / 2);
+                v = sample(2, x / 2, y / 2);
+            }
+            u -= 128;
+            v -= 128;
+            if (!full_range) {
+                luma = (luma - 16) * 1192 / 1024;
+                u = u * 1167 / 1024;
+                v = v * 1167 / 1024;
+            }
+            line[ox * 3 + 0] = clamp_byte(luma + (kr * v) / 1024);
+            line[ox * 3 + 1] = clamp_byte(luma - (kgu * u + kgv * v) / 1024);
+            line[ox * 3 + 2] = clamp_byte(luma + (kb * u) / 1024);
+        }
+    }
+    av_frame_free(&sw);
+    return image;
+}
+
+/** A JPEG of at most 320x180 (and the list's 48 KB) of the frame; empty if that cannot be made. */
+static QByteArray room_picture_jpeg(const AVFrame *frame)
+{
+    const QImage rgb = room_picture_rgb(frame);
+    if (rgb.isNull())
+        return QByteArray();
+    const QImage small = rgb.scaled(320, 180, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    for (int quality : { 72, 55, 40 }) {
+        QByteArray jpeg;
+        QBuffer buffer(&jpeg);
+        buffer.open(QIODevice::WriteOnly);
+        if (!small.save(&buffer, "JPG", quality))
+            return QByteArray();
+        if (jpeg.size() <= 46 * 1024)
+            return jpeg;
+    }
+    return QByteArray();
 }
 
 static inline bool frame_has_planes(const AVFrame *frame)
@@ -1314,6 +1417,26 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 
         if (pending_recovered_frame.fetchAndStoreRelaxed(0) != 0) {
             frame.recovered = true;
+        }
+
+        // The list of public rooms wants a picture of the game: this frame, made into a
+        // small JPEG off this thread, while the frame itself goes on to the screen
+        if (session->TakeRoomPictureRequest()) {
+            AVFrame *copy = av_frame_clone(frame.frame);
+            StreamSession *picture_session = session;
+            if (copy) {
+                QThreadPool::globalInstance()->start([this, copy, picture_session]() mutable {
+                    const QByteArray jpeg = room_picture_jpeg(copy);
+                    av_frame_free(&copy);
+                    if (jpeg.isEmpty())
+                        return;
+                    QMetaObject::invokeMethod(this, [this, picture_session, jpeg]() {
+                        // Only the session that asked, and only while it is still there
+                        if (session == picture_session)
+                            session->CoPlayRoomPicture(jpeg);
+                    });
+                });
+            }
         }
 
         const qint64 delivery_us = static_cast<qint64>(chiaki_time_now_monotonic_us());

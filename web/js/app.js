@@ -209,7 +209,10 @@ function roomLine(room) {
   return room.since > 0 ? `${who} · ${openFor(room.since)}` : who;
 }
 
-/** The game's cover where the host's app found one, otherwise its initial on the brand gradient. */
+/**
+ * The game as it is now where the host sends pictures, otherwise the game's cover where the
+ * host's app found one, otherwise its initial on the brand gradient.
+ */
 function roomCover(room) {
   const cover = el('div', 'cover', (room.game || room.title || '?').trim().charAt(0).toUpperCase());
   cover.setAttribute('aria-hidden', 'true');
@@ -222,7 +225,51 @@ function roomCover(room) {
     img.src = room.cover;
     cover.append(img);
   }
+  if (room.picture) {
+    livePicture(room.picture).then((address) => {
+      if (!address) return;
+      const img = el('img', 'live-picture');
+      img.alt = '';
+      img.src = address;
+      const badge = el('span', 'live-badge', 'Live');
+      badge.prepend(el('i'));
+      cover.classList.add('live');
+      cover.append(img, badge);
+    });
+  }
   return cover;
+}
+
+/**
+ * Room pictures as blob: addresses, one fetch for each picture (its address names the
+ * room and when the picture was taken). Fetched rather than loaded by an <img>, so that
+ * the list may live on any server without widening the page's Content-Security-Policy;
+ * the list answers with Access-Control-Allow-Origin as for the list itself.
+ */
+const roomPictures = new Map();
+
+function livePicture(address) {
+  if (roomPictures.has(address)) return roomPictures.get(address);
+  const promise = (async () => {
+    try {
+      const reply = await fetch(address, { credentials: 'omit' });
+      if (!reply.ok) return '';
+      const blob = await reply.blob();
+      if (blob.type !== 'image/jpeg' || blob.size > 64 * 1024) return '';
+      return URL.createObjectURL(blob);
+    } catch {
+      return '';
+    }
+  })();
+  roomPictures.set(address, promise);
+  // The newest few dozen are enough: a room's next picture has another address
+  while (roomPictures.size > 60) {
+    const [oldest] = roomPictures.keys();
+    const old = roomPictures.get(oldest);
+    roomPictures.delete(oldest);
+    old.then((url) => { if (url) URL.revokeObjectURL(url); });
+  }
+  return promise;
 }
 
 /** What kind of room it is: its language, how it is played, how one gets in, whether browsers can come. */

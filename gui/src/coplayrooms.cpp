@@ -253,7 +253,7 @@ void CoPlayRoomList::Refresh(const QString &setting)
 	emit Changed();
 
 	QNetworkReply *reply = Network()->get(Request(url));
-	connect(reply, &QNetworkReply::finished, this, [this, reply, mine]() {
+	connect(reply, &QNetworkReply::finished, this, [this, reply, mine, address]() {
 		reply->deleteLater();
 		if(mine != generation)
 			return; // a newer request is on its way
@@ -299,6 +299,23 @@ void CoPlayRoomList::Refresh(const QString &setting)
 			// Only a picture on Sony's image server, as the list itself demands
 			const QString cover = r.value(QStringLiteral("cover")).toString();
 			m[QStringLiteral("cover")] = CoPlayRooms::IsCover(cover) ? cover : QString();
+			// A picture of the game as it is now, which the host sent to the list: only from the
+			// list itself, its address names the room and when the picture was taken
+			const QString id = m.value(QStringLiteral("id")).toString();
+			const qint64 taken = static_cast<qint64>(r.value(QStringLiteral("preview")).toDouble(0));
+			static const QRegularExpression room_id(QStringLiteral("^[0-9a-f]{16}$"));
+			QString picture;
+			if(taken > 0 && room_id.match(id).hasMatch())
+			{
+				QUrl picture_url(address);
+				QUrlQuery picture_query(picture_url);
+				picture_query.addQueryItem(QStringLiteral("v"), QStringLiteral("1"));
+				picture_query.addQueryItem(QStringLiteral("preview"), id);
+				picture_query.addQueryItem(QStringLiteral("t"), QString::number(taken));
+				picture_url.setQuery(picture_query);
+				picture = picture_url.toString(QUrl::FullyEncoded);
+			}
+			m[QStringLiteral("picture")] = picture;
 			list.append(m);
 		}
 		rooms = list;
@@ -330,6 +347,7 @@ CoPlayRoomAnnouncer::CoPlayRoomAnnouncer(const QString &url, QObject *parent)
 	soon.setSingleShot(true);
 	soon.setInterval(400);
 	connect(&soon, &QTimer::timeout, this, &CoPlayRoomAnnouncer::Announce);
+	connect(&picture_timer, &QTimer::timeout, this, &CoPlayRoomAnnouncer::PictureWanted);
 }
 
 CoPlayRoomAnnouncer::~CoPlayRoomAnnouncer()
@@ -359,6 +377,54 @@ void CoPlayRoomAnnouncer::SetListed(bool on)
 		soon.stop();
 		Remove();
 	}
+	UpdatePictureTimer();
+}
+
+void CoPlayRoomAnnouncer::SetPictures(bool on)
+{
+	pictures = on;
+	UpdatePictureTimer();
+}
+
+void CoPlayRoomAnnouncer::UpdatePictureTimer()
+{
+	const bool wanted = pictures && listed && announced && picture_ms > 0;
+	if(!wanted)
+	{
+		picture_timer.stop();
+		picture_asked = false;
+		return;
+	}
+	const int interval = qBound(15000, picture_ms, 600000);
+	if(picture_timer.isActive() && picture_timer.interval() == interval)
+		return;
+	picture_timer.start(interval);
+	// The first one right away, so that the room does not wait in the list without one
+	if(!picture_asked)
+	{
+		picture_asked = true;
+		QTimer::singleShot(1500, this, [this]() {
+			if(picture_timer.isActive())
+				emit PictureWanted();
+		});
+	}
+}
+
+void CoPlayRoomAnnouncer::SendPicture(const QByteArray &jpeg)
+{
+	if(!pictures || !listed || !announced || picture_ms <= 0 || url.isEmpty() || jpeg.isEmpty() || jpeg.size() > 48 * 1024)
+		return;
+	QUrlQuery form;
+	form.addQueryItem(QStringLiteral("v"), QStringLiteral("1"));
+	form.addQueryItem(QStringLiteral("action"), QStringLiteral("preview"));
+	form.addQueryItem(QStringLiteral("id"), id);
+	form.addQueryItem(QStringLiteral("token"), token);
+	form.addQueryItem(QStringLiteral("image"), QString::fromLatin1(jpeg.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)));
+	QNetworkRequest request = Request(QUrl(url));
+	request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
+	QNetworkReply *reply = Network()->post(request, form.query(QUrl::FullyEncoded).toUtf8());
+	// A picture the list did not take is simply missing until the next one
+	connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
 }
 
 void CoPlayRoomAnnouncer::Announce()
@@ -403,6 +469,9 @@ void CoPlayRoomAnnouncer::Announce()
 		{
 			const int poll = answer.value(QStringLiteral("poll")).toInt(kDefaultPollMs);
 			timer.setInterval(qBound(5000, poll, 60000));
+			// A list that does not say anything about pictures does not know them
+			picture_ms = answer.value(QStringLiteral("preview")).toInt(0);
+			UpdatePictureTimer();
 		}
 		if(now != problem)
 		{
@@ -415,6 +484,8 @@ void CoPlayRoomAnnouncer::Announce()
 void CoPlayRoomAnnouncer::Remove()
 {
 	timer.stop();
+	picture_timer.stop();
+	picture_asked = false;
 	if(!announced || url.isEmpty())
 		return;
 	announced = false;

@@ -116,6 +116,8 @@ class QmlSettings : public QObject
     // Hosting a public room, and the list of rooms
     Q_PROPERTY(bool coplayHostPublic READ coplayHostPublic WRITE setCoplayHostPublic NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayRoomTitle READ coplayRoomTitle WRITE setCoplayRoomTitle NOTIFY coplayChanged)
+    /** A public room shows a small picture of its game in the list now and then. */
+    Q_PROPERTY(bool coplayRoomPreview READ coplayRoomPreview WRITE setCoplayRoomPreview NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayRoomLanguage READ coplayRoomLanguage WRITE setCoplayRoomLanguage NOTIFY coplayChanged)
     Q_PROPERTY(int coplayJoinPolicy READ coplayJoinPolicy WRITE setCoplayJoinPolicy NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayRoomsServer READ coplayRoomsServer WRITE setCoplayRoomsServer NOTIFY coplayChanged)
@@ -692,6 +694,8 @@ public:
     void setCoplayHostPublic(bool on);
     QString coplayRoomTitle() const;
     void setCoplayRoomTitle(const QString &title);
+    bool coplayRoomPreview() const;
+    void setCoplayRoomPreview(bool on);
     QString coplayRoomLanguage() const;
     void setCoplayRoomLanguage(const QString &lang);
     int coplayJoinPolicy() const;
