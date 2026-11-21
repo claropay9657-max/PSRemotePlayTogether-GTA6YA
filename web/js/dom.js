@@ -31,6 +31,22 @@ export function select(cls, options, onChange) {
   return s;
 }
 
+/** The text as it is; only addresses that start with http(s) become links. */
+export function appendWithLinks(parent, text) {
+  const pattern = /https?:\/\/[^\s<>"']+/g;
+  let last = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > last) parent.append(text.slice(last, match.index));
+    const a = el('a', '', match[0]);
+    a.href = match[0];
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    parent.append(a);
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parent.append(text.slice(last));
+}
+
 export function setOptions(s, options) {
   const keep = s.value;
   s.replaceChildren(...options.map((o, i) => {

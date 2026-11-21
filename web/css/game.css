@@ -636,8 +636,7 @@
 }
 
 /* A choice of several, with the app's outline and arrow */
-.gcombo,
-.mcombo {
+.gcombo {
   appearance: none;
   -webkit-appearance: none;
   min-width: 0;
@@ -651,20 +650,17 @@
   cursor: pointer;
 }
 
-.gcombo:hover,
-.mcombo:hover {
+.gcombo:hover {
   border-color: rgba(255, 255, 255, 0.85);
 }
 
-.gcombo:focus-visible,
-.mcombo:focus-visible {
+.gcombo:focus-visible {
   outline: none;
   border-color: var(--g-cyan);
   box-shadow: inset 0 0 0 1px var(--g-cyan);
 }
 
-.gcombo option,
-.mcombo option {
+.gcombo option {
   background: #1b1733;
   color: #fff;
 }
@@ -805,255 +801,1012 @@
 
 /* ================================================================ the stream menu */
 
+/*
+ * StreamMenuContent.qml: over the dimmed game, the connection and the two ways
+ * out along the top, Play Together in a panel at the side (PlayTogetherBar.qml),
+ * and sound, picture, the controller and the overlays in a dock along the
+ * bottom. Everything fades in and slides into place in 220 ms. At 800 px and
+ * wider the panel stands at the right and the top bar and the dock take the
+ * width left of it; narrower (.narrow), the panel takes the whole width between
+ * them (js/menu.js places it). The colours are those of css/style.css.
+ */
 .menu {
+  --m-panel: clamp(368px, 28.75%, 420px);
+  --m-ease: cubic-bezier(0.33, 1, 0.68, 1);
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 6px 16px 14px;
-  transform: translateY(100%);
-  transition: transform 0.25s linear;
+  inset: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.25;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.menu.open {
+.menu :focus {
+  outline: none;
+}
+
+/* The game, dimmed: darker towards the panel */
+.menu-dim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(6, 4, 16, 0.3), rgba(6, 4, 16, 0.45) 55%, rgba(6, 4, 16, 0.78));
+}
+
+.menu.narrow .menu-dim {
+  background: linear-gradient(90deg, rgba(6, 4, 16, 0.3), rgba(6, 4, 16, 0.45) 55%, rgba(6, 4, 16, 0.45));
+}
+
+.menu-dim,
+.menu-top,
+.mpanel,
+.mdock {
+  opacity: 0;
+  transition: opacity 220ms var(--m-ease), transform 220ms var(--m-ease);
+}
+
+.menu.open .menu-dim,
+.menu.open .menu-top,
+.menu.open .mpanel,
+.menu.open .mdock {
+  opacity: 1;
   transform: none;
 }
 
-/* In a small window (a phone on its side) the menu does not fit: then it scrolls */
-.menu-sheet {
-  position: relative;
-  max-height: calc(100vh - 20px);
-  max-height: calc(100dvh - 20px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 22px;
-  background: var(--g-sheet);
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-/* A soft accent line along the top edge */
-.menu-line {
-  position: absolute;
-  left: 22px;
-  right: 22px;
-  top: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(140, 82, 255, 0.8) 30%, rgba(240, 70, 155, 0.8) 70%, transparent);
-}
-
-.menu-column {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 18px 16px;
-}
+/* ---------------------------------------------------------------- top: the connection, and the ways out */
 
 .menu-top {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  right: calc(32px + var(--m-panel));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  transform: translateY(-16px);
+  pointer-events: none;
+}
+
+.menu.narrow .menu-top {
+  right: 16px;
+}
+
+.menu-top > * {
+  pointer-events: auto;
+}
+
+.mconn {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 44px;
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
+  padding: 0 8px 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  background: rgba(14, 11, 30, 0.88);
 }
 
-.menu-dot {
+/* Green: playing. Amber and pulsing: on the way, or getting back */
+.mconn-dot {
+  position: relative;
   flex: none;
-  width: 10px;
-  height: 10px;
+  width: 17px;
+  height: 17px;
   border-radius: 50%;
-  background: var(--g-green);
+  background: rgba(52, 211, 153, 0.18);
 }
 
-.menu-dot.waiting {
-  background: var(--g-amber);
-  animation: menu-dot 1.2s linear infinite;
+.mconn-dot::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--good);
 }
 
-@keyframes menu-dot {
+.mconn-dot.waiting {
+  background: rgba(245, 185, 66, 0.18);
+}
+
+.mconn-dot.waiting::after {
+  background: var(--wait);
+  animation: mconn-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mconn-pulse {
   50% {
     opacity: 0.3;
   }
 }
 
-.menu-where {
-  max-width: 420px;
-  font-size: 16px;
-  font-weight: bold;
+.mconn-where {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 800;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.menu-space {
-  flex: 1;
-}
-
-.mchip {
+/* The app's badges: cyan for the bitrate, red for what went wrong */
+.mbadge {
   flex: none;
   height: 24px;
-  padding: 0 9px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0 10px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.07);
-  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e7e4fa;
   font-size: 12px;
-  font-weight: bold;
-  line-height: 22px;
+  font-weight: 700;
+  line-height: 24px;
   white-space: nowrap;
 }
 
-.mchip.cyan {
-  color: var(--g-cyan);
+.mbadge.play {
+  background: rgba(0, 242, 255, 0.11);
+  color: #9ef7ff;
 }
 
-.mchip.red {
-  color: var(--g-red);
+.mbadge.bad {
+  background: rgba(240, 70, 110, 0.14);
+  color: #ffc2d1;
 }
 
-/* The menu's own button */
-.mbtn {
+.mbadge.squeezed {
+  display: none;
+}
+
+/* On the right, or on a row of their own where they do not fit beside the connection */
+.mexits {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+
+.mresume,
+.mleave {
+  position: relative;
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 22px;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mresume {
+  padding: 0 8px 0 18px;
+  background: var(--text);
+  color: var(--text-on-light);
+}
+
+.mresume:hover {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.07), rgba(0, 0, 0, 0.07));
+}
+
+.mresume:active {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.14));
+}
+
+/* What also goes back: Escape, or Circle on the controller */
+.mresume-key {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(42, 19, 102, 0.12);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mresume-key.glyph {
+  padding: 0;
+}
+
+.mleave {
+  padding: 0 20px;
+  border: 1px solid rgba(240, 70, 110, 0.55);
+  background: rgba(240, 70, 110, 0.16);
+  color: #ffc2d1;
+}
+
+.mleave:hover {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.07));
+}
+
+.mleave:active {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14));
+}
+
+/* The focus ring: for the keys and the controller (js/menu.js sets .keys), never for the mouse */
+.menu.keys :is(.mresume, .mleave, .mpill, .mdbtn, .mown-btn, .msend):focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- the side: Play Together */
+
+.mpanel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: var(--m-panel);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  background: rgba(16, 13, 34, 0.96);
+  overflow: hidden;
+  transform: translateX(40px);
+}
+
+.menu.narrow .mpanel {
+  left: 16px;
+  bottom: auto;
+  width: auto;
+}
+
+.menu.narrow:not(.open) .mpanel {
+  transform: translateY(16px);
+}
+
+/* Scrolls where the window is too small for all of it, with a thin bar in the margin */
+.mpanel-scroll {
+  flex: 1;
+  min-height: 0;
+  margin: 7px 0;
+  padding: 8px 5px 8px 15px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.mpanel-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.mpanel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mpanel-scroll::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.18) padding-box;
+}
+
+.mpanel-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .mpanel-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+}
+
+/* The chat takes what is left */
+.mpanel-col {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The small capital heading over a part of the panel */
+.mlabel {
+  color: var(--heading-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+  line-height: 13px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mroom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mroom-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mroom-title {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mroom-line {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.mroom-line:empty {
+  display: none;
+}
+
+.mroom-note {
+  color: var(--wait);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ---------------------------------------------------------------- everybody */
+
+.mplayers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Two side by side, more where the panel has the room (168 px a tile) */
+.mtiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(160px, calc(50% - 4px)), 1fr));
+  gap: 8px;
+}
+
+.ptile {
+  position: relative;
+  min-width: 0;
+  height: 84px;
+  border-radius: 10px;
+  background: #141126;
+  text-align: left;
+}
+
+.ptile:not(:disabled):hover {
+  background: #1a1630;
+}
+
+.ptile:disabled {
+  cursor: default;
+}
+
+/* The ring: talking, its menu open, in control, or a thin line */
+.ptile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.ptile.control::after {
+  border: 2px solid var(--brand-from);
+}
+
+.ptile.menu-open::after {
+  border: 2px solid var(--heading-soft);
+}
+
+.ptile.talking::after {
+  border: 2px solid var(--good);
+}
+
+.ptile.talking {
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.22);
+}
+
+.menu.keys .ptile:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.ptile-face {
+  position: absolute;
+  left: 50%;
+  top: 11px;
+  width: 40px;
+  height: 40px;
+  margin-left: -20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--brand-from), var(--brand-to));
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ptile-face.picture,
+.mmenu-face.picture {
+  background-color: #12121c;
+}
+
+/* The webcam covers the picture while it runs, a little inside the rounded frame */
+.ptile-cam {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+.ptile-cam:not([src]) {
+  visibility: hidden;
+}
+
+/* Host, from a browser, only watching */
+.ptile-tags {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.ptag {
+  flex: none;
+  height: 17px;
+  padding: 0 7px;
+  border-radius: 8.5px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.ptag.host {
+  background: rgba(122, 60, 245, 0.92);
+}
+
+.ptag.web {
+  background: rgba(16, 140, 98, 0.92);
+}
+
+.ptag.watching {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+/* Name and state along the bottom, rounded with the frame */
+.ptile-foot {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  height: 24px;
+  padding: 0 7px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 0 0 9px 9px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.ptile-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ptile-foot .micon {
+  flex: none;
+}
+
+.ptile-foot .plays {
+  color: #cdb6ff;
+}
+
+.ptile-foot .watches {
+  color: var(--text-soft);
+}
+
+.ptile-muted {
+  flex: none;
+  height: 15px;
+  padding: 0 6px;
+  border-radius: 7.5px;
+  background: #d93a61;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+/* In voice chat: three bars that move while talking, a dot while quiet */
+.ptile-quiet {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.ptile-bars {
+  flex: none;
+  width: 13px;
+  height: 11px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.ptile-bars i {
+  width: 3px;
+  height: 100%;
+  border-radius: 1.5px;
+  background: var(--good);
+  transform-origin: bottom;
+  animation: ptile-talk 0.7s linear infinite;
+}
+
+.ptile-bars i:nth-child(2) {
+  animation-delay: -0.2s;
+}
+
+.ptile-bars i:nth-child(3) {
+  animation-delay: -0.4s;
+}
+
+@keyframes ptile-talk {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* ---------------------------------------------------------------- one's own microphone, voices and webcam */
+
+.mown {
+  display: flex;
+  gap: 6px;
+}
+
+.mown-btn {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 50px;
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mown-btn span {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mown-btn:hover {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.06));
+}
+
+.mown-btn:active {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12));
+}
+
+/* Switched off (red), running (green), the way out of the voice chat (dim) */
+.mown-btn[data-tone="bad"] {
+  border-color: rgba(240, 70, 110, 0.5);
+  background-color: rgba(240, 70, 110, 0.16);
+  color: #ffc2d1;
+}
+
+.mown-btn[data-tone="good"] {
+  border-color: rgba(52, 211, 153, 0.5);
+  background-color: rgba(52, 211, 153, 0.16);
+  color: #c9f7e3;
+}
+
+.mown-btn[data-tone="dim"] {
+  border-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.04);
+  color: #d9d5f2;
+}
+
+.mcamsize {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* ---------------------------------------------------------------- the chat */
+
+.mchat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mchat-rule {
+  flex: none;
+  height: 1px;
+  margin-bottom: 2px;
+  background: var(--line);
+}
+
+.mchat-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.munread {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #d92f7f;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+
+.mspace {
+  flex: 1;
+}
+
+/* A small pill: "Open big" */
+.mpill {
+  position: relative;
+  flex: none;
+  height: 30px;
+  padding: 0 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mpill:hover {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.07));
+}
+
+.mpill:active {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14));
+}
+
+/* The last messages, newest at the bottom; older ones go out at the top */
+.mchat-list {
+  flex: 1 1 76px;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.mchat-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mchat-line {
+  color: #e7e4fa;
+  font-size: 13px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.mchat-line b {
+  font-weight: 700;
+}
+
+.mchat-line a {
+  color: var(--focus);
+  text-decoration: underline;
+}
+
+.menu.keys .mchat-line a:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.mchat-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.mchat-form {
+  flex: none;
+  height: 40px;
+  padding: 0 3px 0 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: var(--field);
+}
+
+.mchat-form:has(.mchat-input:focus) {
+  border-color: var(--focus);
+  box-shadow: inset 0 0 0 1px var(--focus);
+}
+
+.mchat-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.mchat-input::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+}
+
+.msend {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--button);
+  color: #fff;
+}
+
+.msend:hover:not(:disabled) {
+  background: #8a52f7;
+}
+
+.msend:active:not(:disabled) {
+  background: #6e36dc;
+}
+
+.msend:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+}
+
+/* ---------------------------------------------------------------- bottom: the dock */
+
+.mdock {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  width: max-content;
+  max-width: calc(100% - 48px - var(--m-panel));
+  padding: 7px 9px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: rgba(14, 11, 30, 0.92);
+  transform: translateY(24px);
+}
+
+.menu.narrow .mdock {
+  max-width: calc(100% - 32px);
+}
+
+.mgroup {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mgroup.tight {
+  gap: 4px;
+}
+
+.mgroup-icon {
+  color: #d9d5f2;
+  margin: 0 2px;
+}
+
+/* A thin upright line between the parts, while the dock is on one line */
+.mline {
+  position: relative;
+  flex: none;
+  width: 3px;
+  height: 36px;
+}
+
+.mline::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 5px;
+  width: 1px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* A button of the dock: an icon, or a word with an icon */
+.mdbtn {
   position: relative;
   flex: none;
   min-width: 36px;
   height: 36px;
-  padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  font-size: 14px;
-  font-weight: bold;
+  background: rgba(255, 255, 255, 0.07);
+  color: #d9d5f2;
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
 }
 
-.mbtn:hover {
-  background: rgba(255, 255, 255, 0.16);
+.mdbtn:hover {
+  background: rgba(255, 255, 255, 0.11);
 }
 
-.mbtn:active {
-  background: rgba(255, 255, 255, 0.24);
+.mdbtn:active {
+  background: rgba(255, 255, 255, 0.14);
 }
 
-.mbtn.selected {
-  border-color: #b78cff;
-  background: var(--g-accent);
+.mdbtn.text {
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
 }
 
-.mbtn.tint-leave {
-  background: rgba(240, 69, 110, 0.55);
+.mdbtn.text:hover {
+  background: rgba(255, 255, 255, 0.11);
 }
 
-.mbtn:focus {
-  outline: none;
-  border: 2px solid var(--g-cyan);
-  padding: 0 13px;
-  background-color: rgba(255, 255, 255, 0.16);
+.mdbtn.text > .micon:first-child {
+  color: #cdb6ff;
 }
 
-.mbtn.selected:focus {
-  background: var(--g-accent);
+.mdbtn .chev {
+  color: var(--text-soft);
 }
 
-.mbtn.tint-leave:focus {
-  background: rgba(240, 69, 110, 0.55);
+/* A switch of the dock that is on: full screen, the numbers */
+.mdbtn.checked {
+  border: 1px solid rgba(140, 82, 255, 0.7);
+  background: rgba(122, 60, 245, 0.35);
+  color: #fff;
 }
 
-.mbadge {
-  position: absolute;
-  right: -7px;
-  top: -7px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 10px;
-  background: var(--g-pink);
-  font-size: 11px;
-  font-weight: bold;
-  line-height: 20px;
-  text-align: center;
-}
-
-/* A card: a heading in small capitals, the controls below it */
-.mcard,
-.menu-together {
-  position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.mcard {
-  padding: 10px 14px 14px;
-}
-
-.mcard-title {
-  opacity: 0.55;
-  font-size: 11px;
-  font-weight: bold;
-  letter-spacing: 1.4px;
-  line-height: 13px;
-  white-space: pre;
-}
-
-.mcard-body {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  min-height: 40px;
-}
-
-.mcard-note {
-  max-width: 420px;
-  margin-top: 6px;
-  opacity: 0.6;
-  font-size: 13px;
-}
-
-.mcombo {
-  width: 190px;
-  height: 40px;
-  font-size: 14px;
-}
-
-.mcombo.wide {
-  width: 230px;
+.mdbtn.checked:hover {
+  background: rgba(122, 60, 245, 0.45);
 }
 
 .mvalue {
   flex: none;
-  width: 44px;
-  font-size: 14px;
-  font-weight: bold;
-  text-align: right;
-}
-
-.mvalue.wide {
-  width: 96px;
+  width: 42px;
+  padding-right: 2px;
   font-size: 13px;
-  text-align: left;
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
 }
 
-.mlabel {
-  font-size: 14px;
-  font-weight: bold;
-  opacity: 0.8;
-}
-
-.mdivider {
+.mzoom {
   flex: none;
-  width: 1px;
-  height: 24px;
-  margin: 0 4px;
-  background: rgba(255, 255, 255, 0.15);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
-/* The app's own slider: a thin track that fills with the gradient */
+/* Fit, Zoom, Stretch: all three on screen at once */
+.mseg {
+  flex: none;
+  height: 36px;
+  padding: 2px;
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--field);
+}
+
+.mseg button {
+  padding: 0 12px;
+  border-radius: 9px;
+  color: #d9d5f2;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mseg button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mseg button.chosen {
+  background: var(--button);
+  color: #fff;
+  font-weight: 800;
+}
+
+.menu.keys .mseg button:focus {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+/* A bar to drag: a thin track that fills with the gradient */
 .mbar {
   appearance: none;
   -webkit-appearance: none;
   flex: none;
-  width: 110px;
-  height: 20px;
+  width: 88px;
+  height: 36px;
+  margin: 0;
   background: transparent;
   cursor: pointer;
   --fill: 0%;
@@ -1062,30 +1815,32 @@
 .mbar::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--g-accent), var(--g-pink)) 0 0 / var(--fill) 100% no-repeat, rgba(255, 255, 255, 0.14);
+  background: linear-gradient(90deg, var(--brand-from), var(--brand-to)) 0 0 / var(--fill) 100% no-repeat, rgba(255, 255, 255, 0.14);
 }
 
 .mbar::-moz-range-track {
   height: 6px;
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--g-accent), var(--g-pink)) 0 0 / var(--fill) 100% no-repeat, rgba(255, 255, 255, 0.14);
+  background: linear-gradient(90deg, var(--brand-from), var(--brand-to)) 0 0 / var(--fill) 100% no-repeat, rgba(255, 255, 255, 0.14);
 }
 
 .mbar::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  margin-top: -5px;
-  border: 2px solid var(--g-accent);
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin-top: -4px;
+  border: 2px solid var(--brand-from);
   border-radius: 50%;
   background: #fff;
 }
 
 .mbar::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--g-accent);
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--brand-from);
   border-radius: 50%;
   background: #fff;
 }
@@ -1094,257 +1849,236 @@
   border-width: 4px;
 }
 
-.menu-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+.mbar:active::-moz-range-thumb {
+  border-width: 4px;
 }
 
-/* ---------------------------------------------------------------- Play Together */
+/* ---------------------------------------------------------------- a low window */
 
-.menu-together {
-  height: 166px;
-  padding: 10px;
-}
-
-.menu-together > .mcard-title {
-  padding: 0 4px;
-}
-
-.ptb {
-  position: absolute;
-  inset: 32px 10px 10px;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.ptb-own {
-  flex: none;
+/* A phone on its side: top bar, panel and dock below each other, and the menu scrolls */
+.menu.stacked {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: 60%;
+  align-items: stretch;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
-.ptb-row {
+.menu.stacked .menu-dim {
+  position: fixed;
+}
+
+.menu.stacked .menu-top,
+.menu.stacked .mpanel,
+.menu.stacked .mdock {
+  position: relative;
+  inset: auto;
+  flex: none;
+}
+
+.menu.stacked .mpanel {
+  width: auto;
+  height: auto;
+}
+
+.menu.stacked .mpanel-scroll {
+  overflow: visible;
+}
+
+.menu.stacked .mpanel-col {
+  min-height: 0;
+}
+
+.menu.stacked .mdock {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+/* ---------------------------------------------------------------- lists */
+
+/* As wide as its longest line, always inside the window (js/menu.js places it) */
+.mmenu {
+  position: absolute;
+  z-index: 3;
+  width: max-content;
+  min-width: 200px;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  padding: 6px;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--popup);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
-.ptb-label {
-  opacity: 0.8;
-  font-size: 20px;
-  white-space: nowrap;
-}
-
-.ptb-note {
-  max-width: 440px;
-  opacity: 0.6;
-  font-size: 13px;
-}
-
-/* The strip's own button, a little larger than the menu's */
-.bbtn {
+.mentry {
   flex: none;
   height: 38px;
-  padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.09);
-  color: #fff;
-  font-size: 15px;
-  font-weight: bold;
-  white-space: nowrap;
-}
-
-.bbtn:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.bbtn.tint-red {
-  background: rgba(240, 69, 110, 0.75);
-}
-
-.bbtn.tint-green {
-  background: rgba(51, 212, 153, 0.55);
-}
-
-.bbtn:focus {
-  outline: none;
-  border: 2px solid var(--g-cyan);
-  padding: 0 13px;
-}
-
-.ptb-players {
-  flex: 1;
-  align-self: stretch;
-  display: flex;
-  gap: 10px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.ptb-players::-webkit-scrollbar {
-  display: none;
-}
-
-/* A player: the webcam, or the picture, or the initial */
-.ptile {
-  position: relative;
-  flex: none;
-  height: 100%;
-  aspect-ratio: 16 / 9;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
-  background: #12121c;
-  overflow: hidden;
-  text-align: left;
-}
-
-.ptile:disabled {
-  cursor: default;
-}
-
-.ptile.control {
-  border: 2px solid var(--g-accent);
-}
-
-.ptile.talking {
-  border: 2px solid var(--g-green);
-}
-
-.ptile:focus-visible {
-  outline: 2px solid var(--g-cyan);
-  outline-offset: -2px;
-}
-
-.ptile-cam {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.ptile-cam:not([src]) {
-  visibility: hidden;
-}
-
-.ptile-face {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 54px;
-  height: 54px;
-  margin: -35px 0 0 -27px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(180deg, var(--g-accent), var(--g-pink));
-  background-size: cover;
-  background-position: center;
-  font-size: 24px;
-  font-weight: bold;
-}
-
-.ptile-tags {
-  position: absolute;
-  left: 6px;
-  top: 6px;
-  display: flex;
-  gap: 4px;
-}
-
-.ptag {
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  font-size: 9px;
-  font-weight: bold;
-  line-height: 16px;
-  white-space: nowrap;
-}
-
-.ptag.host {
-  background: rgba(140, 82, 255, 0.85);
-}
-
-.ptag.web {
-  background: rgba(51, 212, 153, 0.75);
-}
-
-.ptag.watching {
-  background: rgba(0, 0, 0, 0.6);
-}
-
-.ptag.muted {
-  flex: none;
-  background: var(--g-red);
-}
-
-.ptile-foot {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 26px;
-  padding: 0 6px 0 8px;
+  padding: 0 16px 0 10px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(0, 0, 0, 0.62);
-}
-
-.ptile-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: bold;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ptile-voice {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.ptile-voice.on {
-  background: var(--g-green);
-}
-
-/* What a click on a player offers */
-.mpopup {
-  position: absolute;
-  z-index: 2;
-  min-width: 200px;
-  padding: 8px 0;
-  border-radius: 4px;
-  background: #211d3d;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
-}
-
-.mpopup-item {
-  display: block;
-  width: 100%;
-  height: 48px;
-  padding: 0 16px;
-  font-size: 20px;
+  gap: 10px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
 
-.mpopup-item:hover,
-.mpopup-item:focus-visible {
-  outline: none;
-  background: rgba(255, 255, 255, 0.1);
+.mentry .micon {
+  flex: none;
+  color: var(--text-soft);
+}
+
+.mentry.chosen {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 700;
+}
+
+.mentry.chosen .micon {
+  color: #cdb6ff;
+}
+
+.mentry.danger {
+  color: #ffb3c4;
+  font-weight: 700;
+}
+
+.mentry.danger .micon {
+  color: #ff8fa8;
+}
+
+.mentry:hover,
+.menu.keys .mentry:focus {
+  background: rgba(140, 82, 255, 0.2);
+}
+
+.mmenu-line {
+  flex: none;
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+
+/* A player's menu: who it is, and how they are here */
+.mmenu-head {
+  position: relative;
+  flex: none;
+  height: 50px;
+  padding: 0 12px 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mmenu-head::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.mmenu-face {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--brand-from), var(--brand-to));
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mmenu-who {
+  min-width: 0;
+}
+
+.mmenu-name {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.mmenu-state {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+/* What the page sees of the controller, over the controller's list */
+.mmenu-note {
+  flex: none;
+  width: 0;
+  min-width: 100%;
+  padding: 6px 10px 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: normal;
+}
+
+/* ---------------------------------------------------------------- fingers */
+
+/* A phone or a tablet: everything at least 44 px to touch */
+@media (pointer: coarse) {
+  .mdbtn {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .mseg {
+    height: 44px;
+  }
+
+  .mbar,
+  .mline {
+    height: 44px;
+  }
+
+  .mline::after {
+    top: 9px;
+  }
+
+  .mentry {
+    height: 44px;
+  }
+
+  .mpill {
+    height: 36px;
+    border-radius: 18px;
+  }
+
+  .mchat-form {
+    height: 48px;
+  }
+
+  .mchat-input {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .msend {
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+  }
 }
 
 /* The way into the menu for a mouse or a finger; the app has only keys for it */
@@ -1353,28 +2087,41 @@
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
-  height: 36px;
-  padding: 0 16px;
+  height: 40px;
+  padding: 0 18px;
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 18px;
-  background: rgba(13, 11, 31, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  background: rgba(14, 11, 30, 0.88);
+  color: var(--text);
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 800;
   white-space: nowrap;
   transition: opacity 0.25s;
 }
 
 .menu-handle:hover {
-  border-color: var(--g-accent);
+  border-color: rgba(140, 82, 255, 0.7);
+}
+
+.menu-handle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .menu-handle small {
-  opacity: 0.55;
+  color: var(--text-dim);
   font-size: 12px;
-  font-weight: normal;
+  font-weight: 700;
+}
+
+@media (pointer: coarse) {
+  .menu-handle {
+    height: 44px;
+    border-radius: 22px;
+  }
 }
 
 .stage.idle .menu-handle {
@@ -2073,7 +2820,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .menu {
+  .menu-dim,
+  .menu-top,
+  .mpanel,
+  .mdock {
     transition: none;
+  }
+
+  .mconn-dot.waiting::after,
+  .ptile-bars i {
+    animation: none;
   }
 }

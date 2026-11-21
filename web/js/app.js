@@ -8,7 +8,7 @@
 import { Sound } from './audio.js';
 import { base64UrlDecode, base64UrlEncode } from './bytes.js';
 import { CAMERA_SIZES, Camera, makeAvatar } from './camera.js';
-import { button, el } from './dom.js';
+import { appendWithLinks, button, el } from './dom.js';
 import { DualSense } from './dualsense.js';
 import { Hud } from './hud.js';
 import { parseInvite } from './meet.js';
@@ -742,6 +742,7 @@ function leaveStage() {
   ui.banner.hidden = true;
   $('sleep-ask').hidden = true;
   ui.chatList.replaceChildren();
+  menu.clearChat();
   ui.notices.replaceChildren();
   lastChat = null;
   unread = 0;
@@ -844,8 +845,10 @@ function padTick() {
   session.setController(pad.shownKind, pad.battery);
   // The same buttons as in the app open and close the stream menu
   const combo = (state.buttons & MENU_COMBO) === MENU_COMBO;
-  if (combo && !comboHeld) menu.toggle();
+  if (combo && !comboHeld) menu.toggle(true);
   comboHeld = combo;
+  // In the menu the controller moves through it: the D-pad or the stick, Cross presses, Circle goes back
+  if (menu.open && !hud.editing) menu.padInput(state.buttons, state.lx, state.ly);
   // While the menu is open or the display is arranged, nothing goes to the game
   session.setPad(grabbed() ? P.emptyPad() : state);
 }
@@ -886,6 +889,8 @@ function playersNow() {
     slot: p.slot,
     name: p.name,
     you: p.slot === s.yourSlot,
+    // Of the others the page cannot tell whether they came with a browser; of itself it can
+    web: p.slot === s.yourSlot,
     host: p.host,
     canControl: p.canControl,
     inControl: p.inControl,
@@ -1164,6 +1169,8 @@ function onChat(m) {
   const atEnd = ui.chatList.scrollHeight - ui.chatList.scrollTop - ui.chatList.clientHeight < 60;
   ui.chatList.append(entry);
   if (atEnd || mine) ui.chatList.scrollTop = ui.chatList.scrollHeight;
+  // The last messages also show in the stream menu's panel
+  menu.addChat({ slot: m.slot, name, text: m.text, embed: m.embed && /^https?:\/\//i.test(m.embed.url) ? m.embed : null });
   if (m.history) return;
   if (mine) return;
   // What somebody else wrote: for a few seconds on the game picture, unless the chat is open anyway
@@ -1203,22 +1210,6 @@ function embedCard(embed) {
     a.append(img);
   }
   return a;
-}
-
-/** The text as it is; only addresses that start with http(s) become links. */
-function appendWithLinks(parent, text) {
-  const pattern = /https?:\/\/[^\s<>"']+/g;
-  let last = 0;
-  for (const match of text.matchAll(pattern)) {
-    if (match.index > last) parent.append(text.slice(last, match.index));
-    const a = el('a', '', match[0]);
-    a.href = match[0];
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    parent.append(a);
-    last = match.index + match[0].length;
-  }
-  if (last < text.length) parent.append(text.slice(last));
 }
 
 function openChat(open) {
@@ -1307,6 +1298,7 @@ function syncController() {
     dualsense: DualSense.supported(),
     dualsenseOn: dualsense.connected,
     note: controllerNote(),
+    padKind: pad ? pad.kind : 0,
   });
 }
 
@@ -1454,6 +1446,14 @@ function start() {
       menu.close();
       openChat(true);
     },
+    // A message from the panel's own field, the same as from the big chat
+    onSend: (text) => {
+      const clean = withEmoji(text.trim());
+      if (!clean || !session) return false;
+      const id = session.sendChat(clean);
+      if (id) mySent.add(id);
+      return !!id;
+    },
     onVoice: setVoice,
     onMic: () => {
       micMuted = !micMuted;
@@ -1542,7 +1542,7 @@ function start() {
     hud.settingsChanged();
   };
   $('menu-handle-key').textContent = MENU_KEY;
-  ui.handle.addEventListener('click', () => menu.show());
+  ui.handle.addEventListener('click', () => menu.show(false));
 
   // ------------------------------------------------ before the game
   // The public rooms: language choice, search and filters
@@ -1687,7 +1687,7 @@ function start() {
     if (e.code === 'KeyO' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
       e.preventDefault();
       if (hud.editing) hud.setEditing(false);
-      menu.toggle();
+      menu.toggle(true);
       return;
     }
     if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -1705,8 +1705,9 @@ function start() {
       e.preventDefault();
       options.close();
     } else if (menu.open && !hud.editing) {
+      // An open list first, then the menu
       e.preventDefault();
-      menu.close();
+      menu.back();
     }
   }, true);
   for (const type of ['mousemove', 'mousedown', 'touchstart', 'keydown']) {
