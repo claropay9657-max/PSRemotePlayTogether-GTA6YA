@@ -65,6 +65,17 @@ export async function fetchRooms(url) {
       pictureAddress.searchParams.set('t', String(Math.floor(taken)));
       picture = pictureAddress.toString();
     }
+    // Who plays: an initial for each player, the host first, and their pictures where they have one
+    const initials = Array.from(text(r.initials, 40)).slice(0, 9).map((c) => (/^[\p{L}\p{N}]$/u.test(c) ? c : '?'));
+    const faces = initials.map((_, i) => {
+      const name = Array.isArray(r.faces) ? text(r.faces[i], 16) : '';
+      if (!/^[0-9a-f]{16}$/.test(name) || !ROOM_ID.test(id)) return '';
+      const faceAddress = new URL(url);
+      faceAddress.searchParams.set('v', '1');
+      faceAddress.searchParams.set('face', id);
+      faceAddress.searchParams.set('h', name);
+      return faceAddress.toString();
+    });
     rooms.push({
       id,
       title: text(r.title, 60),
@@ -82,6 +93,8 @@ export async function fetchRooms(url) {
       // Sony's image server makes a small one
       cover: COVER.test(cover) ? `${cover}?w=192` : '',
       picture,
+      initials,
+      faces,
       since: Number(r.since) || 0,
     });
   }

@@ -249,6 +249,33 @@ function roomCover(room) {
   return cover;
 }
 
+/** The players of a room as small circles: up to five, or four and "+N". */
+const FACE_COLOURS = ['#a77bff', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb923c'];
+
+function roomFaces(room) {
+  const row = el('span', 'faces');
+  row.setAttribute('aria-hidden', 'true');
+  const many = room.initials.length > 5;
+  const shown = many ? room.initials.slice(0, 4) : room.initials;
+  shown.forEach((initial, i) => {
+    const face = el('span', 'face', initial);
+    face.style.background = FACE_COLOURS[i % FACE_COLOURS.length];
+    const address = room.faces[i];
+    if (address) {
+      livePicture(address).then((picture) => {
+        if (!picture) return;
+        const img = el('img');
+        img.alt = '';
+        img.src = picture;
+        face.append(img);
+      });
+    }
+    row.append(face);
+  });
+  if (many) row.append(el('span', 'face more', `+${room.initials.length - 4}`));
+  return row;
+}
+
 /**
  * Room pictures as blob: addresses, one fetch for each picture (its address names the
  * room and when the picture was taken). Fetched rather than loaded by an <img>, so that
@@ -300,13 +327,20 @@ function roomCard(room) {
   body.append(el('h3', 'room-title', room.title), el('p', 'room-sub', roomLine(room)),
     fillBadges(el('div', 'badges'), room));
 
-  // How many play, of how many
+  // Who plays (their pictures, or their initials where they have none) and how many, of how many
   const players = el('div', 'room-players' + (room.full ? ' full' : ''));
   const count = el('b', '', `${room.players} / ${room.max}`);
   const label = el('span', 'players-word', 'players');
-  const icon = el('span', 'people');
-  for (const e of [icon, count, label]) e.setAttribute('aria-hidden', 'true');
-  players.append(icon, count, label, el('span', 'sr-only', `${room.players} of ${room.max} players${room.full ? ', full' : ''}`));
+  const line = el('span', 'players-count');
+  if (!room.initials.length) {
+    // An older host says how many only
+    line.append(el('span', 'people'));
+  } else {
+    players.append(roomFaces(room));
+  }
+  line.append(count, label);
+  line.setAttribute('aria-hidden', 'true');
+  players.append(line, el('span', 'sr-only', `${room.players} of ${room.max} players${room.full ? ', full' : ''}`));
 
   const action = el('div', 'room-action');
   const join = button(can ? 'primary' : 'ghost', room.full ? 'Full' : 'Join', () => joinRoom(room));

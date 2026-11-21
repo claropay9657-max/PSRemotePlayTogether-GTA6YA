@@ -103,6 +103,8 @@ class CoPlayRoomAnnouncer : public QObject
 			QString cover;
 			/** psrpt://-/KEY[?meet=...]: no address. */
 			QString invite;
+			/** One letter for each player, the host first ("?" without a name): only initials, no names. */
+			QString initials;
 			int players = 1;
 			int max = 5;
 			bool web = false;
@@ -112,7 +114,8 @@ class CoPlayRoomAnnouncer : public QObject
 			{
 				return title == o.title && lang == o.lang && game == o.game && host == o.host && policy == o.policy
 					&& control == o.control && title_id == o.title_id && cover == o.cover
-					&& invite == o.invite && players == o.players && max == o.max && web == o.web && proto == o.proto;
+					&& invite == o.invite && initials == o.initials && players == o.players && max == o.max
+					&& web == o.web && proto == o.proto;
 			}
 		};
 
@@ -132,6 +135,11 @@ class CoPlayRoomAnnouncer : public QObject
 		void SetPictures(bool on);
 		/** A small JPEG of the game (at most 640x360, the list takes up to 48 KB). */
 		void SendPicture(const QByteArray &jpeg);
+		/**
+		 * The players' pictures, in the order of Room::initials: a small JPEG (64x64) for each,
+		 * or an empty one for a player without a picture. Sent when they change.
+		 */
+		void SetFaces(const QList<QByteArray> &faces);
 
 	signals:
 		void Changed();
@@ -141,6 +149,7 @@ class CoPlayRoomAnnouncer : public QObject
 		void Announce();
 		void Remove();
 		void UpdatePictureTimer();
+		void SendFaces();
 		QNetworkAccessManager *network = nullptr;
 		QString url;
 		QString id;
@@ -157,6 +166,12 @@ class CoPlayRoomAnnouncer : public QObject
 		bool pictures = false;
 		bool picture_asked = false;
 		QTimer picture_timer;
+		QList<QByteArray> faces;
+		/** The list has the faces as they are; false again after the room left the list. */
+		bool faces_sent = true;
+		/** Some player had a picture once: from then on, also "none" is worth telling the list. */
+		bool faces_ever = false;
+		QTimer faces_soon;
 };
 
 #endif // CHIAKI_COPLAYROOMS_H

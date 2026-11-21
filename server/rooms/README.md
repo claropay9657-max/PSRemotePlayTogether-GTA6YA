@@ -72,6 +72,7 @@ reads another one when `DEFAULT_ROOMS_URL` in `web/js/rooms.js` names it.
 | `preview` | 0, or when the host last sent a picture of the game (Unix time). The picture is served by the list itself at `?v=1&preview=<id>&t=<that time>`, so the list never makes anybody load a picture from anywhere else but Sony's image server and the list. |
 | `title_id`, `cover` | The game's id (`PPSA12345`, `CUSA12345`) and a picture of it. The host's app finds the picture in Sony's public catalog by the title id (`m.np.playstation.com/api/catalog/v2/titles/<id>_00/concepts`, no login) and sends its address. A cover can only be an address on `image.api.playstation.com`, so a list never makes anybody load a picture from anywhere else; viewers ask Sony's server for a small copy (`?w=192`). |
 | `host` | The host's name. |
+| `initials`, `faces` | Who plays: one letter for each player, the host first (`?` for a player without a name), and for each the name of their picture on the list, or empty. Initials only, never the other players' names; a picture only where a player has chosen one in the app. The list serves the pictures itself, at `?v=1&face=<id>&h=<name>`, as JPEGs of at most 128×128. |
 | `players`, `max` | How many are in the session, the host included, and how many fit. |
 | `policy` | Who gets in: `ask` (the host lets each player in), `watch` (everybody, watching until the host lets them play), `open` (everybody, playing at once). |
 | `control` | Who controls: `all` at once, `turns` one at a time, or only the `host`. |
@@ -92,10 +93,13 @@ GET  ?v=1
      "policy","control","web","invite","proto","title_id","cover","preview","since"}, ...]}
 GET  ?v=1&preview=<id>&t=<time>
   → the room's picture (image/jpeg), 404 when it has none
+GET  ?v=1&face=<id>&h=<name>
+  → a player's picture (image/jpeg)
 
 POST v=1 action=announce id=<16 hex> token=<32 hex> title= lang= game= host= players= max=
      policy= control= web=0|1 invite= proto= [title_id=] [cover=]
 POST v=1 action=preview id=<16 hex> token=<32 hex> image=<JPEG, base64url without padding>
+POST v=1 action=faces id=<16 hex> token=<32 hex> faces=<for each player: a JPEG or nothing, base64url, comma-separated>
 POST v=1 action=remove id=<16 hex> token=<32 hex>
   → {"v":1,"ok":true,"poll":15000,"preview":45000}  or  {"v":1,"ok":false,"error":"..."}
 ```
@@ -105,6 +109,12 @@ for none; a list that does not answer with it (an older copy of this file) gets
 no pictures. A picture is taken only for a room on the list, from its own host,
 as a JPEG of at least 16×16 and at most 640×360 pixels, and at most one every
 half that time (429 otherwise). It goes when the room goes.
+
+The players' pictures come with `action=faces`, from the room's host, whenever
+the players change: for each player in the order of `initials` a JPEG of at
+most 128×128 and `PSRPT_ROOMS_FACE_MAX` (8 KB; the app sends 64×64, about 2 to
+4 KB) or nothing. They go when the room goes, and a picture nobody has any more
+goes at once.
 
 The first announce of an id keeps a hash of its token; only that host can
 change or remove the room afterwards (403 otherwise). A host's app makes a new
@@ -116,7 +126,7 @@ The same as for the meeting point ([its README](../meeting-point/README.md#what-
 
 - **Methods:** `GET` for the list and the pictures, `POST` with
   `application/x-www-form-urlencoded` for a host: under 2 KB for a room, under
-  64 KB for a picture.
+  64 KB for a picture, under 96 KB for the players' pictures.
 - **Rate limit:** per client address, at least 1 request per second.
 - **No bot challenge** on this path: the client is an app or a script on the
   page. The app sends `User-Agent: PSRemotePlayTogether/<version>`.
@@ -140,15 +150,17 @@ Content-Security-Policy needs no address of the list.
 ## What it stores, and what it can see
 
 - Stored: per room what the table above lists, a hash of the host's token, when
-  the room was announced first and last, and its newest picture, until 45 seconds
-  after the last announcement. No IP addresses, no log.
+  the room was announced first and last, its newest picture and its players'
+  pictures, until 45 seconds after the last announcement. No IP addresses, no log.
 - Everything in a room is public by design: the host chose to list it. What a
   room says is written by its host; the script only checks that it is text of
   the right length, without control characters, and that the invite names no
   address. The same holds for its picture: a still of whatever the host's screen
   shows of the game, checked only for being a small JPEG. The app sends one only
   while the host leaves "Live picture in the list" on, and never in streamer
-  mode.
+  mode. The players' pictures are the ones they chose in the app; whoever joins a
+  public room is shown in its list with that picture and the first letter of
+  their name.
 - Like any web server it sees the IP address a request comes from, and the web
   server in front of it may log that as it logs everything else.
 
@@ -174,7 +186,9 @@ build/coplay/coplay-sim host video.h264 --name Nova --stun off \
   --lang en --game "A game" --policy ask --admit-after 10 --preview picture.jpg
 ```
 
-`--preview` sends that JPEG as the room's picture, as often as the list asks.
+`--preview` sends that JPEG as the room's picture, as often as the list asks;
+`--face small.jpg` gives the simulated host a picture in the list. Guests from
+`coplay-sim guest INVITE --name Mia` show as initials.
 
 The simulated host lists its room, lets each player in after ten seconds
 (`--refuse` turns them away instead) and takes the room off the list when it

@@ -27,8 +27,11 @@
 #include "coplaymeet.h"
 #include "coplayrooms.h"
 
+#include <QBuffer>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QImage>
+#include <QPainter>
 #include <QHash>
 #include <QJsonArray>
 #include <QMutex>
@@ -124,6 +127,8 @@ struct CoPlayState
 	bool is_public = false;
 	CoPlayRoomAnnouncer *room = nullptr; // a child of the session
 	CoPlayRoomAnnouncer::Room room_info;
+	/** The players' pictures as the list takes them (64x64 JPEG), by picture id; made once each. */
+	QHash<QString, QByteArray> room_faces;
 	QString room_problem;
 	bool locked = false;
 	int join_policy = 0; // as in the settings: 0 ask, 1 watch first, 2 open
@@ -204,6 +209,8 @@ static const char *ImageMime(const uint8_t *data, size_t size)
 }
 
 /** Picture as a data: URL the QML side can show; empty if it is not an image we know. */
+static QString RoomInitial(const QString &name);
+
 static QString AvatarUrl(const coplay::BlobData &data)
 {
 	if(!data || data->empty())
@@ -508,6 +515,7 @@ void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info
 	room.invite = CoPlayInviteFor(QString());
 	room.web = !coplay->web_page.empty();
 	room.players = 1;
+	room.initials = RoomInitial(coplay->host_name);
 	room.max = static_cast<int>(max_guests) + 1;
 	room.proto = coplay::kProtocolVersion;
 	coplay->room->Update(room);
@@ -529,6 +537,49 @@ void StreamSession::CoPlayRoomPicture(const QByteArray &jpeg)
 	if(!coplay || !coplay->room || jpeg.isEmpty())
 		return;
 	coplay->room->SendPicture(jpeg);
+}
+
+/**
+ * For the list of public rooms: a player's picture (a data: URL, as the players panel shows it)
+ * as a JPEG of 64x64, cut to a square from the middle. Empty if it is no picture.
+ */
+static QByteArray RoomFace(const QString &data_url)
+{
+	const int comma = data_url.indexOf(QLatin1Char(','));
+	if(!data_url.startsWith(QLatin1String("data:image/")) || comma < 0)
+		return QByteArray();
+	const QImage image = QImage::fromData(QByteArray::fromBase64(data_url.mid(comma + 1).toLatin1()));
+	if(image.isNull())
+		return QByteArray();
+	const QImage scaled = image.scaled(64, 64, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+	// A picture with see-through parts gets the app's dark ground behind them, not black
+	QImage square(64, 64, QImage::Format_RGB888);
+	square.fill(QColor(0x1b, 0x17, 0x35));
+	{
+		QPainter painter(&square);
+		painter.drawImage(0, 0, scaled, (scaled.width() - 64) / 2, (scaled.height() - 64) / 2, 64, 64);
+	}
+	for(int quality : { 80, 60, 40 })
+	{
+		QByteArray jpeg;
+		QBuffer buffer(&jpeg);
+		buffer.open(QIODevice::WriteOnly);
+		if(!square.save(&buffer, "JPG", quality))
+			return QByteArray();
+		if(jpeg.size() <= 8 * 1024)
+			return jpeg;
+	}
+	return QByteArray();
+}
+
+/** For the list of public rooms: the first letter of each player's name ("?" without one), no more. */
+static QString RoomInitial(const QString &name)
+{
+	const QList<uint> code = name.trimmed().toUcs4();
+	if(code.isEmpty() || !QChar::isLetterOrNumber(static_cast<char32_t>(code.first())))
+		return QStringLiteral("?");
+	const char32_t upper = QChar::toUpper(static_cast<char32_t>(code.first()));
+	return QString::fromUcs4(&upper, 1);
 }
 
 void StreamSession::CoPlayUpdateRoom()
@@ -1029,6 +1080,35 @@ void StreamSession::CoPlayUpdatePlayers()
 	if(coplay->room)
 	{
 		coplay->room_info.players = static_cast<int>(players.size());
+		QString initials;
+		QList<QByteArray> faces;
+		QSet<QString> still;
+		for(const QVariant &player : players)
+		{
+			const QVariantMap p = player.toMap();
+			initials += RoomInitial(p.value(QStringLiteral("name")).toString());
+			// Each player's picture, where they have one: made small once, sent when they change
+			const QString id = p.value(QStringLiteral("avatar")).toString();
+			if(id.isEmpty())
+			{
+				faces.append(QByteArray());
+				continue;
+			}
+			still.insert(id);
+			auto it = coplay->room_faces.find(id);
+			if(it == coplay->room_faces.end())
+				it = coplay->room_faces.insert(id, RoomFace(p.value(QStringLiteral("avatarUrl")).toString()));
+			faces.append(it.value());
+		}
+		for(auto it = coplay->room_faces.begin(); it != coplay->room_faces.end();)
+		{
+			if(still.contains(it.key()))
+				++it;
+			else
+				it = coplay->room_faces.erase(it);
+		}
+		coplay->room_info.initials = initials;
+		coplay->room->SetFaces(faces);
 		coplay->room_info.control = ControlName(coplay->host->GetMixMode());
 		CoPlayUpdateRoom();
 	}

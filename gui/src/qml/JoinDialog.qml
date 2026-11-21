@@ -1363,42 +1363,117 @@ FocusScope {
                                 }
                             }
 
-                            // How many play, of how many
-                            RowLayout {
+                            // Who plays (their pictures, or their initials where they have none) and how many, of how many
+                            ColumnLayout {
+                                id: playersColumn
+                                /** Initials, one for each player, the host first; empty from an older host. */
+                                readonly property var initials: roomCard.modelData.initials || []
+                                /** The players' pictures in the same order, "" where a player has none. */
+                                readonly property var faces: roomCard.modelData.faces || []
+                                /** Up to five circles; with more, four and "+N". */
+                                readonly property var shown: initials.length > 5 ? initials.slice(0, 4).concat(["+" + (initials.length - 4)]) : initials
                                 Layout.row: roomCard.narrow ? 1 : 0
                                 Layout.column: roomCard.narrow ? 0 : 2
                                 Layout.columnSpan: roomCard.narrow ? 3 : 1
                                 Layout.fillWidth: roomCard.narrow
                                 Layout.preferredWidth: roomCard.narrow ? -1 : 104
                                 Layout.alignment: Qt.AlignVCenter
-                                spacing: 6
+                                spacing: 5
 
-                                Item {
-                                    Layout.fillWidth: !roomCard.narrow
+                                Row {
+                                    Layout.alignment: roomCard.narrow ? Qt.AlignLeft : Qt.AlignRight
+                                    visible: playersColumn.shown.length > 0
+                                    spacing: -7
+
+                                    Repeater {
+                                        model: playersColumn.shown
+
+                                        Rectangle {
+                                            id: face
+                                            required property var modelData
+                                            required property int index
+                                            readonly property var colours: ["#a77bff", "#f472b6", "#34d399", "#fbbf24", "#60a5fa", "#fb923c"]
+                                            readonly property bool more: String(modelData).charAt(0) === "+"
+                                            readonly property string picture: more ? "" : (playersColumn.faces[index] || "")
+                                            readonly property bool pictured: facePicture.status === Image.Ready
+                                            width: 24
+                                            height: 24
+                                            radius: 12
+                                            color: more ? "#3a3458" : colours[index % colours.length]
+                                            border.width: 2
+                                            border.color: C.Theme.card
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                visible: !face.pictured
+                                                textFormat: Text.PlainText
+                                                text: face.modelData
+                                                font.pixelSize: String(face.modelData).length > 1 ? 9 : 11
+                                                font.weight: Font.ExtraBold
+                                                color: face.more ? C.Theme.text : "#120d26"
+                                            }
+
+                                            // The player's own picture, from the list, where they have one
+                                            Image {
+                                                id: facePicture
+                                                anchors.fill: parent
+                                                anchors.margins: 2
+                                                visible: false
+                                                layer.enabled: true
+                                                asynchronous: true
+                                                fillMode: Image.PreserveAspectCrop
+                                                sourceSize.width: 64
+                                                sourceSize.height: 64
+                                                source: face.picture
+                                            }
+
+                                            Rectangle {
+                                                id: faceMask
+                                                anchors.fill: facePicture
+                                                radius: width / 2
+                                                visible: false
+                                                layer.enabled: true
+                                            }
+
+                                            MultiEffect {
+                                                anchors.fill: facePicture
+                                                visible: face.pictured
+                                                source: facePicture
+                                                maskEnabled: true
+                                                maskSource: faceMask
+                                            }
+                                        }
+                                    }
                                 }
 
-                                C.Icon {
-                                    iconName: "people"
-                                    size: 15
-                                    color: C.Theme.textDim
-                                }
+                                Row {
+                                    Layout.alignment: roomCard.narrow ? Qt.AlignLeft : Qt.AlignRight
+                                    spacing: 4
 
-                                Text {
-                                    text: "%1 / %2".arg(roomCard.modelData.players).arg(roomCard.modelData.max)
-                                    font.pixelSize: 13
-                                    font.weight: Font.ExtraBold
-                                    color: roomCard.modelData.full ? "#ff9db5" : C.Theme.text
-                                }
+                                    // Without initials (an older host), the people icon says what the numbers are
+                                    C.Icon {
+                                        visible: playersColumn.shown.length === 0
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        iconName: "people"
+                                        size: 15
+                                        color: C.Theme.textDim
+                                    }
 
-                                Text {
-                                    text: qsTr("players")
-                                    font.pixelSize: 12
-                                    font.weight: Font.DemiBold
-                                    color: C.Theme.textDim
-                                }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "%1 / %2".arg(roomCard.modelData.players).arg(roomCard.modelData.max)
+                                        font.pixelSize: 13
+                                        font.weight: Font.ExtraBold
+                                        color: roomCard.modelData.full ? "#ff9db5" : C.Theme.text
+                                    }
 
-                                Item {
-                                    Layout.fillWidth: roomCard.narrow
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: qsTr("players")
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                        color: C.Theme.textDim
+                                    }
                                 }
                             }
 

@@ -21,21 +21,27 @@
 //     ?v=1
 //   answer (application/json):
 //     {"v":1,"poll":15000,"rooms":[{"id","title","lang","game","host","players","max",
-//      "policy","control","web","invite","proto","title_id","cover","preview","since"}, ...]}
+//      "policy","control","web","invite","proto","title_id","cover","initials","preview","since"}, ...]}
 //   "preview" is 0, or when the room's host last sent a picture of its game (Unix time).
 //   The picture itself (image/jpeg):
 //     ?v=1&preview=<id>&t=<that time>
+//   "faces": for each player (as "initials"), the name of their picture, or "" for none;
+//   a picture (image/jpeg):
+//     ?v=1&face=<id>&h=<that name>
 //
 // A host (POST, form fields):
 //     v=1 action=announce id=<16 hex> token=<32 hex> title= lang= game= host= players= max=
 //         policy=ask|watch|open control=all|turns|host web=0|1 invite=<psrpt://-/KEY[?meet=...]>
 //         proto=<protocol version>
 //         title_id=<CUSA12345|PPSA12345, optional> cover=<https://image.api.playstation.com/..., optional>
+//         initials=<one letter or digit (or "?") for each player, the host first, optional>
 //   (control: everybody plays at once, one at a time, or only the host. A cover can only be
 //   a picture on Sony's image server, so that the list never makes a viewer load anything else.)
 //     v=1 action=preview id=<16 hex> token=<32 hex> image=<JPEG, base64url without padding>
 //   (a small picture of the game, at most 640x360 and PSRPT_ROOMS_PREVIEW_MAX bytes; only for a
 //   room that is on the list, and at most one every half PSRPT_ROOMS_PREVIEW_MS)
+//     v=1 action=faces id=<16 hex> token=<32 hex> faces=<for each player as in initials: a JPEG of
+//         at most 128x128 and PSRPT_ROOMS_FACE_MAX bytes, base64url without padding, or nothing; comma-separated>
 //     v=1 action=remove id=<16 hex> token=<32 hex>
 //   answer: {"v":1,"ok":true,"poll":15000,"preview":45000} or {"v":1,"ok":false,"error":"..."}
 //   ("preview": how often a host sends a picture, in milliseconds; 0 for none)
@@ -61,6 +67,8 @@ const PSRPT_ROOMS_MAX = 500;
 const PSRPT_ROOMS_PREVIEW_MS = 45000;
 /** Largest picture taken, in bytes (a 320x180 JPEG is about 10 to 20 KB). */
 const PSRPT_ROOMS_PREVIEW_MAX = 49152;
+/** Largest player picture taken, in bytes (a 64x64 JPEG is about 2 to 4 KB). */
+const PSRPT_ROOMS_FACE_MAX = 8192;
 /**
  * For the web page, which is served from somewhere else: the header
  * "Access-Control-Allow-Origin". '*' for every page (fine: there are no cookies here
@@ -150,15 +158,49 @@ function psrpt_rooms_picture_path(string $room_path): string
     return substr($room_path, 0, -strlen('.room')) . '.jpg';
 }
 
+/** Which picture each player has (a list of names, "" for none): same name, ".faces". */
+function psrpt_rooms_faces_path(string $room_path): string
+{
+    return substr($room_path, 0, -strlen('.room')) . '.faces';
+}
+
+/** A player's picture: the room's name, the picture's own name (16 hex), ".face". */
+function psrpt_rooms_face_path(string $room_path, string $name): string
+{
+    return substr($room_path, 0, -strlen('.room')) . '.' . $name . '.face';
+}
+
+/** Everything that belongs to a room, besides the room itself. */
+function psrpt_rooms_remove_extras(string $room_path): void
+{
+    @unlink(psrpt_rooms_picture_path($room_path));
+    @unlink(psrpt_rooms_faces_path($room_path));
+    foreach (glob(substr($room_path, 0, -strlen('.room')) . '.*.face') ?: [] as $face) {
+        @unlink($face);
+    }
+}
+
+/** A small JPEG of a sensible size, nothing else: it is served to whoever reads the list. */
+function psrpt_rooms_jpeg($data, int $most_bytes, int $most_w, int $most_h): bool
+{
+    if (!is_string($data) || $data === '' || strlen($data) > $most_bytes) {
+        return false;
+    }
+    $info = @getimagesizefromstring($data);
+    return $info !== false && ($info[2] ?? 0) === IMAGETYPE_JPEG
+        && $info[0] >= 16 && $info[1] >= 16 && $info[0] <= $most_w && $info[1] <= $most_h
+        && substr($data, 0, 3) === "\xFF\xD8\xFF" && substr($data, -2) === "\xFF\xD9";
+}
+
 /** The rooms that are still there; old files (and the pictures of old rooms) are removed on the way. */
 function psrpt_rooms_read(string $dir, int $ttl): array
 {
     $rooms = [];
     $now = time();
     foreach (new FilesystemIterator($dir, FilesystemIterator::SKIP_DOTS) as $file) {
-        if ($file->isFile() && $file->getExtension() === 'jpg') {
-            // A picture whose room is gone
-            $room_path = substr($file->getPathname(), 0, -strlen('.jpg')) . '.room';
+        if ($file->isFile() && in_array($file->getExtension(), ['jpg', 'faces', 'face'], true)) {
+            // A picture (or the list of pictures) whose room is gone: all start with the room's name
+            $room_path = $dir . DIRECTORY_SEPARATOR . substr($file->getFilename(), 0, 64) . '.room';
             if (!is_file($room_path) && $file->getMTime() < $now - $ttl) {
                 @unlink($file->getPathname());
             }
@@ -169,13 +211,15 @@ function psrpt_rooms_read(string $dir, int $ttl): array
         }
         if ($file->getMTime() < $now - $ttl) {
             @unlink($file->getPathname());
-            @unlink(psrpt_rooms_picture_path($file->getPathname()));
+            psrpt_rooms_remove_extras($file->getPathname());
             continue;
         }
         $room = json_decode((string) @file_get_contents($file->getPathname()), true);
         if (is_array($room) && isset($room['id'], $room['t']) && $now - (int) $room['t'] <= $ttl) {
             $picture = psrpt_rooms_picture_path($file->getPathname());
             $room['preview'] = is_file($picture) ? (int) filemtime($picture) : 0;
+            $faces = json_decode((string) @file_get_contents(psrpt_rooms_faces_path($file->getPathname())), true);
+            $room['faces'] = is_array($faces) ? $faces : [];
             $rooms[] = $room;
         }
     }
@@ -191,6 +235,7 @@ $max_rooms = (int) psrpt_rooms_setting('PSRPT_ROOMS_MAX', PSRPT_ROOMS_MAX);
 $ttl = max($ttl, (int) ceil($poll * 3 / 1000));
 $preview_ms = psrpt_rooms_preview_ms();
 $preview_max = (int) psrpt_rooms_setting('PSRPT_ROOMS_PREVIEW_MAX', PSRPT_ROOMS_PREVIEW_MAX);
+$face_max = (int) psrpt_rooms_setting('PSRPT_ROOMS_FACE_MAX', PSRPT_ROOMS_FACE_MAX);
 
 $dir = psrpt_rooms_dir();
 if ($dir === null) {
@@ -202,14 +247,16 @@ if ($method !== 'POST') {
     if (($_GET['v'] ?? '1') !== '1') {
         psrpt_rooms_answer(200, ['ok' => false, 'error' => 'this list only knows version 1 of the protocol', 'rooms' => []]);
     }
-    if (isset($_GET['preview'])) {
-        // The picture of a room that is on the list
-        $id = $_GET['preview'];
-        if (!is_string($id) || !preg_match('/^[0-9a-f]{16}$/', $id)) {
+    if (isset($_GET['preview']) || isset($_GET['face'])) {
+        // The picture of a room that is on the list, or of one of its players
+        $id = $_GET['preview'] ?? $_GET['face'];
+        $name = $_GET['h'] ?? '';
+        if (!is_string($id) || !preg_match('/^[0-9a-f]{16}$/', $id)
+            || (isset($_GET['face']) && (!is_string($name) || !preg_match('/^[0-9a-f]{16}$/', $name)))) {
             psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed request']);
         }
         $room_path = $dir . DIRECTORY_SEPARATOR . hash('sha256', $id) . '.room';
-        $picture = psrpt_rooms_picture_path($room_path);
+        $picture = isset($_GET['face']) ? psrpt_rooms_face_path($room_path, $name) : psrpt_rooms_picture_path($room_path);
         $data = (is_file($room_path) && filemtime($room_path) >= time() - $ttl && is_file($picture))
             ? @file_get_contents($picture) : false;
         if ($data === false || $data === '') {
@@ -217,7 +264,7 @@ if ($method !== 'POST') {
         }
         header('Content-Type: image/jpeg');
         header('Content-Length: ' . strlen($data));
-        // Its address names the picture's time (t=), so a copy can be kept
+        // Its address names the picture's time (t=) or its content (h=), so a copy can be kept
         header('Cache-Control: public, max-age=600');
         header('X-Content-Type-Options: nosniff');
         header("Content-Security-Policy: default-src 'none'");
@@ -244,6 +291,8 @@ if ($method !== 'POST') {
             'proto' => $room['proto'],
             'title_id' => $room['title_id'] ?? '',
             'cover' => $room['cover'] ?? '',
+            'initials' => $room['initials'] ?? '',
+            'faces' => $room['faces'] ?? [],
             'preview' => $preview_ms > 0 ? (int) ($room['preview'] ?? 0) : 0,
             'since' => max(0, $now - (int) $room['created']),
         ];
@@ -263,7 +312,7 @@ $id = $_POST['id'] ?? '';
 $token = $_POST['token'] ?? '';
 if (!is_string($version) || !is_string($action) || !is_string($id) || !is_string($token)
     || !preg_match('/^[0-9a-f]{16}$/', $id) || !preg_match('/^[0-9a-f]{32}$/', $token)
-    || !in_array($action, ['announce', 'remove', 'preview'], true)) {
+    || !in_array($action, ['announce', 'remove', 'preview', 'faces'], true)) {
     psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed request']);
 }
 if ($version !== '1') {
@@ -287,7 +336,61 @@ if ($existing !== null && !hash_equals((string) ($existing['token'] ?? ''), $tok
 if ($action === 'remove') {
     if ($existing !== null) {
         @unlink($path);
-        @unlink(psrpt_rooms_picture_path($path));
+        psrpt_rooms_remove_extras($path);
+    }
+    psrpt_rooms_answer(200, ['ok' => true, 'poll' => $poll, 'preview' => $preview_ms]);
+}
+
+if ($action === 'faces') {
+    if ($existing === null) {
+        psrpt_rooms_answer(200, ['ok' => false, 'error' => 'announce the room first', 'poll' => $poll, 'preview' => $preview_ms]);
+    }
+    $list = $_POST['faces'] ?? '';
+    if (!is_string($list) || strlen($list) > 9 * ((int) ceil($face_max * 4 / 3) + 5) || !preg_match('/^[A-Za-z0-9_,-]*$/', $list)) {
+        psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed pictures']);
+    }
+    $parts = $list === '' ? [] : explode(',', $list);
+    if (count($parts) > 9) {
+        psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed pictures']);
+    }
+    $names = [];
+    $pictures = [];
+    foreach ($parts as $part) {
+        if ($part === '') {
+            $names[] = '';
+            continue;
+        }
+        $data = base64_decode(strtr($part, '-_', '+/'), true);
+        if (!psrpt_rooms_jpeg($data, $face_max, 128, 128)) {
+            psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed pictures']);
+        }
+        $name = substr(hash('sha256', $data), 0, 16);
+        $names[] = $name;
+        $pictures[$name] = $data;
+    }
+    // The new pictures, then which player has which, then away with the ones nobody has any more
+    foreach ($pictures as $name => $data) {
+        $face = psrpt_rooms_face_path($path, $name);
+        if (is_file($face)) {
+            continue;
+        }
+        $temp = $face . '.' . bin2hex(random_bytes(4)) . '.tmp';
+        if (@file_put_contents($temp, $data) === false || !@rename($temp, $face)) {
+            @unlink($temp);
+            psrpt_rooms_answer(503, ['ok' => false, 'error' => 'the list cannot keep the pictures']);
+        }
+    }
+    $faces_path = psrpt_rooms_faces_path($path);
+    $temp = $faces_path . '.' . bin2hex(random_bytes(4)) . '.tmp';
+    if (@file_put_contents($temp, json_encode($names)) === false || !@rename($temp, $faces_path)) {
+        @unlink($temp);
+        psrpt_rooms_answer(503, ['ok' => false, 'error' => 'the list cannot keep the pictures']);
+    }
+    foreach (glob(substr($path, 0, -strlen('.room')) . '.*.face') ?: [] as $face) {
+        $name = substr(basename($face), 65, 16);
+        if (!isset($pictures[$name])) {
+            @unlink($face);
+        }
     }
     psrpt_rooms_answer(200, ['ok' => true, 'poll' => $poll, 'preview' => $preview_ms]);
 }
@@ -310,11 +413,7 @@ if ($action === 'preview') {
         psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed picture']);
     }
     $data = base64_decode(strtr($encoded, '-_', '+/'), true);
-    // A JPEG of a sensible size, nothing else: it is served to whoever reads the list
-    $info = is_string($data) && strlen($data) <= $preview_max ? @getimagesizefromstring($data) : false;
-    if ($info === false || ($info[2] ?? 0) !== IMAGETYPE_JPEG
-        || $info[0] < 16 || $info[1] < 16 || $info[0] > 640 || $info[1] > 360
-        || substr($data, 0, 3) !== "\xFF\xD8\xFF" || substr($data, -2) !== "\xFF\xD9") {
+    if (!psrpt_rooms_jpeg($data, $preview_max, 640, 360)) {
         psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed picture']);
     }
     $temp = $picture . '.' . bin2hex(random_bytes(4)) . '.tmp';
@@ -338,6 +437,8 @@ $invite = $_POST['invite'] ?? '';
 $proto = psrpt_rooms_int($_POST['proto'] ?? null, 1, 255);
 $title_id = $_POST['title_id'] ?? '';
 $cover = $_POST['cover'] ?? '';
+// Who plays, as initials only: never names
+$initials = $_POST['initials'] ?? '';
 if ($title === null || $title === '' || $host === null || $host === '' || $game === null
     || !is_string($lang) || !preg_match('/^([a-z]{2})?$/', $lang)
     || $players === null || $max === null || $players > $max || $proto === null
@@ -346,6 +447,7 @@ if ($title === null || $title === '' || $host === null || $host === '' || $game 
     || ($web !== '0' && $web !== '1')
     || !is_string($title_id) || !preg_match('/^([A-Z]{4}[0-9]{5})?$/', $title_id)
     || !is_string($cover) || !preg_match('/^(https:\/\/image\.api\.playstation\.com\/[A-Za-z0-9._~\/%-]{1,300})?$/', $cover)
+    || !is_string($initials) || !preg_match('/^[\p{L}\p{N}?]{0,9}$/u', $initials) || mb_strlen($initials, 'UTF-8') > $players
     // No address in a listed invite: the host is found through the meeting point
     || !is_string($invite) || !preg_match('/^psrpt:\/\/-\/[A-Za-z0-9_-]{22}(\?meet=[A-Za-z0-9._~:\/%-]{1,200})?$/', $invite)) {
     psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed room']);
@@ -381,6 +483,7 @@ $room = [
     'proto' => $proto,
     'title_id' => $title_id,
     'cover' => $cover,
+    'initials' => $initials,
     'created' => $existing !== null ? (int) $existing['created'] : time(),
     't' => time(),
 ];

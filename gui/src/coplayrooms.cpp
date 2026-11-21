@@ -316,6 +316,40 @@ void CoPlayRoomList::Refresh(const QString &setting)
 				picture = picture_url.toString(QUrl::FullyEncoded);
 			}
 			m[QStringLiteral("picture")] = picture;
+			// Who plays, as initials only: one letter (or "?") for each player, the host first
+			QStringList initials;
+			for(uint code : r.value(QStringLiteral("initials")).toString().toUcs4())
+			{
+				if(initials.size() >= 9)
+					break;
+				const char32_t c = static_cast<char32_t>(code);
+				initials.append(QChar::isLetterOrNumber(c) ? QString::fromUcs4(&c, 1) : QStringLiteral("?"));
+			}
+			m[QStringLiteral("initials")] = initials;
+			// The players' pictures where they have one, served by the list (h= names the picture)
+			QStringList faces;
+			static const QRegularExpression face_name(QStringLiteral("^[0-9a-f]{16}$"));
+			for(const QJsonValue &face : r.value(QStringLiteral("faces")).toArray())
+			{
+				if(faces.size() >= initials.size())
+					break;
+				const QString name = face.toString();
+				if(!face_name.match(name).hasMatch() || !room_id.match(id).hasMatch())
+				{
+					faces.append(QString());
+					continue;
+				}
+				QUrl face_url(address);
+				QUrlQuery face_query(face_url);
+				face_query.addQueryItem(QStringLiteral("v"), QStringLiteral("1"));
+				face_query.addQueryItem(QStringLiteral("face"), id);
+				face_query.addQueryItem(QStringLiteral("h"), name);
+				face_url.setQuery(face_query);
+				faces.append(face_url.toString(QUrl::FullyEncoded));
+			}
+			while(faces.size() < initials.size())
+				faces.append(QString());
+			m[QStringLiteral("faces")] = faces;
 			list.append(m);
 		}
 		rooms = list;
@@ -348,6 +382,10 @@ CoPlayRoomAnnouncer::CoPlayRoomAnnouncer(const QString &url, QObject *parent)
 	soon.setInterval(400);
 	connect(&soon, &QTimer::timeout, this, &CoPlayRoomAnnouncer::Announce);
 	connect(&picture_timer, &QTimer::timeout, this, &CoPlayRoomAnnouncer::PictureWanted);
+	// After the room's announcement, and several changes in a row as one
+	faces_soon.setSingleShot(true);
+	faces_soon.setInterval(1000);
+	connect(&faces_soon, &QTimer::timeout, this, &CoPlayRoomAnnouncer::SendFaces);
 }
 
 CoPlayRoomAnnouncer::~CoPlayRoomAnnouncer()
@@ -410,6 +448,50 @@ void CoPlayRoomAnnouncer::UpdatePictureTimer()
 	}
 }
 
+void CoPlayRoomAnnouncer::SetFaces(const QList<QByteArray> &list)
+{
+	if(list == faces && faces_sent)
+		return;
+	faces = list;
+	faces_sent = false;
+	if(listed && announced)
+		faces_soon.start();
+}
+
+void CoPlayRoomAnnouncer::SendFaces()
+{
+	if(!listed || !announced || url.isEmpty() || faces_sent)
+		return;
+	QStringList parts;
+	for(const QByteArray &face : faces)
+		parts.append(face.isEmpty() || face.size() > 8 * 1024 ? QString()
+			: QString::fromLatin1(face.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)));
+	// Nobody with a picture: nothing to send, the list shows initials
+	bool any = false;
+	for(const QString &part : parts)
+		any = any || !part.isEmpty();
+	faces_sent = true;
+	if(!any && parts.size() > 0 && !faces_ever)
+		return;
+	faces_ever = faces_ever || any;
+	QUrlQuery form;
+	form.addQueryItem(QStringLiteral("v"), QStringLiteral("1"));
+	form.addQueryItem(QStringLiteral("action"), QStringLiteral("faces"));
+	form.addQueryItem(QStringLiteral("id"), id);
+	form.addQueryItem(QStringLiteral("token"), token);
+	form.addQueryItem(QStringLiteral("faces"), parts.join(QLatin1Char(',')));
+	QNetworkRequest request = Request(QUrl(url));
+	request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
+	QNetworkReply *reply = Network()->post(request, form.query(QUrl::FullyEncoded).toUtf8());
+	connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+		reply->deleteLater();
+		const QJsonObject answer = QJsonDocument::fromJson(reply->read(64 * 1024)).object();
+		// Not taken (the room was not there yet, for one): again with the next announcement
+		if(reply->error() != QNetworkReply::NoError || !answer.value(QStringLiteral("ok")).toBool())
+			faces_sent = false;
+	});
+}
+
 void CoPlayRoomAnnouncer::SendPicture(const QByteArray &jpeg)
 {
 	if(!pictures || !listed || !announced || picture_ms <= 0 || url.isEmpty() || jpeg.isEmpty() || jpeg.size() > 48 * 1024)
@@ -449,6 +531,7 @@ void CoPlayRoomAnnouncer::Announce()
 	form.addQueryItem(QStringLiteral("proto"), QString::number(room.proto));
 	form.addQueryItem(QStringLiteral("title_id"), room.title_id);
 	form.addQueryItem(QStringLiteral("cover"), room.cover);
+	form.addQueryItem(QStringLiteral("initials"), room.initials);
 	QNetworkRequest request = Request(QUrl(url));
 	request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
 	// Characters such as "+" and "&" in a title must arrive as they are
@@ -472,6 +555,8 @@ void CoPlayRoomAnnouncer::Announce()
 			// A list that does not say anything about pictures does not know them
 			picture_ms = answer.value(QStringLiteral("preview")).toInt(0);
 			UpdatePictureTimer();
+			if(!faces_sent && answer.contains(QStringLiteral("preview")) && !faces_soon.isActive())
+				faces_soon.start();
 		}
 		if(now != problem)
 		{
@@ -486,6 +571,9 @@ void CoPlayRoomAnnouncer::Remove()
 	timer.stop();
 	picture_timer.stop();
 	picture_asked = false;
+	// The list forgets the room's pictures with the room
+	faces_soon.stop();
+	faces_sent = false;
 	if(!announced || url.isEmpty())
 		return;
 	announced = false;
