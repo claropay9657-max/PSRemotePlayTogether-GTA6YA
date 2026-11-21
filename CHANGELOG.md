@@ -3,6 +3,10 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.3.2
+
+- **Fixed: questions in the top left corner.** "Update available", "Quit?" and the other questions of the app opened squeezed into the top left corner, too small for their text, with their buttons hanging out below and the window behind them not dimmed. They now open in the middle, dimmed behind. The same fix puts the About window (Settings → Updates & logs) and the window of a controller (Settings → Controllers) in the middle.
+
 ## 0.3.1
 
 - **Clearer choices for who gets in.** A public room now offers **Ask to join** (you approve each player first), **Join as viewers** (they play once you allow it) and **Join and play** (no approval, they play right away), each with a line that says what it means. The stream menu and the list of public rooms use the same words, so a room in the list shows *Ask to join*, *Join as viewer* or *Join and play*, and the filter is **Hide rooms that ask to join**. Before, "Everybody, playing at once" meant "right away" while **All at once** under Who controls meant "at the same time", and "Open" sat oddly next to **Open to newcomers**.

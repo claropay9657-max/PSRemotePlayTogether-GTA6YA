@@ -6233,6 +6233,10 @@ void QmlMainWindow::updateSwapchain()
 
     quick_item->setSize(size());
     quick_window->resize(size());
+    // The window is never shown, so it gets no resize event and its content item
+    // (and with it the overlay that popups are parented to) would stay 0x0: popups
+    // centred on the overlay ended up squeezed into the top left corner, undimmed
+    quick_window->contentItem()->setSize(size());
 
     if (quick_render->thread() == QThread::currentThread())
         resizeSwapchain();
