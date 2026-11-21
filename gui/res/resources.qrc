@@ -24,6 +24,48 @@
     <file>steam_landscape.png</file>
     <file>steam_logo.png</file>
     <file>steam_portrait.png</file>
+    <file alias="ui/app-icon.svg">ui/app-icon.svg</file>
+    <file alias="ui/back.svg">ui/back.svg</file>
+    <file alias="ui/block.svg">ui/block.svg</file>
+    <file alias="ui/broadcast.svg">ui/broadcast.svg</file>
+    <file alias="ui/browser.svg">ui/browser.svg</file>
+    <file alias="ui/camera.svg">ui/camera.svg</file>
+    <file alias="ui/chat.svg">ui/chat.svg</file>
+    <file alias="ui/check.svg">ui/check.svg</file>
+    <file alias="ui/chevron-down.svg">ui/chevron-down.svg</file>
+    <file alias="ui/close.svg">ui/close.svg</file>
+    <file alias="ui/copy.svg">ui/copy.svg</file>
+    <file alias="ui/door.svg">ui/door.svg</file>
+    <file alias="ui/enter.svg">ui/enter.svg</file>
+    <file alias="ui/eye.svg">ui/eye.svg</file>
+    <file alias="ui/forward.svg">ui/forward.svg</file>
+    <file alias="ui/gamepad.svg">ui/gamepad.svg</file>
+    <file alias="ui/globe.svg">ui/globe.svg</file>
+    <file alias="ui/headphones.svg">ui/headphones.svg</file>
+    <file alias="ui/heart.svg">ui/heart.svg</file>
+    <file alias="ui/home.svg">ui/home.svg</file>
+    <file alias="ui/layers.svg">ui/layers.svg</file>
+    <file alias="ui/leave.svg">ui/leave.svg</file>
+    <file alias="ui/link.svg">ui/link.svg</file>
+    <file alias="ui/lock.svg">ui/lock.svg</file>
+    <file alias="ui/mic.svg">ui/mic.svg</file>
+    <file alias="ui/mic-off.svg">ui/mic-off.svg</file>
+    <file alias="ui/minus.svg">ui/minus.svg</file>
+    <file alias="ui/moon.svg">ui/moon.svg</file>
+    <file alias="ui/more.svg">ui/more.svg</file>
+    <file alias="ui/people.svg">ui/people.svg</file>
+    <file alias="ui/play.svg">ui/play.svg</file>
+    <file alias="ui/plus.svg">ui/plus.svg</file>
+    <file alias="ui/power.svg">ui/power.svg</file>
+    <file alias="ui/refresh.svg">ui/refresh.svg</file>
+    <file alias="ui/remove-person.svg">ui/remove-person.svg</file>
+    <file alias="ui/search.svg">ui/search.svg</file>
+    <file alias="ui/send.svg">ui/send.svg</file>
+    <file alias="ui/shield.svg">ui/shield.svg</file>
+    <file alias="ui/sliders.svg">ui/sliders.svg</file>
+    <file alias="ui/speaker.svg">ui/speaker.svg</file>
+    <file alias="ui/speaker-off.svg">ui/speaker-off.svg</file>
+    <file alias="ui/tv.svg">ui/tv.svg</file>
   </qresource>
   <qresource prefix="/shaders">
     <file alias="FSR.glsl">shaders/FSR.glsl</file>

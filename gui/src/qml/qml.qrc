@@ -41,6 +41,19 @@
     <file>controls/NovaBackground.qml</file>
     <file>controls/GradientText.qml</file>
     <file>controls/GlassBar.qml</file>
+    <file>controls/Badge.qml</file>
+    <file>controls/Card.qml</file>
+    <file>controls/FocusChain.qml</file>
+    <file>controls/Icon.qml</file>
+    <file>controls/IconButton.qml</file>
+    <file>controls/PillButton.qml</file>
+    <file>controls/SectionLabel.qml</file>
+    <file>controls/Segmented.qml</file>
+    <file>controls/Stepper.qml</file>
+    <file>controls/Theme.qml</file>
+    <file>controls/Toggle.qml</file>
+    <file>controls/ToggleRow.qml</file>
+    <file>controls/qmldir</file>
     <file>controls/Button.qml</file>
     <file>controls/Menu.qml</file>
     <file>controls/CheckBox.qml</file>
