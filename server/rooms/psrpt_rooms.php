@@ -21,11 +21,15 @@
 //     ?v=1
 //   answer (application/json):
 //     {"v":1,"poll":15000,"rooms":[{"id","title","lang","game","host","players","max",
-//      "policy","web","invite","proto","since"}, ...]}
+//      "policy","control","web","invite","proto","title_id","cover","since"}, ...]}
 //
 // A host (POST, form fields):
 //     v=1 action=announce id=<16 hex> token=<32 hex> title= lang= game= host= players= max=
-//         policy=ask|watch|open web=0|1 invite=<psrpt://-/KEY[?meet=...]> proto=<protocol version>
+//         policy=ask|watch|open control=all|turns|host web=0|1 invite=<psrpt://-/KEY[?meet=...]>
+//         proto=<protocol version>
+//         title_id=<CUSA12345|PPSA12345, optional> cover=<https://image.api.playstation.com/..., optional>
+//   (control: everybody plays at once, one at a time, or only the host. A cover can only be
+//   a picture on Sony's image server, so that the list never makes a viewer load anything else.)
 //     v=1 action=remove id=<16 hex> token=<32 hex>
 //   answer: {"v":1,"ok":true,"poll":15000} or {"v":1,"ok":false,"error":"..."}
 //
@@ -167,9 +171,12 @@ if ($method !== 'POST') {
             'players' => $room['players'],
             'max' => $room['max'],
             'policy' => $room['policy'],
+            'control' => $room['control'] ?? 'all',
             'web' => $room['web'],
             'invite' => $room['invite'],
             'proto' => $room['proto'],
+            'title_id' => $room['title_id'] ?? '',
+            'cover' => $room['cover'] ?? '',
             'since' => max(0, $now - (int) $room['created']),
         ];
     }
@@ -223,14 +230,20 @@ $host = psrpt_rooms_text($_POST['host'] ?? null, 32);
 $players = psrpt_rooms_int($_POST['players'] ?? null, 1, 9);
 $max = psrpt_rooms_int($_POST['max'] ?? null, 2, 9);
 $policy = $_POST['policy'] ?? '';
+$control = $_POST['control'] ?? 'all';
 $web = $_POST['web'] ?? '0';
 $invite = $_POST['invite'] ?? '';
 $proto = psrpt_rooms_int($_POST['proto'] ?? null, 1, 255);
+$title_id = $_POST['title_id'] ?? '';
+$cover = $_POST['cover'] ?? '';
 if ($title === null || $title === '' || $host === null || $host === '' || $game === null
     || !is_string($lang) || !preg_match('/^([a-z]{2})?$/', $lang)
     || $players === null || $max === null || $players > $max || $proto === null
     || !in_array($policy, ['ask', 'watch', 'open'], true)
+    || !in_array($control, ['all', 'turns', 'host'], true)
     || ($web !== '0' && $web !== '1')
+    || !is_string($title_id) || !preg_match('/^([A-Z]{4}[0-9]{5})?$/', $title_id)
+    || !is_string($cover) || !preg_match('/^(https:\/\/image\.api\.playstation\.com\/[A-Za-z0-9._~\/%-]{1,300})?$/', $cover)
     // No address in a listed invite: the host is found through the meeting point
     || !is_string($invite) || !preg_match('/^psrpt:\/\/-\/[A-Za-z0-9_-]{22}(\?meet=[A-Za-z0-9._~:\/%-]{1,200})?$/', $invite)) {
     psrpt_rooms_answer(400, ['ok' => false, 'error' => 'malformed room']);
@@ -261,9 +274,12 @@ $room = [
     'players' => $players,
     'max' => $max,
     'policy' => $policy,
+    'control' => $control,
     'web' => $web === '1',
     'invite' => $invite,
     'proto' => $proto,
+    'title_id' => $title_id,
+    'cover' => $cover,
     'created' => $existing !== null ? (int) $existing['created'] : time(),
     't' => time(),
 ];

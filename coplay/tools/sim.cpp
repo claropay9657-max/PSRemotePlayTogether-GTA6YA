@@ -8,6 +8,7 @@
 //   coplay-sim stun                       print the address this machine has on the internet
 
 #include <coplay/client.h>
+#include <coplay/crypto.h>
 #include <coplay/host.h>
 #include <coplay/invite.h>
 #include <coplay/meet.h>
@@ -20,6 +21,7 @@
 #endif
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <csignal>
@@ -27,6 +29,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -85,6 +88,15 @@ static void Usage()
 		"      --closed            behave as if behind a router without a forwarded port: what\n"
 		"                          comes from an address that was not sent to first is dropped\n"
 		"      --no-address        print an invite without an address (psrpt://-/...)\n"
+		"      --public TITLE      a public room: put it on the list of --rooms (with --meet)\n"
+		"      --rooms URL         the list of public rooms (server/rooms/psrpt_rooms.php)\n"
+		"      --lang XX           the room's language (default en)\n"
+		"      --game NAME         the game the room says it plays (default \"Simulator\")\n"
+		"      --policy ask|watch|open  who gets in (default open); \"ask\" lets each one in\n"
+		"                          after --admit-after seconds, or refuses with --refuse\n"
+		"      --admit-after N     seconds before a guest that knocks is let in (default 3)\n"
+		"      --refuse            refuse every guest that knocks\n"
+		"      --max N             guests at most (default 4)\n"
 		"    Ends on SIGINT or SIGTERM like a host that stops sharing. On SIGUSR1 it ends like\n"
 		"    one that lost its console and is getting it back, so that the guests wait for it;\n"
 		"    killed (SIGKILL) it just goes silent.\n"
@@ -127,6 +139,10 @@ struct Options
 	bool voice = false;
 	bool chat = false;
 	bool guests_may_sleep = false;
+	std::string room_title, rooms, lang = "en", game = "Simulator", policy = "open";
+	int admit_after = 3;
+	bool refuse = false;
+	int max_guests = 4;
 	std::string cam;
 	std::string meet, stun;
 	/** The page for guests in a web browser; empty: no such guests. */
@@ -170,6 +186,14 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--voice") o.voice = true;
 		else if(a == "--chat") o.chat = true;
 		else if(a == "--guests-may-sleep") o.guests_may_sleep = true;
+		else if(a == "--public") { if(!value(o.room_title)) return false; }
+		else if(a == "--rooms") { if(!value(o.rooms)) return false; }
+		else if(a == "--lang") { if(!value(o.lang)) return false; }
+		else if(a == "--game") { if(!value(o.game)) return false; }
+		else if(a == "--policy") { if(!value(o.policy)) return false; }
+		else if(a == "--admit-after") { if(!value(v)) return false; o.admit_after = std::atoi(v.c_str()); }
+		else if(a == "--refuse") o.refuse = true;
+		else if(a == "--max") { if(!value(v)) return false; o.max_guests = std::atoi(v.c_str()); }
 		else if(a == "--no-video") o.no_video = true;
 		else if(a == "--press") o.press = true;
 		else if(!a.empty() && a[0] == '-') return false;
@@ -372,7 +396,7 @@ static bool CurlPost(const HttpRequest &request, HttpResponse &response, std::st
 		return false;
 	};
 	// Both go into a command line: nothing but what a URL and our form fields are made of
-	static const char kAllowed[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_~:/[]@=&";
+	static const char kAllowed[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_~:/[]@=&%";
 	if(request.url.find_first_not_of(kAllowed) != std::string::npos || request.body.find_first_not_of(kAllowed) != std::string::npos)
 		return fail("the meeting point's address has characters this tool does not pass on");
 	uint32_t seconds = (request.timeout_ms + 999) / 1000;
@@ -398,6 +422,31 @@ static bool CurlPost(const HttpRequest &request, HttpResponse &response, std::st
 	response.status = std::atoi(out.c_str() + line + 1);
 	response.body = out.substr(0, line);
 	return response.status != 0 || fail("no answer");
+}
+
+/** Form fields, each value percent-encoded, for a POST that CurlPost passes on as it is. */
+static std::string FormBody(const std::vector<std::pair<std::string, std::string>> &fields)
+{
+	static const char kHex[] = "0123456789ABCDEF";
+	std::string body;
+	for(const auto &field : fields)
+	{
+		if(!body.empty())
+			body += '&';
+		body += field.first + '=';
+		for(unsigned char c : field.second)
+		{
+			if(std::isalnum(c) || c == '-' || c == '.' || c == '_' || c == '~')
+				body += static_cast<char>(c);
+			else
+			{
+				body += '%';
+				body += kHex[c >> 4];
+				body += kHex[c & 15];
+			}
+		}
+	}
+	return body;
 }
 
 /** What --meet, --stun say. Without --meet nothing is asked. */
@@ -518,6 +567,18 @@ static int RunHost(const Options &o)
 		std::fflush(stdout);
 	};
 	config.guests_may_sleep = o.guests_may_sleep;
+	config.max_guests = static_cast<size_t>(std::max(1, std::min(o.max_guests, static_cast<int>(kMaxGuests))));
+	if(o.policy == "ask")
+		config.join_policy = JoinPolicy::Ask;
+	else if(o.policy == "watch")
+		config.join_policy = JoinPolicy::WatchFirst;
+	else if(o.policy != "open")
+	{
+		std::fprintf(stderr, "--policy: ask, watch or open\n");
+		return 2;
+	}
+	std::atomic<bool> knocked{false};
+	cb.on_pending_changed = [&] { knocked = true; };
 	cb.on_sleep_requested = [&](uint8_t, const std::string &name) {
 		{
 			std::lock_guard<std::mutex> lock(print_mutex);
@@ -681,11 +742,101 @@ static int RunHost(const Options &o)
 		}
 	}
 
+	// A public room on the list, announced now and then, and taken off at the end
+	const bool listed = !o.room_title.empty();
+	std::string room_id, room_token;
+	if(listed)
+	{
+		if(o.rooms.empty() || !config.meet.Enabled())
+		{
+			std::fprintf(stderr, "--public needs --rooms and a meeting point (--meet)\n");
+			return 2;
+		}
+		uint8_t raw[24];
+		RandomBytes(raw, sizeof(raw));
+		static const char kHex[] = "0123456789abcdef";
+		for(size_t i = 0; i < sizeof(raw); i++)
+			(i < 8 ? room_id : room_token) += std::string{ kHex[raw[i] >> 4], kHex[raw[i] & 15] };
+	}
+	auto room = [&](bool remove) {
+		Invite listed_invite; // no address: found through the meeting point
+		listed_invite.port = host.Port();
+		listed_invite.secret = config.secret;
+		listed_invite.meet = MeetUrlToInvite(config.meet.url);
+		std::vector<std::pair<std::string, std::string>> fields = {
+			{ "v", "1" }, { "action", remove ? "remove" : "announce" }, { "id", room_id }, { "token", room_token } };
+		if(!remove)
+		{
+			MixMode mode = host.GetMixMode();
+			fields.insert(fields.end(), {
+				{ "title", o.room_title }, { "lang", o.lang }, { "game", o.game }, { "host", config.name },
+				{ "players", std::to_string(1 + host.Guests().size()) }, { "max", std::to_string(1 + config.max_guests) },
+				{ "policy", o.policy },
+				{ "control", mode == MixMode::LastActive ? "turns" : mode == MixMode::HostOnly ? "host" : "all" },
+				{ "web", host.WebGuestsOn() ? "1" : "0" }, { "invite", EncodeInvite(listed_invite) },
+				{ "proto", std::to_string(kProtocolVersion) } });
+		}
+		HttpRequest request;
+		request.url = o.rooms;
+		request.body = FormBody(fields);
+		HttpResponse response;
+		std::string why;
+		bool ok = CurlPost(request, response, &why) && response.status == 200 && response.body.find("\"ok\":true") != std::string::npos;
+		std::lock_guard<std::mutex> lock(print_mutex);
+		if(!ok)
+			std::printf("[room] the list did not take it: %s\n", why.empty() ? response.body.c_str() : why.c_str());
+		std::fflush(stdout);
+		return ok;
+	};
+	if(listed && room(false))
+		std::printf("[room] \"%s\" is on the list of public rooms (%s)\n", o.room_title.c_str(), o.policy.c_str());
+	auto next_room = clock::now() + std::chrono::seconds(15);
+	size_t room_players = 1;
+	// Who knocks: since when, so that they are let in after a moment
+	std::map<uint64_t, clock::time_point> knocks;
+
 	auto next_chat = clock::now() + std::chrono::seconds(4);
 	int chat_count = 0;
 	while(!g_quit)
 	{
 		auto now = clock::now();
+		if(listed)
+		{
+			size_t players = 1 + host.Guests().size();
+			if(now >= next_room || players != room_players)
+			{
+				room_players = players;
+				next_room = now + std::chrono::seconds(15);
+				room(false);
+			}
+		}
+		if(knocked.exchange(false) || !knocks.empty())
+		{
+			std::vector<PendingGuest> pending = host.Pending();
+			for(const PendingGuest &p : pending)
+			{
+				if(knocks.emplace(p.id, now).second)
+				{
+					std::lock_guard<std::mutex> lock(print_mutex);
+					std::printf("[host] %s knocks%s\n", p.name.c_str(), p.web ? " from a web browser" : "");
+					std::fflush(stdout);
+				}
+				if(o.refuse || now - knocks[p.id] >= std::chrono::seconds(o.admit_after))
+				{
+					host.Admit(p.id, !o.refuse);
+					std::lock_guard<std::mutex> lock(print_mutex);
+					std::printf("[host] %s %s\n", p.name.c_str(), o.refuse ? "is not let in" : "is let in");
+					std::fflush(stdout);
+				}
+			}
+			for(auto it = knocks.begin(); it != knocks.end();)
+			{
+				bool still = false;
+				for(const PendingGuest &p : pending)
+					still = still || p.id == it->first;
+				it = still ? std::next(it) : knocks.erase(it);
+			}
+		}
 		if(o.seconds > 0 && now - start >= std::chrono::seconds(o.seconds))
 			break;
 
@@ -867,6 +1018,8 @@ static int RunHost(const Options &o)
 	if(voice_opus)
 		opus_encoder_destroy(voice_opus);
 #endif
+	if(listed)
+		room(true);
 #ifdef SIGUSR1
 	if(g_coming_back)
 	{
