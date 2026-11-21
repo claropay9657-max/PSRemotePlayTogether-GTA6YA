@@ -5,6 +5,8 @@
 
 #include <QObject>
 #include <QString>
+
+#include <functional>
 #include <QTimer>
 #include <QVariantList>
 
@@ -32,6 +34,18 @@ QString UrlFromSetting(const QString &setting);
 
 /** The languages a room can say it speaks, as [code, name in that language]. */
 QVariantList Languages();
+
+/**
+ * A picture of the game with this title id (CUSA12345, PPSA12345), from Sony's
+ * public catalog, which needs no login: the square key art on Sony's image
+ * server, as an address on https://image.api.playstation.com/, or empty when
+ * the catalog has none. Asked once per title id while the app runs; done is
+ * called later, and not at all once context is gone.
+ */
+void FindCover(const QString &title_id, QObject *context, std::function<void(const QString &cover)> done);
+
+/** Whether an address is a picture on Sony's image server that a room may show. */
+bool IsCover(const QString &address);
 
 } // namespace CoPlayRooms
 

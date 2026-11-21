@@ -480,7 +480,8 @@ DialogView {
                                         asynchronous: true
                                         sourceSize.width: 144
                                         sourceSize.height: 144
-                                        source: roomCard.modelData.cover || ""
+                                        // Sony's image server makes a small one
+                                        source: roomCard.modelData.cover ? roomCard.modelData.cover + "?w=192" : ""
                                     }
                                 }
 

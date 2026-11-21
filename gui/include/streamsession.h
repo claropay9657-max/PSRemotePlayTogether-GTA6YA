@@ -439,6 +439,7 @@ class StreamSession : public QObject
 		void CoPlayStopHost();
 		void CoPlayStartRoom(const StreamSessionConnectInfo &connect_info, size_t max_guests);
 		void CoPlayUpdateRoom();
+		void CoPlayFindCover();
 		void CoPlayUpdatePending();
 		void CoPlayGuestLost(coplay::DisconnectReason reason);
 		void CoPlayGuestQuit();

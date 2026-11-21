@@ -6,16 +6,23 @@
 #include <coplay/protocol.h>
 
 #include <QCoreApplication>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QLocale>
+#include <QPointer>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QVariantMap>
+
+#include <memory>
+#include <vector>
 
 // The list is small; whatever is much longer is something else
 static const qint64 kMaxListSize = 1024 * 1024;
@@ -93,6 +100,122 @@ QVariantList CoPlayRooms::Languages()
 	for(const auto &entry : list)
 		out.append(QVariant(QVariantList{ QString::fromLatin1(entry[0]), QString::fromUtf8(entry[1]) }));
 	return out;
+}
+
+// ------------------------------------------------------------------ covers
+//
+// Sony's catalog says for a title id which game it belongs to, with its pictures,
+// and answers without a login. The host's app asks it about the game on its
+// console and puts the address of the picture on the list; whoever looks at the
+// list loads the picture from Sony's image server, nothing else.
+
+static const qint64 kMaxCatalogSize = 2 * 1024 * 1024;
+
+bool CoPlayRooms::IsCover(const QString &address)
+{
+	// What the list itself takes (server/rooms/psrpt_rooms.php)
+	static const QRegularExpression pattern(QStringLiteral("^https://image\\.api\\.playstation\\.com/[A-Za-z0-9._~/%-]{1,300}$"));
+	return pattern.match(address).hasMatch();
+}
+
+/** The square key art ("MASTER") in an answer of the catalog, or empty. */
+static QString CoverIn(const QByteArray &body)
+{
+	const QJsonArray concepts = QJsonDocument::fromJson(body).array();
+	for(const QJsonValue &concept : concepts)
+	{
+		const QJsonArray images = concept.toObject().value(QStringLiteral("media")).toObject().value(QStringLiteral("images")).toArray();
+		for(const QJsonValue &image : images)
+		{
+			const QJsonObject o = image.toObject();
+			const QString url = o.value(QStringLiteral("url")).toString();
+			if(o.value(QStringLiteral("type")).toString() == QLatin1String("MASTER") && CoPlayRooms::IsCover(url))
+				return url;
+		}
+	}
+	return QString();
+}
+
+namespace
+{
+struct CoverLookup
+{
+	QString title_id;
+	/** Stores to ask, in turn: "de-DE", then "en-US". A game sold in one only has pictures there. */
+	QStringList markets;
+	std::vector<std::pair<QPointer<QObject>, std::function<void(const QString &)>>> waiting;
+};
+}
+
+/** Title id → picture (empty: the catalog has none). Only answers that arrived. */
+static QHash<QString, QString> covers_found;
+static QHash<QString, std::shared_ptr<CoverLookup>> covers_asked;
+
+static void FinishCover(const std::shared_ptr<CoverLookup> &lookup, const QString &cover, bool answered)
+{
+	if(answered)
+		covers_found.insert(lookup->title_id, cover);
+	covers_asked.remove(lookup->title_id);
+	for(auto &w : lookup->waiting)
+		if(w.first)
+			w.second(cover);
+}
+
+static void AskCatalog(const std::shared_ptr<CoverLookup> &lookup)
+{
+	const QString market = lookup->markets.takeFirst();
+	QUrl url(QStringLiteral("https://m.np.playstation.com/api/catalog/v2/titles/%1_00/concepts").arg(lookup->title_id));
+	QUrlQuery query;
+	query.addQueryItem(QStringLiteral("country"), market.section(QLatin1Char('-'), 1));
+	query.addQueryItem(QStringLiteral("language"), market);
+	// Without all three the catalog leaves the pictures out
+	query.addQueryItem(QStringLiteral("age"), QStringLiteral("99"));
+	url.setQuery(query);
+	QNetworkReply *reply = Network()->get(Request(url));
+	QObject::connect(reply, &QNetworkReply::finished, reply, [reply, lookup]() {
+		reply->deleteLater();
+		const bool answered = reply->error() == QNetworkReply::NoError;
+		QString cover;
+		if(answered)
+		{
+			const QByteArray body = reply->read(kMaxCatalogSize + 1);
+			if(body.size() <= kMaxCatalogSize)
+				cover = CoverIn(body);
+		}
+		if(cover.isEmpty() && !lookup->markets.isEmpty())
+		{
+			AskCatalog(lookup);
+			return;
+		}
+		FinishCover(lookup, cover, answered);
+	});
+}
+
+void CoPlayRooms::FindCover(const QString &title_id, QObject *context, std::function<void(const QString &)> done)
+{
+	static const QRegularExpression pattern(QStringLiteral("^[A-Z]{4}[0-9]{5}$"));
+	if(!pattern.match(title_id).hasMatch() || covers_found.contains(title_id))
+	{
+		const QString cover = covers_found.value(title_id);
+		QTimer::singleShot(0, context, [done, cover]() { done(cover); });
+		return;
+	}
+	if(auto asked = covers_asked.value(title_id))
+	{
+		asked->waiting.emplace_back(QPointer<QObject>(context), std::move(done));
+		return;
+	}
+	auto lookup = std::make_shared<CoverLookup>();
+	lookup->title_id = title_id;
+	// The store of the host's own country first, in its language; then the American one
+	const QString own = QLocale::system().name().replace(QLatin1Char('_'), QLatin1Char('-'));
+	static const QRegularExpression market(QStringLiteral("^[a-z]{2}-[A-Z]{2}$"));
+	if(market.match(own).hasMatch() && own != QLatin1String("en-US"))
+		lookup->markets.append(own);
+	lookup->markets.append(QStringLiteral("en-US"));
+	lookup->waiting.emplace_back(QPointer<QObject>(context), std::move(done));
+	covers_asked.insert(title_id, lookup);
+	AskCatalog(lookup);
 }
 
 // ------------------------------------------------------------------ the list
@@ -175,7 +298,7 @@ void CoPlayRoomList::Refresh(const QString &setting)
 			m[QStringLiteral("titleId")] = r.value(QStringLiteral("title_id")).toString().left(9);
 			// Only a picture on Sony's image server, as the list itself demands
 			const QString cover = r.value(QStringLiteral("cover")).toString();
-			m[QStringLiteral("cover")] = cover.startsWith(QLatin1String("https://image.api.playstation.com/")) ? cover : QString();
+			m[QStringLiteral("cover")] = CoPlayRooms::IsCover(cover) ? cover : QString();
 			list.append(m);
 		}
 		rooms = list;

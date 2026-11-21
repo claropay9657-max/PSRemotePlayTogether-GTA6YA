@@ -8,7 +8,8 @@
 import { PROTOCOL_VERSION } from './proto.js';
 
 export const DEFAULT_ROOMS_URL = 'https://gamernova.net/api/psrpt_rooms.php';
-const COVER_PREFIX = 'https://image.api.playstation.com/';
+// As the list itself takes it: nothing that could end the address inside CSS or HTML
+const COVER = /^https:\/\/image\.api\.playstation\.com\/[A-Za-z0-9._~\/%-]{1,300}$/;
 
 /** The languages a room can say it speaks, as the app offers them: [code, name in that language]. */
 export const LANGUAGES = [
@@ -66,7 +67,8 @@ export async function fetchRooms(url) {
       web: !!r.web,
       invite,
       compatible: Number(r.proto) === PROTOCOL_VERSION,
-      cover: cover.startsWith(COVER_PREFIX) ? cover : '',
+      // Sony's image server makes a small one
+      cover: COVER.test(cover) ? `${cover}?w=192` : '',
       since: Number(r.since) || 0,
     });
   }

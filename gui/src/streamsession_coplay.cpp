@@ -512,6 +512,7 @@ void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info
 	room.proto = coplay::kProtocolVersion;
 	coplay->room->Update(room);
 	CHIAKI_LOGI(GetChiakiLog(), "Play Together: public room \"%s\" is on the list", qPrintable(room.title));
+	CoPlayFindCover();
 }
 
 void StreamSession::CoPlayUpdateRoom()
@@ -527,10 +528,32 @@ void StreamSession::SetCoPlayRoomGame(const QString &game, const QString &title_
 	const QString id = TitleIdOrEmpty(title_id);
 	if(!coplay || !coplay->room || (coplay->room_info.game == game && coplay->room_info.title_id == id))
 		return;
+	const bool other_game = coplay->room_info.title_id != id;
 	coplay->room_info.game = game;
 	coplay->room_info.title_id = id;
+	if(other_game)
+		coplay->room_info.cover.clear();
 	CoPlayUpdateRoom();
+	if(other_game)
+		CoPlayFindCover();
 	emit CoPlayChanged();
+}
+
+/** The game's picture for the list, from Sony's catalog (no login), once it is known. */
+void StreamSession::CoPlayFindCover()
+{
+	if(!coplay || !coplay->room || coplay->room_info.title_id.isEmpty())
+		return;
+	const QString id = coplay->room_info.title_id;
+	CoPlayRooms::FindCover(id, this, [this, id](const QString &cover) {
+		if(!coplay || !coplay->room || coplay->room_info.title_id != id)
+			return;
+		CHIAKI_LOGI(GetChiakiLog(), "Play Together: Sony's catalog has %s for %s", cover.isEmpty() ? "no picture" : "a picture", qPrintable(id));
+		if(coplay->room_info.cover == cover)
+			return;
+		coplay->room_info.cover = cover;
+		CoPlayUpdateRoom();
+	});
 }
 
 bool StreamSession::GetCoPlayPublic() const

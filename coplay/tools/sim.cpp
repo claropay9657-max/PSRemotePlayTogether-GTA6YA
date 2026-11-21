@@ -92,6 +92,9 @@ static void Usage()
 		"      --rooms URL         the list of public rooms (server/rooms/psrpt_rooms.php)\n"
 		"      --lang XX           the room's language (default en)\n"
 		"      --game NAME         the game the room says it plays (default \"Simulator\")\n"
+		"      --title-id ID       the game's title id (PPSA12345), as a console reports it\n"
+		"      --cover URL         a picture of the game on image.api.playstation.com (the app\n"
+		"                          finds it in Sony's catalog by the title id)\n"
 		"      --policy ask|watch|open  who gets in (default open); \"ask\" lets each one in\n"
 		"                          after --admit-after seconds, or refuses with --refuse\n"
 		"      --admit-after N     seconds before a guest that knocks is let in (default 3)\n"
@@ -139,7 +142,7 @@ struct Options
 	bool voice = false;
 	bool chat = false;
 	bool guests_may_sleep = false;
-	std::string room_title, rooms, lang = "en", game = "Simulator", policy = "open";
+	std::string room_title, rooms, lang = "en", game = "Simulator", policy = "open", title_id, cover;
 	int admit_after = 3;
 	bool refuse = false;
 	int max_guests = 4;
@@ -190,6 +193,8 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--rooms") { if(!value(o.rooms)) return false; }
 		else if(a == "--lang") { if(!value(o.lang)) return false; }
 		else if(a == "--game") { if(!value(o.game)) return false; }
+		else if(a == "--title-id") { if(!value(o.title_id)) return false; }
+		else if(a == "--cover") { if(!value(o.cover)) return false; }
 		else if(a == "--policy") { if(!value(o.policy)) return false; }
 		else if(a == "--admit-after") { if(!value(v)) return false; o.admit_after = std::atoi(v.c_str()); }
 		else if(a == "--refuse") o.refuse = true;
@@ -774,7 +779,8 @@ static int RunHost(const Options &o)
 				{ "policy", o.policy },
 				{ "control", mode == MixMode::LastActive ? "turns" : mode == MixMode::HostOnly ? "host" : "all" },
 				{ "web", host.WebGuestsOn() ? "1" : "0" }, { "invite", EncodeInvite(listed_invite) },
-				{ "proto", std::to_string(kProtocolVersion) } });
+				{ "proto", std::to_string(kProtocolVersion) },
+				{ "title_id", o.title_id }, { "cover", o.cover } });
 		}
 		HttpRequest request;
 		request.url = o.rooms;
