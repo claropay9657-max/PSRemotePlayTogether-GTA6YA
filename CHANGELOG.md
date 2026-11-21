@@ -3,7 +3,7 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
-## Unreleased
+## 0.4.0
 
 - **New: go live on Twitch from the app, without OBS.** Set it up once under **Settings → Live streaming**: Twitch (or any other service that takes RTMP or RTMPS, such as YouTube or Kick), your stream key, the picture (720p or 1080p, 30 or 60 frames a second) and the bitrate. Then press **Go live** in the stream menu. The stream is what you see and hear: the game picture with the display on top of it (players, webcams, controllers, as arranged under Overlays & OBS), the game sound, the other players' voices and, if you like, your own microphone, each with its own volume. It never shows the stream menu, the chat or invites. The stream menu shows how long you are live, the upload rate and any pictures left out because the connection could not keep up; a lost connection is made again by itself.
 - **Every player goes live on their own.** Host and guests each stream their own view from their own computer, straight to Twitch. Nothing passes through a server of ours.

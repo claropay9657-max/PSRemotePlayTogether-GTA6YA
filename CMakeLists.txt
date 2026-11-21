@@ -46,8 +46,8 @@ set(CHIAKI_VERSION ${CHIAKI_VERSION_MAJOR}.${CHIAKI_VERSION_MINOR}.${CHIAKI_VERS
 # The version of PSRemotePlayTogether itself: what the app shows and what a release is
 # tagged with (v<this>). The numbers above stay those of the chiaki-ng it is built on.
 set(PSRPT_VERSION_MAJOR 0)
-set(PSRPT_VERSION_MINOR 3)
-set(PSRPT_VERSION_PATCH 3)
+set(PSRPT_VERSION_MINOR 4)
+set(PSRPT_VERSION_PATCH 0)
 set(PSRPT_VERSION ${PSRPT_VERSION_MAJOR}.${PSRPT_VERSION_MINOR}.${PSRPT_VERSION_PATCH})
 
 set(CPACK_PACKAGE_NAME "chiaki-ng")
