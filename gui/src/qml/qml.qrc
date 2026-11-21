@@ -31,6 +31,7 @@
     <file>settings/TwitchPage.qml</file>
     <file>settings/AlertsPage.qml</file>
     <file>settings/TwitchElementsPage.qml</file>
+    <file>settings/ViewerActionsPage.qml</file>
     <file>settings/NetworkPage.qml</file>
     <file>settings/ConsolesPage.qml</file>
     <file>settings/PsnPage.qml</file>

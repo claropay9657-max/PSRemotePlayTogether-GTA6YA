@@ -79,7 +79,9 @@ set(SOURCE_FILES
 	include/livealerts.h
 	src/livealerts.cpp
 	include/twitchelements.h
+	include/vieweractions.h
 	src/twitchelements.cpp
+	src/vieweractions.cpp
 	include/sounddecoder.h
 	src/sounddecoder.cpp
 	include/scenemusic.h

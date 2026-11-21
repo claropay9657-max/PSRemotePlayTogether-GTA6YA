@@ -92,6 +92,7 @@ class QmlBackend : public QObject
     Q_PROPERTY(QObject* alerts READ liveAlerts CONSTANT)
     // What the Twitch channel shows on the game picture: latest follower, goals, poll, chat, ...
     Q_PROPERTY(QObject* twitchElements READ twitchElementsObject CONSTANT)
+    Q_PROPERTY(QObject* viewerActions READ viewerActionsObject CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
     Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
     // A release newer than this build, found by the check at start; empty if there is none
@@ -238,6 +239,7 @@ public:
     QObject *twitchClient() const;
     QObject *liveAlerts() const;
     QObject *twitchElementsObject() const;
+    QObject *viewerActionsObject() const;
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
     QString updateVersion() const { return update_version; }
@@ -442,6 +444,7 @@ private:
     class TwitchClient *twitch = {};
     class LiveAlerts *live_alerts = {};
     class TwitchElements *twitch_elements = {};
+    class ViewerActions *viewer_actions = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};

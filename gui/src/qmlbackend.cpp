@@ -4,6 +4,7 @@
 #include "livealerts.h"
 #include "twitch.h"
 #include "twitchelements.h"
+#include "vieweractions.h"
 
 #include <coplay/invite.h>
 #include "qmlsettings.h"
@@ -428,6 +429,9 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     connect(this, &QmlBackend::sessionChanged, this, room_stream);
     twitch_elements = new TwitchElements(settings, twitch, live_controller, live_alerts, this);
     connect(twitch, &TwitchClient::Event, twitch_elements, &TwitchElements::OnTwitchEvent);
+    viewer_actions = new ViewerActions(settings, twitch, this);
+    connect(twitch, &TwitchClient::Event, viewer_actions, &ViewerActions::OnTwitchEvent);
+    connect(this, &QmlBackend::sessionChanged, viewer_actions, &ViewerActions::SetSession);
     // With the saved login, a moment after start (it reads the password store)
     QTimer::singleShot(3000, twitch, &TwitchClient::Start);
 

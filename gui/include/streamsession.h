@@ -320,6 +320,8 @@ class StreamSession : public QObject
 		bool rumble_haptics_on;
 		float PS_TOUCHPAD_MAX_X, PS_TOUCHPAD_MAX_Y;
 		ChiakiControllerState keyboard_state;
+		/** Viewer actions (vieweractions.h): a button pressed for a moment, on top of the player's own. */
+		ChiakiControllerState viewer_state;
 		ChiakiControllerState touch_state;
 		QMap<int, uint8_t> touch_tracker;
 		int8_t mouse_touch_id;
@@ -604,6 +606,8 @@ class StreamSession : public QObject
 		void SetCoPlayRoomGame(const QString &game, const QString &title_id);
 		/** The host's Twitch channel for the public room list, or empty: not streaming, or not shown. */
 		void SetCoPlayRoomStream(const QString &twitch_login);
+		/** What viewer actions press right now (idle to let go); goes out with the player's own input. */
+		void SetViewerInput(const ChiakiControllerState &state);
 		QString CoPlayRoomTwitch();
 		/** True once for each picture of the game the list of public rooms wants (any thread). */
 		bool TakeRoomPictureRequest() { return room_picture_wanted.fetchAndStoreRelaxed(0) != 0; }

@@ -46,6 +46,7 @@ DialogView {
         { key: "scenes", group: qsTr("Play Together"), title: qsTr("Stream scenes"), icon: "monitor", file: "ScenesPage.qml" },
         { key: "twitch", group: qsTr("Play Together"), title: qsTr("Twitch"), icon: "people", file: "TwitchPage.qml" },
         { key: "alerts", group: qsTr("Play Together"), title: qsTr("Alerts"), icon: "heart", file: "AlertsPage.qml" },
+        { key: "vieweractions", group: qsTr("Play Together"), title: qsTr("Viewer actions"), icon: "gamepad", file: "ViewerActionsPage.qml" },
         { key: "twitch_elements", group: qsTr("Play Together"), title: qsTr("Twitch elements"), icon: "tv", file: "TwitchElementsPage.qml" },
         { key: "network", group: qsTr("Play Together"), title: qsTr("Network & invites"), icon: "globe", file: "NetworkPage.qml" },
         { key: "consoles", group: qsTr("Consoles"), title: qsTr("Your consoles"), icon: "console", file: "ConsolesPage.qml" },

@@ -1017,6 +1017,14 @@ FocusScope {
                             onTriggered: Chiaki.alerts.paused = !Chiaki.alerts.paused
                         }
 
+                        PlayTogetherBar.MenuEntry {
+                            visible: !!Chiaki.viewerActions && Chiaki.viewerActions.enabled
+                            height: visible ? implicitHeight : 0
+                            iconName: "close"
+                            text: qsTr("Stop viewer actions")
+                            onTriggered: Chiaki.viewerActions.stopAll()
+                        }
+
                         PlayTogetherBar.MenuLine {}
 
                         PlayTogetherBar.MenuEntry {

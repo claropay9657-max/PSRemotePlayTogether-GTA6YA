@@ -8,6 +8,7 @@
 #include "livescenes.h"
 #include "livealerts.h"
 #include "twitch.h"
+#include "vieweractions.h"
 #include "twitchelements.h"
 #include "overlayserver.h"
 #include "presetsettings.h"
@@ -172,6 +173,11 @@ QObject *QmlBackend::liveAlerts() const
 QObject *QmlBackend::twitchElementsObject() const
 {
     return twitch_elements;
+}
+
+QObject *QmlBackend::viewerActionsObject() const
+{
+    return viewer_actions;
 }
 
 QObject *QmlBackend::overlayLayoutSettings() const

@@ -40,6 +40,19 @@ and returns only those; both clients check it again and build `https://www.twitc
 themselves, so no other link can get into a public list. The "Live" tag on a room's picture
 is something else: it means the room shares a live picture of the game.
 
+## Viewer actions
+
+**Settings → Viewer actions** (`gui/src/vieweractions.cpp`), off until switched on. An action is a
+button or stick direction held for a moment (100 ms to 2 s) and a trigger: channel points, bits
+(the action with the highest minimum reached), a sub, a follow or a raid. A channel point action is
+a custom reward that the app creates on the channel (Helix `channel_points/custom_rewards`, so only
+the app's own client can change it), keeps up to date and switches off while viewer actions are
+off. A redemption is marked `FULFILLED` once pressed, or `CANCELED` (points back) when it cannot
+run: off, no game, more than the limit per minute, or Stop all. The press goes into its own
+controller state on top of the player's (`StreamSession::SetViewerInput`), so it reaches the
+console like the player's own controller; in "one at a time" it counts only while that player is
+in control.
+
 ## Alerts
 
 `gui/src/livealerts.cpp` (`Chiaki.alerts`): follow, sub, resub, gift subs, bits, raid,
