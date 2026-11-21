@@ -32,6 +32,13 @@ Rectangle {
     readonly property var messages: active ? (session.coplayChat || []) : []
     readonly property int unread: active ? session.coplayChatUnread : 0
     readonly property var hostPlayer: players.find((p) => p.host) || null
+    /** Who controls: only the host. Guests watch then, whatever they may do otherwise. */
+    readonly property bool hostOnly: active && session.coplayMixMode === 2
+
+    /** Whether a player's buttons reach the console now: the host always, guests when allowed and not "Only me". */
+    function playsNow(p) {
+        return !!p && (!!p.host || (!!p.canControl && !hostOnly));
+    }
 
     /** Player tiles side by side: two in the side panel, more when it has the whole width. */
     property int tileColumns: 2
@@ -517,7 +524,7 @@ Rectangle {
                     }
 
                     Tag {
-                        visible: !tile.player.canControl
+                        visible: !panel.playsNow(tile.player)
                         color: Qt.rgba(0, 0, 0, 0.65)
                         text: qsTr("WATCHING")
                     }
@@ -566,9 +573,9 @@ Rectangle {
                         // Plays along, or only watches (the host always plays)
                         C.Icon {
                             visible: !tile.player.host
-                            iconName: tile.player.canControl ? "gamepad" : "eye"
+                            iconName: panel.playsNow(tile.player) ? "gamepad" : "eye"
                             size: 14
-                            color: tile.player.canControl ? "#cdb6ff" : C.Theme.textSoft
+                            color: panel.playsNow(tile.player) ? "#cdb6ff" : C.Theme.textSoft
                         }
 
                         Rectangle {
@@ -777,10 +784,10 @@ Rectangle {
                 }
 
                 // A public room open to newcomers: how they get in (the words of the room list)
-                RowLayout {
+                ColumnLayout {
                     Layout.fillWidth: true
                     visible: panel.publicRoom && !panel.session.coplayLocked
-                    spacing: 10
+                    spacing: 6
 
                     PanelLabel {
                         text: qsTr("Who gets in")
@@ -789,7 +796,7 @@ Rectangle {
                     C.Segmented {
                         Layout.fillWidth: true
                         implicitHeight: 36
-                        model: [qsTr("I let each in"), qsTr("Watch first"), qsTr("Open")]
+                        model: [qsTr("Ask to join"), qsTr("Join as viewers"), qsTr("Join and play")]
                         currentIndex: panel.publicRoom ? panel.session.coplayJoinPolicy : 0
                         onActivated: (index) => panel.session.coplayJoinPolicy = index
                         Accessible.name: qsTr("Who gets in")
@@ -895,10 +902,18 @@ Rectangle {
                 C.Segmented {
                     Layout.fillWidth: true
                     implicitHeight: 38
-                    model: [qsTr("All at once"), qsTr("One at a time"), qsTr("Only me")]
+                    model: [qsTr("Together"), qsTr("One at a time"), qsTr("Only me")]
                     Accessible.name: qsTr("Who controls")
                     currentIndex: panel.hosting ? panel.session.coplayMixMode : 0
                     onActivated: (index) => panel.session.coplayMixMode = index
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 12
+                    color: C.Theme.textDim
+                    text: [qsTr("Everybody's buttons count at the same time."), qsTr("Whoever moves takes over; the others rest."), qsTr("Your friends watch.")][panel.hosting ? panel.session.coplayMixMode : 0] || ""
                 }
             }
 
@@ -1281,6 +1296,8 @@ Rectangle {
                         return "";
                     if (p.host)
                         return qsTr("Host");
+                    if (panel.hostOnly)
+                        return panel.hosting ? qsTr("Watching · only you play") : qsTr("Watching · only the host plays");
                     if (p.web)
                         return p.canControl ? qsTr("From a web browser · plays along") : qsTr("From a web browser · watching");
                     return p.canControl ? qsTr("Plays along") : qsTr("Watching");
@@ -1303,7 +1320,8 @@ Rectangle {
         MenuEntry {
             readonly property bool plays: !!playerMenu.player && playerMenu.player.canControl
             visible: panel.hosting
-            enabled: visible
+            // While only the host controls, letting somebody play would change nothing yet
+            enabled: visible && !panel.hostOnly
             iconName: plays ? "eye" : "gamepad"
             text: plays ? qsTr("Only let them watch") : qsTr("Let them play")
             onTriggered: panel.session.coplaySetCanControl(playerMenu.slot, !plays)

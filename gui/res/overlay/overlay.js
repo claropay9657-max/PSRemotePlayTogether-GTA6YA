@@ -184,6 +184,8 @@
     });
 
     const oneAtATime = state.mixMode === 1;
+    // Guests watch while only the host plays ("Only me"), whatever they may do otherwise
+    const watching = (p) => !p.host && (!p.canControl || state.mixMode === 2);
     let playerIndex = 0;
     wanted.forEach(function (w) {
       const card = cards.get(w.key) || createCard(w.key);
@@ -201,7 +203,7 @@
         const showCam = c.cams && p.camera;
         card.el.className = 'card player'
           + (p.inControl ? ' in-control' : '')
-          + (!p.canControl ? ' watching' : '')
+          + (watching(p) ? ' watching' : '')
           + (oneAtATime && !p.inControl ? ' waiting' : '')
           + (p.you ? ' you' : '')
           + (p.talking ? ' talking' : '')
@@ -236,7 +238,7 @@
 
         card.tags.textContent = '';
         if (p.host) card.tags.append(el('span', 'tag host', 'Host'));
-        if (!p.canControl) card.tags.append(el('span', 'tag', 'Watching'));
+        if (watching(p)) card.tags.append(el('span', 'tag', 'Watching'));
         else if (p.inControl && (oneAtATime || state.mixMode === 2)) card.tags.append(el('span', 'tag control', 'In control'));
         // Controller charge: 0..100 percent, 254 = on a cable, 255 or nothing = unknown
         if (c.battery && typeof p.battery === 'number' && p.battery !== 255) {

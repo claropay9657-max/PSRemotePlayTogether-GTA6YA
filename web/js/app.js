@@ -191,8 +191,8 @@ function showRoomsUpdated() {
     : roomsLoading ? 'Loading…' : '';
 }
 
-const CONTROL = { all: 'Everybody plays at once', turns: 'One plays at a time', host: 'Only the host plays' };
-const POLICY = { ask: 'Host lets you in', watch: 'Watch first', open: 'Open' };
+const CONTROL = { all: 'Everybody plays together', turns: 'One plays at a time', host: 'Only the host plays' };
+const POLICY = { ask: 'Ask to join', watch: 'Join as viewer', open: 'Join and play' };
 
 /** How long a room has been open, as the app says it. */
 function openFor(seconds) {
@@ -982,7 +982,9 @@ function playersNow() {
     // Of the others the page cannot tell whether they came with a browser; of itself it can
     web: p.slot === s.yourSlot,
     host: p.host,
-    canControl: p.canControl,
+    // Guests watch while only the host plays ("Only me"), whatever they may do otherwise
+    canControl: p.canControl && (p.host || s.mixMode !== P.MIX_HOST_ONLY),
+    onlyHost: !p.host && s.mixMode === P.MIX_HOST_ONLY,
     inControl: p.inControl,
     voice: (p.media & P.MEDIA_VOICE) !== 0,
     muted: (p.media & P.MEDIA_MUTED) !== 0,

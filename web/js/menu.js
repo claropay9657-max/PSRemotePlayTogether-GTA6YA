@@ -807,6 +807,7 @@ export class StreamMenu {
     const text = el('div', 'mmenu-who');
     let state = p.canControl ? 'Plays along' : 'Watching';
     if (p.host) state = 'Host';
+    else if (p.onlyHost) state = 'Watching · only the host plays';
     else if (p.web) state = p.canControl ? 'From a web browser · plays along' : 'From a web browser · watching';
     text.append(el('div', 'mmenu-name', name), el('div', 'mmenu-state', state));
     head.append(face('mmenu-face', p), text);

@@ -895,7 +895,7 @@ FocusScope {
                         }
 
                         FilterCheck {
-                            text: qsTr("Only rooms I get into right away")
+                            text: qsTr("Hide rooms that ask to join")
                             checked: rooms.openOnly
                             onClicked: rooms.openOnly = checked
                         }
@@ -1058,7 +1058,7 @@ FocusScope {
                 wrapMode: Text.WordWrap
                 font.pixelSize: 13
                 color: C.Theme.textDim
-                text: qsTr("Sessions their hosts want to be found. Join one like with an invite: you connect to the host directly. Some hosts let each player in themselves, others let you watch first.")
+                text: qsTr("Sessions their hosts want to be found. Join one like with an invite: you connect to the host directly. Some rooms ask to join first; in others you join as a viewer or join and play.")
             }
 
             // Switched off, not readable, nothing there, nothing that matches
@@ -1346,13 +1346,13 @@ FocusScope {
                                         tone: "play"
                                         text: roomCard.modelData.control === "turns" ? qsTr("One plays at a time")
                                             : roomCard.modelData.control === "host" ? qsTr("Only the host plays")
-                                            : qsTr("Everybody plays at once")
+                                            : qsTr("Everybody plays together")
                                     }
                                     C.Badge {
                                         small: true
                                         tone: "door"
-                                        text: roomCard.modelData.policy === "ask" ? qsTr("Host lets you in")
-                                            : roomCard.modelData.policy === "watch" ? qsTr("Watch first") : qsTr("Open")
+                                        text: roomCard.modelData.policy === "ask" ? qsTr("Ask to join")
+                                            : roomCard.modelData.policy === "watch" ? qsTr("Join as viewer") : qsTr("Join and play")
                                     }
                                     C.Badge {
                                         small: true

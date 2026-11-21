@@ -3,6 +3,12 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.3.1
+
+- **Clearer choices for who gets in.** A public room now offers **Ask to join** (you approve each player first), **Join as viewers** (they play once you allow it) and **Join and play** (no approval, they play right away), each with a line that says what it means. The stream menu and the list of public rooms use the same words, so a room in the list shows *Ask to join*, *Join as viewer* or *Join and play*, and the filter is **Hide rooms that ask to join**. Before, "Everybody, playing at once" meant "right away" while **All at once** under Who controls meant "at the same time", and "Open" sat oddly next to **Open to newcomers**.
+- **Who controls says what it does.** The choices are **Together**, **One at a time** and **Only me**, with a line under them on the Host page and in the stream menu: everybody's buttons count at the same time, whoever moves takes over while the others rest, or your friends watch. The list says *Everybody plays together*.
+- **"Only me" shows everybody else as watching.** While only the host controls, the other players show as watching in the stream menu, on the game picture, in the OBS overlay and in the browser, with "only the host plays" in their menu. **Let them play** is dimmed until the host lets others control again, and the Host page says that everybody watches either way.
+
 ## 0.3.0
 
 - **A new look.** The whole app is redesigned: the start page with its two doors, **Host** and **Join**, the Host and Join pages, the stream menu, the settings and every dialog. In the game, Play Together sits in a panel at the side (who knocks, who controls, the players with their webcams, your voice and webcam, the chat), with sound, picture, quality and overlays in a bar at the bottom. Everything works with a controller as well as with a mouse. The page for browsers looks the same.

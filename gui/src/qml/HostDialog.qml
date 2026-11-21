@@ -59,9 +59,11 @@ DialogView {
     }
     readonly property bool roomWeb: !!Chiaki.settings.coplayWebSupported && !!Chiaki.settings.coplayWebGuests
     /** How the room is played, by Chiaki.settings.coplayMixMode, in the words of the room list. */
-    readonly property var controlNames: [qsTr("Everybody plays at once"), qsTr("One plays at a time"), qsTr("Only the host plays")]
+    readonly property var controlNames: [qsTr("Everybody plays together"), qsTr("One plays at a time"), qsTr("Only the host plays")]
     /** How one gets in, by Chiaki.settings.coplayJoinPolicy, in the words of the room list. */
-    readonly property var doorNames: [qsTr("Host lets you in"), qsTr("Watch first"), qsTr("Open")]
+    readonly property var doorNames: [qsTr("Ask to join"), qsTr("Join as viewer"), qsTr("Join and play")]
+    /** What each way of controlling means, under the choice. */
+    readonly property var controlHints: [qsTr("Everybody's buttons count at the same time."), qsTr("Whoever moves takes over; the others rest."), qsTr("Your friends watch.")]
     readonly property string controlName: controlNames[Chiaki.settings.coplayMixMode] || controlNames[0]
     readonly property string guestsText: Chiaki.settings.coplayMaxGuests === 1 ? qsTr("1 friend") : qsTr("Up to %1 friends").arg(Chiaki.settings.coplayMaxGuests)
 
@@ -727,9 +729,9 @@ DialogView {
 
                                             Repeater {
                                                 model: [
-                                                    { icon: "door", text: qsTr("I let each player in") },
-                                                    { icon: "eye", text: qsTr("Everybody, watching until I let them play") },
-                                                    { icon: "people", text: qsTr("Everybody, playing at once") },
+                                                    { icon: "door", text: qsTr("Ask to join"), sub: qsTr("You approve each player first") },
+                                                    { icon: "eye", text: qsTr("Join as viewers"), sub: qsTr("They play once you allow it") },
+                                                    { icon: "people", text: qsTr("Join and play"), sub: qsTr("No approval, they play right away") },
                                                 ]
 
                                                 ChoiceCard {
@@ -740,6 +742,7 @@ DialogView {
                                                     compact: true
                                                     chosen: Chiaki.settings.coplayJoinPolicy === index
                                                     title: modelData.text
+                                                    subtitle: modelData.sub
                                                     onClicked: Chiaki.settings.coplayJoinPolicy = index
 
                                                     C.Icon {
@@ -749,6 +752,16 @@ DialogView {
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        // "Only me" leaves nobody else at the controller, whatever the door says
+                                        Label {
+                                            Layout.fillWidth: true
+                                            visible: Chiaki.settings.coplayMixMode === 2
+                                            wrapMode: Text.WordWrap
+                                            color: C.Theme.textDim
+                                            font.pixelSize: 12
+                                            text: qsTr("While only you control (Who controls: Only me), everybody watches either way.")
                                         }
                                     }
 
@@ -884,9 +897,17 @@ DialogView {
 
                                         C.Segmented {
                                             Layout.fillWidth: true
-                                            model: [qsTr("All at once"), qsTr("One at a time"), qsTr("Only me")]
+                                            model: [qsTr("Together"), qsTr("One at a time"), qsTr("Only me")]
                                             currentIndex: Chiaki.settings.coplayMixMode
                                             onActivated: (index) => Chiaki.settings.coplayMixMode = index
+                                        }
+
+                                        Label {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                            color: C.Theme.textDim
+                                            font.pixelSize: 12
+                                            text: dialog.controlHints[Chiaki.settings.coplayMixMode] || dialog.controlHints[0]
                                         }
                                     }
                                 }

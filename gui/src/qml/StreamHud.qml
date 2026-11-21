@@ -355,7 +355,8 @@ Item {
                                 }
 
                                 Text {
-                                    visible: hud.shared && !chip.modelData.canControl
+                                    // Not allowed to play, or only the host plays ("Only me")
+                                    visible: hud.shared && !chip.modelData.host && (!chip.modelData.canControl || hud.session.coplayMixMode === 2)
                                     color: "white"
                                     opacity: 0.6
                                     font.pixelSize: 9

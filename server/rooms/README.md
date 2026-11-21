@@ -74,7 +74,7 @@ reads another one when `DEFAULT_ROOMS_URL` in `web/js/rooms.js` names it.
 | `host` | The host's name. |
 | `initials`, `faces` | Who plays: one letter for each player, the host first (`?` for a player without a name), and for each the name of their picture on the list, or empty. Initials only, never the other players' names; a picture only where a player has chosen one in the app. The list serves the pictures itself, at `?v=1&face=<id>&h=<name>`, as JPEGs of at most 128×128. |
 | `players`, `max` | How many are in the session, the host included, and how many fit. |
-| `policy` | Who gets in: `ask` (the host lets each player in), `watch` (everybody, watching until the host lets them play), `open` (everybody, playing at once). |
+| `policy` | Who gets in: `ask` (the host lets each player in), `watch` (everybody, watching until the host lets them play), `open` (everybody, playing right away). |
 | `control` | Who controls: `all` at once, `turns` one at a time, or only the `host`. |
 | `web` | Whether browsers can join. |
 | `invite` | `psrpt://-/KEY`, plus `?meet=` when the host uses another meeting point. |

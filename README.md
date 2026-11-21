@@ -171,8 +171,8 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
 
 1. Register your console as in any Remote Play app: your PSN account and the PIN from the console's Remote Play settings.
 2. Press **Host…** on the start page. Everything about the session is set there, before it starts:
-   - **Private**, only friends you send your invite to, or **Public**, listed for everybody (see [Public rooms](#public-rooms)). A public room also gets a title, a language, and who gets in: you let each player in, everybody but watching until you let them play, or everybody playing at once.
-   - How many friends, and who controls: all at once, one at a time, or only you while the others watch.
+   - **Private**, only friends you send your invite to, or **Public**, listed for everybody (see [Public rooms](#public-rooms)). A public room also gets a title, a language, and **who gets in**: **Ask to join** (you approve each player first), **Join as viewers** (they play once you allow it), or **Join and play** (no approval, they play right away).
+   - How many friends, and **who controls**: **Together** (everybody's buttons count at the same time), **One at a time** (whoever moves takes over while the others rest), or **Only me** (your friends watch).
    - Whether friends without the app may join from a web browser, and whether guests may send the console to sleep when they leave.
    - **I play on the TV** if you watch the console on the TV and the computer should only send your controller and feed the overlays. Friends still get picture and sound.
 3. Copy an invite on the same page and send it: for a friend over the internet, in the same network, over IPv6, or a link for a web browser. A public room has an invite of its own there, to send friends straight to it.
@@ -246,10 +246,10 @@ It can be switched off on the **Host…** page (**Browsers allowed**), and the p
 
 A session can be found by people you have never sent an invite to. Choose **Public** on the **Host…** page and give the room a title and a language; the game that runs on the console is shown by itself, with its picture from Sony's public catalog.
 
-- **Finding one:** **Join… → Public rooms** in the app, or [the page for web browsers](https://crypto90.github.io/PSRemotePlayTogether/) without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms where the host lets each player in; the app also sorts them by players, free places or age. Every room shows the game, who plays and how many, who controls (everybody at once, one at a time, or only the host), and whether browsers are welcome.
+- **Finding one:** **Join… → Public rooms** in the app, or [the page for web browsers](https://crypto90.github.io/PSRemotePlayTogether/) without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms that ask to join; the app also sorts them by players, free places or age. Every room shows the game, who plays and how many, who controls (everybody together, one at a time, or only the host), how you get in (ask to join, join as viewer, or join and play), and whether browsers are welcome.
 - **Live:** every 45 seconds the host's app sends a small picture of the game, so the list shows what is happening right now, with the game's cover in the corner. **Live picture in the list** on the Host page switches it off; in streamer mode it is always off.
 - **Who plays:** each player as a small circle, with the picture they chose in the app, or the first letter of their name. The list never gets the other players' names.
-- **Getting in** works like with an invite: straight to the host, nothing passes through the list. If the host lets each player in, you wait at the door until they do.
+- **Getting in** works like with an invite: straight to the host, nothing passes through the list. If the room asks to join, you wait at the door until the host lets you in.
 - **As the host** you see who knocks, as a note on the game picture and in the stream menu, and press **Let in** or **No**. In the stream menu the room can be **Closed to newcomers** (it leaves the list; players who were in before can come back), and a click on a player removes them, with **Remove and block** for the rest of the session.
 - **What the list shows about you:** the room's title and language, the game and its live picture, your name in the app, the players' pictures or initials, and an invite: the room has a key of its own, new for every public session, and your private invites stay private. The invite names no address, but players connect to your computer directly, as with every invite, and so learn its internet address. In a public room that can be anybody who reads the list.
 
@@ -388,7 +388,7 @@ The IP addresses of the computers that ask it, like any web server. It cannot re
 It is the key to your session, so give it only to the people who should join. Everything between host and guests is encrypted with it, and **New invites…** under **Settings → Network & invites** makes old ones stop working.
 
 **Can strangers get into my session?**
-Only into a public room, and only as you set it up: with **I let each player in**, nobody sees or plays anything before you let them in. Your private invites never appear on the list; a public room has a key of its own, which is new for every public session. **Closed to newcomers** in the stream menu takes the room off the list.
+Only into a public room, and only as you set it up: with **Ask to join**, nobody sees or plays anything before you let them in. Your private invites never appear on the list; a public room has a key of its own, which is new for every public session. **Closed to newcomers** in the stream menu takes the room off the list.
 
 **Nothing shows on the game picture on Windows or Linux?**
 The display on the game picture needs the Vulkan renderer there, which is the default: **Settings → Picture → Renderer**.
