@@ -158,6 +158,15 @@ DialogView {
                           : qsTr("A public room needs the meeting point, which is switched off in the Play Together settings (Network).")
                 }
 
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 40
+                    visible: dialog.publicRoom && dialog.roomsOn
+                    wrapMode: Text.WordWrap
+                    opacity: 0.7
+                    text: qsTr("Players connect to your computer directly, as with every invite, and so learn its internet address. In a public room that can be anybody who reads the list. Your private invites stay private.")
+                }
+
                 GridLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: 40
