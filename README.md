@@ -258,6 +258,7 @@ A session can be found by people you have never sent an invite to. Choose **Publ
 
 - **Finding one:** **Join… → Public rooms** in the app, or [the page for web browsers](https://crypto90.github.io/PSRemotePlayTogether/) without an invite. Search by title, game, host or language, pick a language, and hide full rooms or rooms that ask to join; the app also sorts them by players, free places or age. Every room shows the game, who plays and how many, who controls (everybody together, one at a time, or only the host), how you get in (ask to join, join as viewer, or join and play), and whether browsers are welcome.
 - **Live:** every 45 seconds the host's app sends a small picture of the game, so the list shows what is happening right now, with the game's cover in the corner. **Live picture in the list** on the Host page switches it off; in streamer mode it is always off.
+- **Live on Twitch:** with **Show my stream in the room list** (Settings → Twitch, off by default), a room shows **On Twitch** while you stream, host or guest, with a **Watch** button for each channel. **Only rooms streaming on Twitch** finds them. The list keeps only channel names; the links to twitch.tv are made by the app and the page.
 - **Who plays:** each player as a small circle, with the picture they chose in the app, or the first letter of their name. The list never gets the other players' names.
 - **Getting in** works like with an invite: straight to the host, nothing passes through the list. If the room asks to join, you wait at the door until the host lets you in.
 - **As the host** you see who knocks, as a note on the game picture and in the stream menu, and press **Let in** or **No**. In the stream menu the room can be **Closed to newcomers** (it leaves the list; players who were in before can come back), and a click on a player removes them, with **Remove and block** for the rest of the session.
@@ -305,7 +306,15 @@ The stream key is kept in the macOS keychain, the Windows Credential Manager or 
 
 **Stream scenes.** For the moments that are not the game: **Starting soon** (countdown), **Lobby** (everybody's webcams), **Be right back**, **Play with us** (the room and a QR code to join), **Technical difficulties** and **Thanks for watching**. Pick one under **Scenes** in the stream menu and it takes the place of the game picture in your stream; the app fills in the players, the game, the room and the times. **Settings → Stream scenes** takes your channel, the next stream and the texts. In OBS each scene is a Browser Source of the overlay server (`http://localhost:9412/scene/starting`, …; `/scene/current` follows the stream menu). More in [docs/stream-scenes.md](docs/stream-scenes.md).
 
+<div align="center">
+  <img src="docs/images/screenshots/stream-scenes.jpg" alt="Two stream scenes: Starting soon with a countdown and who is in the room, and Thanks for watching with the game, the time played together and the players" width="820">
+</div>
+
 **Twitch.** Log in under **Settings → Twitch** (you confirm a code on twitch.tv; the app never sees your password) and your channel comes to life on the stream: an **alert** for every follow, sub, cheer, raid, channel point reward and more, each with its own card and sound, one after the other (**Settings → Alerts**, with a Test for each); and **Twitch elements** on the game picture, each switched on and placed by itself: latest follower, sub, bits and raid, viewers and uptime, goals, the hype train, polls and predictions while they run, the recent events, Twitch chat (**Settings → Twitch elements**). Everything shows in your own stream and in OBS alike (`/alerts` and the overlay page), and **Export for OBS** saves all of it as one scene collection to import. Starting soon, Be right back and Thanks for watching come with their own music, or yours. More in [docs/twitch.md](docs/twitch.md).
+
+<div align="center">
+  <img src="docs/images/screenshots/twitch-elements.jpg" alt="Twitch elements on the game picture: goals, hype train, poll, prediction, latest follower, sub and bits, viewers and uptime, Twitch chat and the recent events" width="820">
+</div>
 
 ## 🎥 Streaming with OBS
 
