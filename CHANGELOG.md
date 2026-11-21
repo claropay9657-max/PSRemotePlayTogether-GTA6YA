@@ -3,6 +3,14 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.2.1
+
+- **Fixed: no note for new chat messages.** While the chat was closed, a message from somebody else never showed on the game picture in the app, although the option for it was on. It does now, for a few seconds at the bottom left, as it already did in the browser.
+- **Guests are no longer asked about the console's sleep.** Leaving a session asked every guest whether the console should go to sleep, and the answer did nothing: only the host can do that. Guests are not asked any more.
+- **New: guests may put the console to sleep, if you say so.** **Play Together → Guests may put the console to sleep when they leave**, off by default. With it on, a guest who leaves is asked, in the app and in the browser, and "Sleep" ends the session for everybody. Waking the console stays the host's: a session only exists once the host's app is connected.
+- **One place for each thing.** Joining a friend, switching sharing on, "I play on the TV" and the invites are on the start page; the Play Together page no longer repeats them and is about the settings: your profile, how your console is shared, voice, webcam and overlays. (In a narrow window, where the start page has no room for them, they are on the Play Together page instead.) **Copy invite** on the start page now offers every invite, like the stream menu does: for a friend over the internet, in the same network, over IPv6, or without the app.
+- **In the browser:** when a controller goes away on a phone or tablet, the controls on the screen come back.
+
 ## 0.2.0
 
 - **Join from a web browser.** A friend without the app opens a link in Chrome, Edge, Firefox or Safari, plugs in a controller and plays along: same picture and sound, voice chat, text chat with link previews and emoji, webcams (their own too), a player picture, rumble. Nothing to install, no account. Without a controller the keyboard stands in, and phones and tablets get controls on the screen.

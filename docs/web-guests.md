@@ -37,6 +37,7 @@ server only helps the two find each other.
 | Player pictures | shown, and a browser guest can choose one of its own |
 | The display on the game picture, the stream menu, chat, options | the app's, see below |
 | Controller only (no picture and sound) | yes, like in the app |
+| Putting the console to sleep when leaving | asked like in the app, where the host has allowed it for guests |
 | Touchpad, motion sensors, adaptive triggers, light bar | with a DualSense the browser opens directly (WebHID: Chrome and Edge); new and little tested |
 | A host's forwarded port | a second one, for browsers (see "Routers" below) |
 

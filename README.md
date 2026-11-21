@@ -148,9 +148,11 @@ Guests need **no PlayStation and no PSN account**. The invite contains the host'
 ### Share your console
 
 1. Register your console as in any Remote Play app: your PSN account and the PIN from the console's Remote Play settings.
-2. Switch on **Share your console** and choose how the controller is shared (under **Profile, voice, webcam & overlays…**).
-3. Copy the invite and send it to your friends.
+2. Switch on **Share your console** and choose how the controller is shared (under **Profile & settings…**).
+3. Press **Copy invite**, choose who it is for (a friend over the internet, in the same network, or without the app), and send it.
 4. Press **Play**. Friends can join as long as you are connected.
+
+When a guest leaves, the console stays as it is: only you send it to sleep. If you want guests to be able to do that too, for example a friend who plays on while you are away, switch on **Guests may put the console to sleep when they leave** on the same page.
 
 <div align="center">
   <img src="docs/images/screenshots/start-page.jpg" alt="The start page: your console, joining a friend, sharing your console and Controller only" width="820">
@@ -179,7 +181,7 @@ For this the app asks a STUN server for your address on the internet (Google's b
 
 ### Join a friend
 
-Paste the invite on the start page and press **Join**. Or from the command line:
+Paste the invite on the start page and press **Join**. Tick **With my controller only** if you sit in front of the same TV and need no picture or sound. Or from the command line:
 
 ```bash
 PSRemotePlayTogether --name Alex join "psrpt://host.example.org:9410/…"
@@ -224,7 +226,7 @@ You do not need friends in the session to use this for your stream.
 
 - **No capture card needed.** The game picture arrives on your computer through Remote Play, so OBS can capture the app's window directly, in Remote Play quality (up to 1080p).
 - **Controller visualization.** The overlay shows your controller live: buttons, sticks and triggers. With friends in the session it shows everybody's.
-- **Or play on the TV.** With **Controller only** the computer shows no picture and only sends your controller to the console and feeds the overlay. The picture for your stream then comes from your own capture, for example a capture card.
+- **Or play on the TV.** With **I play on the TV** (controller only) the computer shows no picture and only sends your controller to the console and feeds the overlay. The picture for your stream then comes from your own capture, for example a capture card.
 
 **Setting up the overlay**
 
