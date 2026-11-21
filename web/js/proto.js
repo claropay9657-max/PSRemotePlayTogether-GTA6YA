@@ -10,6 +10,8 @@ export const PROTOCOL_VERSION = 4;
 
 export const PT = {
   Hello: 0x01,
+  /** The host heard the Hello and lets this player in by hand: keep asking, and wait. */
+  Waiting: 0x06,
   Welcome: 0x02,
   Reject: 0x03,
   Input: 0x10,
@@ -38,6 +40,10 @@ export const PT = {
 
 export const REJECT_FULL = 1;
 export const REJECT_VERSION = 2;
+/** The host did not let this player in, or removed and blocked it. */
+export const REJECT_REFUSED = 3;
+/** The host has closed the session to newcomers. */
+export const REJECT_LOCKED = 4;
 
 export const BYE_QUIT = 0;
 export const BYE_KICKED = 1;

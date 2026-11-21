@@ -17,6 +17,7 @@ import { OverlayOptions } from './options.js';
 import { KEYBOARD_MAP, Pad, controllerName } from './pad.js';
 import { HUD_KEYS, HUD_PRESETS, PresetSettings } from './presets.js';
 import * as P from './proto.js';
+import { DEFAULT_ROOMS_URL, LANGUAGES, fetchRooms, filterRooms, languageName } from './rooms.js';
 import { JoinError, Session } from './session.js';
 import { TouchControls } from './touch.js';
 import { VideoPlayer } from './video.js';
@@ -24,6 +25,11 @@ import { VideoPlayer } from './video.js';
 const $ = (id) => document.getElementById(id);
 const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+// Somebody trying things out on their own machine can point the page at a list and a
+// meeting point of their own: ?rooms=…&meet=… (only there)
+const PARAMS = new URLSearchParams(location.search);
+const ROOMS_URL = (LOCAL && PARAMS.get('rooms')) || DEFAULT_ROOMS_URL;
+const LOCAL_MEET = LOCAL ? PARAMS.get('meet') || '' : '';
 /** What opens the stream menu, as the app names it. */
 const MENU_KEY = MAC ? '⌘O' : 'Ctrl+O';
 /** The same buttons as in the app, held together. */
@@ -34,6 +40,7 @@ const REJOIN_MS = 60000;
 const ui = {
   front: $('front'),
   landing: $('card-landing'),
+  rooms: $('card-rooms'),
   join: $('card-join'),
   connecting: $('card-connecting'),
   message: $('card-message'),
@@ -118,6 +125,111 @@ function show(card) {
   for (const c of [ui.landing, ui.join, ui.connecting, ui.message]) c.hidden = c !== card;
   ui.front.hidden = false;
   ui.stage.hidden = true;
+  // The public rooms go with the card for a link: two ways to find a session
+  ui.rooms.hidden = card !== ui.landing;
+  if (card === ui.landing) startRooms();
+  else stopRooms();
+}
+
+// ------------------------------------------------------------------ public rooms
+
+let roomList = [];
+let roomTimer = 0;
+let roomPoll = 15000;
+let roomsLoading = false;
+
+function startRooms() {
+  if (roomTimer) return;
+  refreshRooms();
+  roomTimer = setInterval(refreshRooms, roomPoll);
+}
+
+function stopRooms() {
+  clearInterval(roomTimer);
+  roomTimer = 0;
+}
+
+async function refreshRooms() {
+  if (roomsLoading) return;
+  roomsLoading = true;
+  $('rooms-refresh').textContent = 'Loading…';
+  try {
+    const answer = await fetchRooms(ROOMS_URL);
+    roomList = answer.rooms;
+    $('rooms-problem').hidden = true;
+    if (answer.poll !== roomPoll && roomTimer) {
+      roomPoll = answer.poll;
+      clearInterval(roomTimer);
+      roomTimer = setInterval(refreshRooms, roomPoll);
+    }
+  } catch (e) {
+    const problem = $('rooms-problem');
+    problem.textContent = `The list of public rooms could not be read${e && e.message ? ': ' + e.message : '.'}`;
+    problem.hidden = false;
+  } finally {
+    roomsLoading = false;
+    $('rooms-refresh').textContent = 'Refresh';
+  }
+  renderRooms();
+}
+
+function renderRooms() {
+  const shown = filterRooms(roomList, {
+    search: $('rooms-search').value,
+    lang: $('rooms-lang').value,
+    hideFull: $('rooms-hide-full').checked,
+    openOnly: $('rooms-open-only').checked,
+  });
+  $('rooms-count').textContent = shown.length === roomList.length ? `${roomList.length} open`
+    : `${shown.length} of ${roomList.length}`;
+  if (!shown.length) {
+    $('rooms-list').replaceChildren(el('div', 'rooms-empty', roomList.length
+      ? 'No room matches. Try other words, another language, or show all rooms.'
+      : 'No public rooms right now. Anybody with the app can host one.'));
+    return;
+  }
+  $('rooms-list').replaceChildren(...shown.map((room) => {
+    const can = room.web && room.compatible && !room.full;
+    const card = el('div', 'room' + (can ? '' : ' unavailable'));
+    const cover = el('div', 'room-cover', room.cover ? '' : (room.game || room.title || '?').trim().charAt(0).toUpperCase());
+    if (room.cover) cover.style.backgroundImage = `url("${room.cover}")`;
+    const body = el('div', 'room-body');
+    body.append(el('div', 'room-title', room.title),
+      el('div', 'room-sub', room.game ? `${room.host} plays ${room.game}` : `Hosted by ${room.host}`));
+    const tags = el('div', 'room-tags');
+    tags.append(el('span', '', languageName(room.lang)),
+      el('span', room.full ? 'full' : '', `${room.players} of ${room.max} players`),
+      el('span', 'control', { all: 'Everybody plays at once', turns: 'One plays at a time', host: 'Only the host plays' }[room.control]),
+      el('span', 'policy', { ask: 'Host lets you in', watch: 'Watch first', open: 'Open' }[room.policy]));
+    body.append(tags);
+    const side = el('div', 'room-side');
+    const join = button('primary small', 'Join', () => joinRoom(room));
+    join.disabled = !can;
+    side.append(join);
+    if (!can) {
+      side.append(el('small', '', !room.compatible ? 'Needs another version'
+        : !room.web ? 'App only' : 'Full'));
+    }
+    card.append(cover, body, side);
+    return card;
+  }));
+}
+
+/** A room from the list: like a link from a friend, to its host. */
+function joinRoom(room) {
+  let text = room.invite;
+  // A meeting point of one's own, for trying things out on this machine
+  if (LOCAL_MEET && !text.includes('?meet=')) text += '?meet=' + LOCAL_MEET;
+  const parsed = parseInvite(text, LOCAL);
+  if (!parsed) return;
+  invite = parsed;
+  invite.room = room;
+  try {
+    sessionStorage.setItem('psrpt.invite', text);
+  } catch (e) {
+    // only for this visit, then
+  }
+  showJoin();
 }
 
 /** Something the player has to know, at the top of the picture for a few seconds. */
@@ -258,6 +370,7 @@ function showJoin() {
     show(ui.landing);
     return;
   }
+  $('join-title').textContent = invite.room ? `Join “${invite.room.title}”` : 'You are invited to play';
   $('join-name').value = recall('psrpt.name');
   $('join-voice').checked = recall('psrpt.voice') === '1';
   $('join-muted').checked = recall('psrpt.muted') === '1';
@@ -569,7 +682,7 @@ async function rejoin(text) {
       session = null;
       lastProblem = e && e.message ? e.message : String(e);
       // A full session or a wrong version does not get better by waiting
-      if (e instanceof JoinError && (e.kind === 'full' || e.kind === 'version' || e.kind === 'unsupported')) break;
+      if (e instanceof JoinError && ['full', 'version', 'unsupported', 'refused', 'locked'].includes(e.kind)) break;
       await new Promise((resolve) => setTimeout(resolve, 1500));
       continue;
     }
@@ -1300,6 +1413,20 @@ function start() {
   ui.handle.addEventListener('click', () => menu.show());
 
   // ------------------------------------------------ before the game
+  // The public rooms: language choice, search and filters
+  $('rooms-lang').replaceChildren(el('option', '', 'All languages'),
+    ...LANGUAGES.map(([code, name]) => {
+      const option = el('option', '', name);
+      option.value = code;
+      return option;
+    }));
+  $('rooms-lang').firstElementChild.value = '';
+  for (const id of ['rooms-search', 'rooms-lang', 'rooms-hide-full', 'rooms-open-only']) {
+    $(id).addEventListener('input', renderRooms);
+    $(id).addEventListener('change', renderRooms);
+  }
+  $('rooms-refresh').addEventListener('click', refreshRooms);
+
   $('landing-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const parsed = parseInvite($('landing-invite').value, LOCAL);

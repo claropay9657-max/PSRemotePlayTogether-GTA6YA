@@ -13,6 +13,8 @@ import { FrameAssembler } from './video.js';
 const STUN_SERVERS = ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'];
 
 const HELLO_INTERVAL_MS = 250;
+/** How long a guest waits for a host that lets each newcomer in by hand. */
+const ADMISSION_TIMEOUT_MS = 120000;
 const PING_INTERVAL_MS = 500;
 const FAST_PING_INTERVAL_MS = 100;
 const FAST_PINGS = 5;
@@ -295,18 +297,32 @@ export class Session {
           this.welcome = w;
           resolve();
         }
+      } else if (data[0] === P.PT.Waiting) {
+        // A host that lets each newcomer in by hand: it may take a while
+        if (!waitingSince) {
+          waitingSince = nowMs();
+          this.status('Waiting for the host to let you in…');
+        }
       } else if (data[0] === P.PT.Reject) {
         const reason = P.readReject(data.subarray(1));
-        reject(new JoinError(reason === P.REJECT_FULL ? 'The session is full.'
-          : reason === P.REJECT_VERSION ? versionMessage(0) : 'The host declined the connection.',
-        reason === P.REJECT_FULL ? 'full' : reason === P.REJECT_VERSION ? 'version' : 'failed'));
+        const why = {
+          [P.REJECT_FULL]: ['The session is full.', 'full'],
+          [P.REJECT_VERSION]: [versionMessage(0), 'version'],
+          [P.REJECT_REFUSED]: ['The host did not let you in.', 'refused'],
+          [P.REJECT_LOCKED]: ['The host has closed the session to newcomers.', 'locked'],
+        }[reason] || ['The host declined the connection.', 'failed'];
+        reject(new JoinError(why[0], why[1]));
       } else if (this.welcome) this.onMessage(data); // nothing may get lost between the two
     };
     const started = nowMs();
+    let waitingSince = 0;
     const repeat = setInterval(() => {
       if (this.welcome || this.closed) return;
-      if (nowMs() - started > 8000) reject(new JoinError('The host did not answer. Try again.', 'failed'));
-      else if (dc.readyState === 'open') dc.send(hello);
+      if (waitingSince && nowMs() - waitingSince > ADMISSION_TIMEOUT_MS) {
+        reject(new JoinError('The host did not answer your request to join.', 'failed'));
+      } else if (!waitingSince && nowMs() - started > 8000) {
+        reject(new JoinError('The host did not answer. Try again.', 'failed'));
+      } else if (dc.readyState === 'open') dc.send(hello);
     }, HELLO_INTERVAL_MS);
     try {
       if (dc.readyState === 'open') dc.send(hello);

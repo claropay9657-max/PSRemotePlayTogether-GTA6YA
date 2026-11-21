@@ -13,7 +13,7 @@
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="dark">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; connect-src https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data: https://image.api.playstation.com; media-src 'self' blob:; worker-src 'self' blob:; connect-src https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>PSRemotePlayTogether</title>
 <meta name="description" content="Join a friend's shared PlayStation session from your browser: same picture, same sound, your own controller.">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
@@ -48,9 +48,29 @@
     </div>
   </section>
 
+  <!-- Or somebody's public room -->
+  <section id="card-rooms" class="card rooms" hidden>
+    <div class="rooms-head">
+      <h2>Public rooms</h2>
+      <span id="rooms-count" class="dim"></span>
+      <button id="rooms-refresh" class="ghost small" type="button">Refresh</button>
+    </div>
+    <p class="dim">Sessions their hosts want to be found. You join like with a link: straight to the host. Some hosts let each player in themselves, others let you watch first.</p>
+    <div class="rooms-find">
+      <input id="rooms-search" type="search" autocomplete="off" spellcheck="false" placeholder="Search: title, game or host" aria-label="Search the public rooms">
+      <select id="rooms-lang" aria-label="Language"></select>
+    </div>
+    <div class="rooms-filters">
+      <label class="check"><input id="rooms-hide-full" type="checkbox"><span>Hide full rooms</span></label>
+      <label class="check"><input id="rooms-open-only" type="checkbox"><span>Only rooms I get into right away</span></label>
+    </div>
+    <p id="rooms-problem" class="problem" hidden></p>
+    <div id="rooms-list" class="rooms-list"></div>
+  </section>
+
   <!-- An invite: ready to join -->
   <section id="card-join" class="card" hidden>
-    <h2>You are invited to play</h2>
+    <h2 id="join-title">You are invited to play</h2>
     <p class="dim">You get your friend's game picture and sound, and your controller plays along on their console.</p>
     <form id="join-form">
       <div class="who">
