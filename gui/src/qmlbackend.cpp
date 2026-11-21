@@ -2773,9 +2773,9 @@ QString QmlBackend::openPsnLink()
 
 QString QmlBackend::openPlaceboOptionsLink()
 {
-    QUrl url = QUrl("https://libplacebo.org/options/");
+    // Opened in the browser, and given back for "Copy the address" where that did not work
+    const QUrl url = QUrl("https://libplacebo.org/options/");
     QDesktopServices::openUrl(url);
-    url = psnLoginUrl();
     return QString(url.toEncoded());
 }
 
