@@ -785,6 +785,57 @@ Item {
         }
     }
 
+    // The mouse was just caught for aiming: for a moment, how to get it back
+    Rectangle {
+        id: caughtNote
+        property bool shown: false
+
+        visible: opacity > 0
+        opacity: shown && Chiaki.keyMouse.caught && !menuController.open ? 1 : 0
+        anchors.horizontalCenter: parent.horizontalCenter
+        // Under the note about a scene, if that is up too
+        y: 64
+        height: 40
+        width: caughtText.implicitWidth + 40
+        radius: 20
+        color: Qt.rgba(14 / 255, 11 / 255, 30 / 255, 0.88)
+        border.width: 1
+        border.color: Qt.rgba(140 / 255, 82 / 255, 1, 0.6)
+
+        Behavior on opacity {
+            NumberAnimation { duration: 200 }
+        }
+
+        Text {
+            id: caughtText
+            // The stream menu's shortcut on the keyboard, the one that still works while the mouse is caught
+            readonly property string menuKeys: Qt.platform.os === "osx" ? "⌘O" : qsTr("Ctrl+O")
+            anchors.centerIn: parent
+            color: "#e7dcff"
+            font.pixelSize: 14
+            font.bold: true
+            text: Chiaki.keyMouse.catchKey.length > 0
+                  ? qsTr("The mouse aims · %1 lets it go · %2 opens the menu").arg(Chiaki.keyMouse.catchKey).arg(menuKeys)
+                  : qsTr("The mouse aims · %1 opens the menu and lets it go").arg(menuKeys)
+        }
+
+        Timer {
+            id: caughtTimer
+            interval: 6000
+            onTriggered: caughtNote.shown = false
+        }
+
+        Connections {
+            target: Chiaki.keyMouse
+
+            function onCaughtChanged() {
+                caughtNote.shown = Chiaki.keyMouse.caught;
+                if (Chiaki.keyMouse.caught)
+                    caughtTimer.restart();
+            }
+        }
+    }
+
     Loader {
         id: hudWindowLoader
         active: !view.hudInline

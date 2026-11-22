@@ -608,6 +608,11 @@ class Settings : public QObject
 		bool GetKeyboardEnabled() const;
 		void SetKeyboardEnabled(bool enabled);
 
+		/** Mouse and keyboard as a controller (keymouse.h) keeps its bindings and its way of aiming here, under "keymouse/". */
+		QVariant GetKeyMouse(const QString &name, const QVariant &fallback = QVariant()) const;
+		void SetKeyMouse(const QString &name, const QVariant &value);
+		bool HasKeyMouse(const QString &name) const;
+
 		bool GetMouseTouchEnabled() const;
 		void SetMouseTouchEnabled(bool enabled);
 
@@ -657,7 +662,6 @@ class Settings : public QObject
 		void SetPsnAccountId(QString account_id);
 
 		QString GetTimeFormat() const     { return time_format; }
-		void ClearKeyMapping();
 
 #if CHIAKI_GUI_ENABLE_SPEEX
 		bool GetSpeechProcessingEnabled() const;
@@ -907,9 +911,8 @@ class Settings : public QObject
 		void RemoveControllerMapping(const QString &vidpid);
 
 		static QString GetChiakiControllerButtonName(int);
-		void SetControllerButtonMapping(int, Qt::Key);
+		/** The keys of before KeyMouse, one for each button: what it starts from the first time. */
 		QMap<int, Qt::Key> GetControllerMapping();
-		QMap<Qt::Key, int> GetControllerMappingForDecoding();
 
 	signals:
 		void RegisteredHostsUpdated();

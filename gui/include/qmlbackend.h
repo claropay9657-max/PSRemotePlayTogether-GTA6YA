@@ -99,6 +99,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(QObject* deviceCheck READ deviceCheckObject CONSTANT)
     // What macOS has to allow (Settings → Permissions); nothing elsewhere
     Q_PROPERTY(QObject* permissions READ permissionsObject CONSTANT)
+    // Mouse and keyboard as a controller: the bindings, how the mouse aims, and trying it (Settings → Keyboard & mouse)
+    Q_PROPERTY(QObject* keyMouse READ keyMouseObject CONSTANT)
     // The sound of the intro film, kept in step with it by the film itself
     Q_PROPERTY(QObject* introSound READ introSoundObject CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
@@ -277,6 +279,8 @@ public:
     QObject *viewerActionsObject() const;
     QObject *deviceCheckObject() const;
     QObject *permissionsObject() const;
+    QObject *keyMouseObject() const;
+    class KeyMouse *keyMouse() const { return key_mouse; }
     QObject *introSoundObject() const;
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
@@ -502,6 +506,7 @@ private:
     class ViewerActions *viewer_actions = {};
     class DeviceCheck *device_check = {};
     class MacPermissions *permissions = {};
+    class KeyMouse *key_mouse = {};
     class IntroSound *intro_sound = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;

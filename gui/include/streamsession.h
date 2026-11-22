@@ -60,6 +60,7 @@
 
 class QKeyEvent;
 class Settings;
+class KeyMouse;
 
 class PcCapture;
 class PcInput;
@@ -91,7 +92,6 @@ class SdeckHapticsWorker;
 	struct StreamSessionConnectInfo
 	{
 		Settings *settings;
-		QMap<Qt::Key, int> key_map;
 		Decoder decoder;
 		QString hw_decoder;
 		AVBufferRef *hw_device_ctx;
@@ -360,6 +360,9 @@ class StreamSession : public QObject
 		bool rumble_haptics_on;
 		float PS_TOUCHPAD_MAX_X, PS_TOUCHPAD_MAX_Y;
 		ChiakiControllerState keyboard_state;
+		/** Mouse and keyboard as a controller (keymouse.h): what is pressed there right now. */
+		ChiakiControllerState keymouse_state;
+		KeyMouse *key_mouse = nullptr;
 		/** Viewer actions (vieweractions.h): a button pressed for a moment, on top of the player's own. */
 		ChiakiControllerState viewer_state;
 		ChiakiControllerState touch_state;
@@ -457,7 +460,6 @@ class StreamSession : public QObject
 		bool mic_ring_drain_queued = false;
 		bool mic_ring_overflow_logged = false;
 		QAtomicInteger<bool> mic_active = true;
-		QMap<Qt::Key, int> key_map;
 		QElapsedTimer connect_timer;
 
 		void StartAudioOutDrainThread();
@@ -801,6 +803,10 @@ class StreamSession : public QObject
 		ChiakiPiDecoder *GetPiDecoder()	{ return pi_decoder; }
 #endif
 		void HandleKeyboardEvent(QKeyEvent *event);
+		/** Whose keys, mouse buttons and mouse movement count as this session's controller; it outlives the session. */
+		void SetKeyMouse(KeyMouse *key_mouse);
+		/** Whether the keyboard plays as a controller in this session. */
+		bool KeyboardPlays() const { return keyboard_controller_enabled; }
 		void HandleTouchEvent(QTouchEvent *event, qreal width, qreal height);
 		void HandleDpadTouchEvent(ChiakiControllerState *state, bool placeholder = false);
 		void HandleMouseReleaseEvent(QMouseEvent *event);
@@ -862,6 +868,8 @@ class StreamSession : public QObject
 		void UpdateGamepads();
 		void DpadSendFeedbackState();
 		void SendFeedbackState();
+		/** KeyMouse's controller looks different: it goes out with the rest. */
+		void KeyMouseChanged();
 };
 
 Q_DECLARE_METATYPE(ChiakiQuitReason)

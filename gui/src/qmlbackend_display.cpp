@@ -8,6 +8,7 @@
 #include "livescenes.h"
 #include "livealerts.h"
 #include "devicecheck.h"
+#include "keymouse.h"
 #include "macpermissions.h"
 #include "introsound.h"
 #include "twitch.h"
@@ -191,6 +192,11 @@ QObject *QmlBackend::deviceCheckObject() const
 QObject *QmlBackend::permissionsObject() const
 {
     return permissions;
+}
+
+QObject *QmlBackend::keyMouseObject() const
+{
+    return key_mouse;
 }
 
 QObject *QmlBackend::introSoundObject() const

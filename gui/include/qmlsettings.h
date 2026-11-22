@@ -77,7 +77,6 @@ class QmlSettings : public QObject
     Q_PROPERTY(QVariantList registeredHosts READ registeredHosts NOTIFY registeredHostsChanged)
     Q_PROPERTY(QStringList profiles READ profiles NOTIFY profilesChanged)
     Q_PROPERTY(QString currentProfile READ currentProfile WRITE setCurrentProfile NOTIFY currentProfileChanged)
-    Q_PROPERTY(QVariantList controllerMapping READ controllerMapping NOTIFY controllerMappingChanged)
     Q_PROPERTY(uint wifiDroppedNotif READ wifiDroppedNotif WRITE setWifiDroppedNotif NOTIFY wifiDroppedNotifChanged)
     Q_PROPERTY(bool portGuessingEnabled READ portGuessingEnabled WRITE setPortGuessingEnabled NOTIFY portGuessingEnabledChanged)
     Q_PROPERTY(int portGuessCount READ portGuessCount WRITE setPortGuessCount NOTIFY portGuessCountChanged)
@@ -852,13 +851,10 @@ public:
     QStringList availableAudioOutDevices() const;
     QStringList availableAudioInDevices() const;
     QVariantList registeredHosts() const;
-    QVariantList controllerMapping() const;
     QStringList profiles() const;
 
     Q_INVOKABLE void deleteRegisteredHost(int index);
     Q_INVOKABLE void refreshAudioDevices();
-    Q_INVOKABLE QString changeControllerKey(int button, int key);
-    Q_INVOKABLE void clearKeyMapping();
     Q_INVOKABLE void exportSettings();
     Q_INVOKABLE QString chooseSteamBasePath();
     Q_INVOKABLE void exportPlaceboSettings();
@@ -960,7 +956,6 @@ signals:
     void streamMenuShortcut2Changed();
     void streamMenuShortcut3Changed();
     void streamMenuShortcut4Changed();
-    void controllerMappingChanged();
     void packetLossReportedMaxChanged();
     void iDROnFECFailureEnabledChanged();
     void currentProfileChanged();

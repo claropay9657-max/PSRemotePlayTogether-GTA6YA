@@ -7,6 +7,10 @@
 #include "chiaki/time.h"
 #include "streamsession.h"
 #include "livestream.h"
+#include "keymouse.h"
+#ifdef Q_OS_MACOS
+#include "macmouse.h"
+#endif
 
 #include <qpa/qplatformnativeinterface.h>
 
@@ -2828,6 +2832,10 @@ void QmlMainWindow::grabInput()
     grab_input++;
     if (session)
         session->BlockInput(grab_input);
+    // A menu has mouse and keys now: what was held for the game is let go
+    updateMouseCatch();
+    if (backend && backend->keyMouse() && !backend->keyMouse()->trying())
+        backend->keyMouse()->ReleaseAll();
 }
 
 void QmlMainWindow::releaseInput()
@@ -2839,6 +2847,7 @@ void QmlMainWindow::releaseInput()
         setCursor(Qt::BlankCursor);
     if (session)
         session->BlockInput(grab_input);
+    updateMouseCatch();
 }
 
 void QmlMainWindow::requestOverlayUpdate()
@@ -5233,6 +5242,15 @@ renderer_backend_ready:
 
     backend = new QmlBackend(settings, this);
     stats_overlay_widget = new StatsOverlayWidget(this, backend);
+    // The mouse is caught and let go as soon as what decides it changes, not at the next event
+    connect(backend->keyMouse(), &KeyMouse::optionsChanged, this, &QmlMainWindow::updateMouseCatch);
+    connect(backend->keyMouse(), &KeyMouse::tryingChanged, this, &QmlMainWindow::updateMouseCatch);
+    connect(this, &QWindow::activeChanged, this, [this]() {
+        updateMouseCatch();
+        // Another window has the keyboard: no key will be seen coming up
+        if (!isActive())
+            backend->keyMouse()->ReleaseAll();
+    });
     connect(backend, &QmlBackend::sessionChanged, this, [this](StreamSession *s) {
         const bool preserve_startup_warmup = s && startup_warmup_preserve_next_session_change;
         startup_warmup_preserve_next_session_change = false;
@@ -5242,6 +5260,7 @@ renderer_backend_ready:
         grab_input = 0;
         if (session)
             session->BlockInput(0);
+        updateMouseCatch();
         // Only drain at session end (teardown): prevents frame_mix use-after-free.
         // At session start draining would visibly freeze the connecting UI, so the
         // queue reset below waits only for a render that is drawing queued frames.
@@ -8081,6 +8100,12 @@ bool QmlMainWindow::handleShortcut(QKeyEvent *event)
     if (!event->modifiers().testFlag(Qt::ControlModifier))
         return false;
 
+    // Where Ctrl is a key to play with (crouching, say), holding it while pressing another key
+    // must not close the app or change the picture: only the way to the stream menu stays
+    if (event->key() != Qt::Key_O && session && !grab_input && session->KeyboardPlays()
+            && backend && backend->keyMouse() && backend->keyMouse()->Binds(Qt::Key_Control))
+        return false;
+
     switch (event->key()) {
     case Qt::Key_S:
         if (has_video)
@@ -8121,23 +8146,113 @@ bool QmlMainWindow::nvidiaCard() const
     return nvidia_card;
 }
 
-bool QmlMainWindow::keyMouseEvent(QEvent *event)
+QmlMainWindow::MouseCatch QmlMainWindow::wantedMouseCatch() const
 {
-    const bool capture = session && !grab_input && isActive() && session->CoPlayKeyMouseCapturing();
-    if (capture != key_mouse_captured) {
-        // The pointer is the game's while it is captured, and comes back where it was
-        key_mouse_captured = capture;
-        key_mouse_have_last = false;
-        key_mouse_recentering = false;
-        if (capture)
+    if (!isActive())
+        return MouseCatch::None;
+    KeyMouse *key_mouse = backend ? backend->keyMouse() : nullptr;
+    // Trying mouse and keyboard as a controller in the settings needs no game
+    if (key_mouse && key_mouse->trying())
+        return key_mouse->aim() ? MouseCatch::Pad : MouseCatch::None;
+    if (!session || grab_input)
+        return MouseCatch::None;
+    if (session->CoPlayKeyMouseCapturing())
+        return MouseCatch::Game;
+    if (key_mouse && key_mouse->aim() && session->KeyboardPlays())
+        return MouseCatch::Pad;
+    return MouseCatch::None;
+}
+
+void QmlMainWindow::updateMouseCatch()
+{
+    const MouseCatch wanted = wantedMouseCatch();
+    if (wanted == mouse_catch)
+        return;
+    const MouseCatch was = mouse_catch;
+    mouse_catch = wanted;
+    key_mouse_have_last = false;
+    key_mouse_recentering = false;
+    key_mouse_rest = QPointF();
+    if (was == MouseCatch::None) {
+        // The pointer is the game's while it is caught
+        setCursor(Qt::BlankCursor);
+#ifdef Q_OS_MACOS
+        // Held in the window's middle, so that a click never lands on another window
+        const QPoint middle = mapToGlobal(QPoint(width() / 2, height() / 2));
+        macmouse::Begin(middle.x(), middle.y(), [this](double dx, double dy) { mouseCaughtMoved(dx, dy); });
+#endif
+    } else if (wanted == MouseCatch::None) {
+#ifdef Q_OS_MACOS
+        macmouse::End();
+#endif
+        if (session && has_video && !grab_input && settings->GetHideCursor())
             setCursor(Qt::BlankCursor);
         else
             unsetCursor();
     }
-    if (!capture)
+    if (KeyMouse *key_mouse = backend ? backend->keyMouse() : nullptr) {
+        // Let go while the mouse still aims: the window or a menu took it, and no button will be seen coming up
+        if (was == MouseCatch::Pad && key_mouse->aim())
+            key_mouse->ReleaseAll();
+        key_mouse->SetCaught(wanted == MouseCatch::Pad);
+    }
+}
+
+void QmlMainWindow::mouseCaughtMoved(double dx, double dy)
+{
+    if (mouse_catch == MouseCatch::Pad) {
+        if (backend && backend->keyMouse())
+            backend->keyMouse()->MouseMoved(dx, dy);
+        return;
+    }
+    if (mouse_catch != MouseCatch::Game || !session)
+        return;
+#ifdef Q_OS_MACOS
+    // The host's game counts in the screen's pixels, as it does elsewhere
+    dx *= devicePixelRatio();
+    dy *= devicePixelRatio();
+#endif
+    key_mouse_rest += QPointF(dx, dy);
+    const int whole_x = static_cast<int>(key_mouse_rest.x());
+    const int whole_y = static_cast<int>(key_mouse_rest.y());
+    if (!whole_x && !whole_y)
+        return;
+    key_mouse_rest -= QPointF(whole_x, whole_y);
+    session->CoPlayKeyMouseMove(whole_x, whole_y);
+}
+
+bool QmlMainWindow::keyMouseEvent(QEvent *event)
+{
+    updateMouseCatch();
+    KeyMouse *key_mouse = backend ? backend->keyMouse() : nullptr;
+    const QEvent::Type type = event->type();
+    const bool key_event = type == QEvent::KeyPress || type == QEvent::KeyRelease || type == QEvent::ShortcutOverride;
+    // What the app itself makes into keys (a controller's buttons, for the menus) is not the keyboard
+    const bool from_keyboard = !key_event || event->spontaneous();
+
+    // In the settings an input is being chosen: the next key, mouse button or wheel notch is it
+    if (key_mouse && from_keyboard && key_mouse->ListenEvent(event))
+        return true;
+
+    // In the settings, trying: the keys go to the controller in the picture, and Escape ends it
+    if (key_mouse && key_mouse->trying() && key_event && from_keyboard) {
+        auto *key = static_cast<QKeyEvent*>(event);
+        if (type == QEvent::ShortcutOverride)
+            event->accept();
+        else if (key->key() == Qt::Key_Escape) {
+            if (type == QEvent::KeyPress)
+                key_mouse->setTrying(false);
+        } else
+            key_mouse->KeyEvent(key);
+        return true;
+    }
+
+    if (mouse_catch == MouseCatch::None)
         return false;
-    switch (event->type()) {
+    const bool pad = mouse_catch == MouseCatch::Pad;
+    switch (type) {
     case QEvent::MouseMove: {
+#ifndef Q_OS_MACOS
         const QPoint pos = static_cast<QMouseEvent*>(event)->position().toPoint();
         const QPoint middle(width() / 2, height() / 2);
         if (key_mouse_recentering && pos == middle) {
@@ -8149,7 +8264,7 @@ bool QmlMainWindow::keyMouseEvent(QEvent *event)
         if (key_mouse_have_last) {
             const QPoint delta = pos - key_mouse_last;
             if (!delta.isNull())
-                session->CoPlayKeyMouseMove(qRound(delta.x() * devicePixelRatio()), qRound(delta.y() * devicePixelRatio()));
+                mouseCaughtMoved(delta.x() * devicePixelRatio(), delta.y() * devicePixelRatio());
         }
         key_mouse_have_last = true;
         key_mouse_last = pos;
@@ -8158,21 +8273,64 @@ bool QmlMainWindow::keyMouseEvent(QEvent *event)
             key_mouse_recentering = true;
             QCursor::setPos(mapToGlobal(middle));
         }
+#endif
+        // On a Mac the pointer is held in place and the movement comes by itself (macmouse.h)
         return true;
     }
     case QEvent::MouseButtonPress:
     case QEvent::MouseButtonRelease:
     case QEvent::MouseButtonDblClick:
+        if (pad)
+            key_mouse->MouseButton(static_cast<QMouseEvent*>(event)->button(), type != QEvent::MouseButtonRelease);
+        else
+            session->CoPlayKeyMouseEvent(event);
+        return true;
     case QEvent::Wheel:
+        if (pad)
+            key_mouse->WheelEvent(static_cast<QWheelEvent*>(event));
+        else
+            session->CoPlayKeyMouseEvent(event);
+        return true;
     case QEvent::KeyRelease:
-        session->CoPlayKeyMouseEvent(event);
-        return true;
-    case QEvent::KeyPress:
-        // The stream menu's shortcut still opens it, which lets go of mouse and keys
-        if (handleShortcut(static_cast<QKeyEvent*>(event)))
+        if (!pad) {
+            session->CoPlayKeyMouseEvent(event);
             return true;
-        session->CoPlayKeyMouseEvent(event);
+        }
+        if (!from_keyboard)
+            return false;
+        if (session)
+            session->HandleKeyboardEvent(static_cast<QKeyEvent*>(event));
         return true;
+    case QEvent::KeyPress: {
+        auto *key = static_cast<QKeyEvent*>(event);
+        if (!pad) {
+            // The stream menu's shortcut still opens it, which lets go of mouse and keys
+            if (handleShortcut(key))
+                return true;
+            session->CoPlayKeyMouseEvent(event);
+            return true;
+        }
+        if (!from_keyboard)
+            return false;
+        // Ctrl is a key to play with here, so of the shortcuts only two stay: the stream menu,
+        // which lets go of mouse and keys, and full screen
+        if (!key->isAutoRepeat()) {
+            if (key->key() == Qt::Key_O && key->modifiers().testFlag(Qt::ControlModifier)) {
+                emit menuRequested();
+                return true;
+            }
+            if (key->key() == Qt::Key_F11) {
+                if (windowState() != Qt::WindowFullScreen)
+                    fullscreenTime();
+                else
+                    normalTime();
+                return true;
+            }
+        }
+        if (session)
+            session->HandleKeyboardEvent(key);
+        return true;
+    }
     default:
         return false;
     }

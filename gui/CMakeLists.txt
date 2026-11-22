@@ -67,6 +67,10 @@ set(SOURCE_FILES
 	src/voicechat.cpp
 	include/devicecheck.h
 	src/devicecheck.cpp
+	include/keymousepad.h
+	src/keymousepad.cpp
+	include/keymouse.h
+	src/keymouse.cpp
 	include/introsound.h
 	src/introsound.cpp
 	include/livestream.h
@@ -146,8 +150,10 @@ if(APPLE)
 		src/macWakeSleep.cpp
 		include/macpermissions.h
 		src/macpermissions.mm
+		include/macmouse.h
+		src/macmouse.mm
 	)
-	set_source_files_properties(src/macpermissions.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+	set_source_files_properties(src/macpermissions.mm src/macmouse.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 else()
 	list(APPEND SOURCE_FILES include/macpermissions.h src/macpermissions.cpp)
 endif()

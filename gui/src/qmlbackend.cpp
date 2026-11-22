@@ -3,6 +3,7 @@
 #include "livescenes.h"
 #include "livealerts.h"
 #include "devicecheck.h"
+#include "keymouse.h"
 #include "macpermissions.h"
 #include "introsound.h"
 #include "twitch.h"
@@ -451,6 +452,14 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
         if (session)
             device_check->stopAll();
     });
+    key_mouse = new KeyMouse(settings, this);
+    // A game has the keyboard and the mouse now: trying them in the settings is over, and nothing is still held
+    connect(this, &QmlBackend::sessionChanged, key_mouse, [this](StreamSession *s) {
+        key_mouse->setTrying(false);
+        key_mouse->ReleaseAll();
+        if (s)
+            s->SetKeyMouse(key_mouse);
+    });
     // With the saved login, a moment after start (it reads the password store)
     QTimer::singleShot(3000, twitch, &TwitchClient::Start);
 
@@ -831,6 +840,8 @@ void QmlBackend::profileChanged()
     window->setSettings(settings);
     if (device_check)
         device_check->SetSettings(settings);
+    if (key_mouse)
+        key_mouse->SetSettings(settings);
     if (intro_sound)
         intro_sound->SetSettings(settings);
     setDiscoveryEnabled(true);

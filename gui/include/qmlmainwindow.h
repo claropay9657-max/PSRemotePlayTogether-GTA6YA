@@ -332,13 +332,26 @@ private:
     bool keep_video = false;
     RenderBackend render_backend = RenderBackend::Vulkan;
     int grab_input = 0;
-    // A guest playing the host's game with mouse and keyboard: this window keeps the pointer
-    // in its middle and sends how far it moved (StreamSession::CoPlayKeyMouseMove)
-    bool key_mouse_captured = false;
+    /**
+     * The mouse caught for a game: the pointer stays where it is and is not seen, and this
+     * window takes how far the mouse moved instead. For a guest who plays the host's game with
+     * mouse and keyboard (Game: StreamSession::CoPlayKeyMouseMove), or for mouse and keyboard
+     * as a controller (Pad: KeyMouse), while playing or while trying it in the settings.
+     */
+    enum class MouseCatch { None, Game, Pad };
+    MouseCatch mouse_catch = MouseCatch::None;
+    // Where the system has no way of holding the pointer, it is put back in the window's middle
     bool key_mouse_recentering = false;
     bool key_mouse_have_last = false;
     QPoint key_mouse_last;
-    /** Takes mouse and keys for the host's game while that is on; true if the event was taken. */
+    /** What a guest's game still has to get of the mouse's way: it takes whole steps. */
+    QPointF key_mouse_rest;
+    MouseCatch wantedMouseCatch() const;
+    /** Catches the mouse or lets it go, as things are now. */
+    void updateMouseCatch();
+    /** The caught mouse moved: in points on a Mac, in the screen's own pixels elsewhere. */
+    void mouseCaughtMoved(double dx, double dy);
+    /** Takes mouse and keys while the mouse is caught, while a key is chosen in the settings, and while they are tried there; true if the event was taken. */
     bool keyMouseEvent(QEvent *event);
     int dropped_frames = 0;
     bool is_window_adjustable = false;

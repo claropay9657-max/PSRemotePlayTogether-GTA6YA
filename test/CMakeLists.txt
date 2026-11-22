@@ -35,6 +35,13 @@ endif()
 add_executable(chiaki-unit ${CHIAKI_UNIT_SOURCES})
 add_test(NAME unit COMMAND chiaki-unit)
 
+# Mouse and keyboard as a controller: the part of the app that works it out, tried on its own
+# (it needs neither Qt nor the stream library)
+add_executable(keymouse-unit keymousepad.cpp "${CMAKE_SOURCE_DIR}/gui/src/keymousepad.cpp")
+target_include_directories(keymouse-unit PRIVATE "${CMAKE_SOURCE_DIR}/gui/include")
+set_target_properties(keymouse-unit PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_test(NAME keymouse COMMAND keymouse-unit)
+
 target_link_libraries(chiaki-unit chiaki-lib munit)
 
 if(CHIAKI_ENABLE_FFMPEG_DECODER)

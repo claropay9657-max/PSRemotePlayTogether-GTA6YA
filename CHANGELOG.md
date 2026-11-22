@@ -3,6 +3,17 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## 0.5.1
+
+- **New: play with mouse and keyboard, as in a game on a computer.** Switch on **The mouse aims** (Settings → Keyboard & mouse, or **Mouse aims** in the stream menu): moving the mouse moves the right stick, WASD walks, the left button fires and the right one aims. The app makes an ordinary controller of it on your own computer, so it works with a PS5 or PS4, an Xbox and a game on a computer, for the host and for every friend who plays in the app. While you play, the mouse is caught: F8 lets it go and catches it again, and the stream menu lets it go too.
+- **Every key and mouse button can be changed**, up to three for each button of the controller: keys (Shift, Ctrl and Alt on their own too), mouse buttons and the wheel. **Layouts** sets them all at once: Mouse and WASD, or the keys the app came with. The keys you had set are still there.
+- **How the mouse aims is yours to set:** its speed left and right and up and down, an acceleration curve (even, fine, quick, or one you drag into shape yourself), how far the smallest movement pushes the stick past the game's dead zone, smoothing, a slower mouse while you aim down the sights, and up and down the other way round.
+- **Try it here**, on the same page: a controller that shows what your keys and your mouse do, without a game.
+- **Walking with keys as it should be:** two opposite keys cancel, and letting one go leaves the other (before, the stick stopped); diagonals go as far as a stick does; and a key for walking pushes the stick only part of the way.
+- **Ctrl as a key to play with:** where Ctrl is bound to a button, holding it while pressing another key no longer closes the app or changes the picture; ⌘O or Ctrl+O still opens the stream menu.
+- **On a Mac, the caught mouse is held in place the way games do it**, which needs no permission. This goes for a guest who plays the host's computer game with mouse and keyboard as well.
+- **Good to know:** a console game reads a stick as how fast to turn, with a dead zone and a top speed of its own. So aiming with a mouse plays well once the speeds fit the game, but not like a game made for a mouse. Some online games do not allow a mouse through a controller in their rules. In a browser the keyboard plays as before; the mouse does not aim there yet.
+
 ## 0.5.0
 
 - **New: the intro film.** What the app is for and how it works, in under a minute: friends' controllers playing one game, what you can share, inviting with a link, who plays, voice chat and webcams, streaming. With its own music and sounds, made for it. It plays once by itself on a new installation, and **How it works** on the start page shows it again any time. Space pauses, the arrows jump from chapter to chapter, M switches the sound off, Esc leaves; a controller works too. At its end, **Host a game** and **Join a friend** lead straight on.

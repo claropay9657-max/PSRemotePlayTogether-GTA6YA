@@ -7,6 +7,7 @@
 #include <pcsource.h>
 #include <pcinput.h>
 #include <virtualpads.h>
+#include <keymouse.h>
 
 #include <chiaki/base64.h>
 #include <chiaki/streamconnection.h>
@@ -287,7 +288,6 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 		bool stretch)
 	: settings(settings)
 {
-	key_map = settings->GetControllerMappingForDecoding();
 	decoder = settings->GetDecoder();
 	hw_decoder = settings->GetHardwareDecoder();
 	hw_device_ctx = nullptr;
@@ -600,6 +600,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	}
 
 	chiaki_controller_state_set_idle(&keyboard_state);
+	chiaki_controller_state_set_idle(&keymouse_state);
 	chiaki_controller_state_set_idle(&touch_state);
 	chiaki_controller_state_set_idle(&viewer_state);
 	touch_tracker=QMap<int, uint8_t>();
@@ -771,7 +772,6 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 		sdeck_timer->start(STEAMDECK_UPDATE_INTERVAL_MS);
 	}
 #endif
-	key_map = connect_info.key_map;
 	if (connect_info.enable_dualsense)
 	{
 		InitHaptics();
@@ -1160,62 +1160,39 @@ void StreamSession::HandleMouseMoveEvent(QMouseEvent *event, qreal width, qreal 
 
 void StreamSession::HandleKeyboardEvent(QKeyEvent *event)
 {
-	if(!keyboard_controller_enabled)
+	// Which key is which button is KeyMouse's to know; what comes of it arrives in KeyMouseChanged()
+	if(!keyboard_controller_enabled || !key_mouse)
 		return;
-	if(key_map.contains(Qt::Key(event->key())) == false)
-		return;
+	key_mouse->KeyEvent(event);
+}
 
-	if(event->isAutoRepeat())
-		return;
+void StreamSession::SetKeyMouse(KeyMouse *km)
+{
+	if(key_mouse)
+		disconnect(key_mouse, nullptr, this, nullptr);
+	key_mouse = km;
+	chiaki_controller_state_set_idle(&keymouse_state);
+	if(key_mouse)
+		connect(key_mouse, &KeyMouse::stateChanged, this, &StreamSession::KeyMouseChanged);
+}
 
-	int button = key_map[Qt::Key(event->key())];
-	bool press_event = event->type() == QEvent::Type::KeyPress;
-	if(press_event && !keyboard_played)
+void StreamSession::KeyMouseChanged()
+{
+	if(!key_mouse || !keyboard_controller_enabled)
+		return;
+	const keymouse::Pad &pad = key_mouse->State();
+	keymouse_state.buttons = pad.buttons;
+	keymouse_state.l2_state = pad.l2;
+	keymouse_state.r2_state = pad.r2;
+	keymouse_state.left_x = pad.left_x;
+	keymouse_state.left_y = pad.left_y;
+	keymouse_state.right_x = pad.right_x;
+	keymouse_state.right_y = pad.right_y;
+	if(!keyboard_played && key_mouse->Used())
 	{
 		keyboard_played = true;
 		CoPlayUpdateControllerKind();
 	}
-
-	switch(button)
-	{
-		case CHIAKI_CONTROLLER_ANALOG_BUTTON_L2:
-			keyboard_state.l2_state = press_event ? 0xff : 0;
-			break;
-		case CHIAKI_CONTROLLER_ANALOG_BUTTON_R2:
-			keyboard_state.r2_state = press_event ? 0xff : 0;
-			break;
-		case static_cast<int>(ControllerButtonExt::ANALOG_STICK_RIGHT_Y_UP):
-			keyboard_state.right_y = press_event ? -0x7fff : 0;
-			break;
-		case static_cast<int>(ControllerButtonExt::ANALOG_STICK_RIGHT_Y_DOWN):
-			keyboard_state.right_y = press_event ? 0x7fff : 0;
-			break;
-		case static_cast<int>(ControllerButtonExt::ANALOG_STICK_RIGHT_X_UP):
-			keyboard_state.right_x = press_event ? 0x7fff : 0;
-			break;
-		case static_cast<int>(ControllerButtonExt::ANALOG_STICK_RIGHT_X_DOWN):
-			keyboard_state.right_x = press_event ? -0x7fff : 0;
-			break;
-		case static_cast<int>(ControllerButtonExt::ANALOG_STICK_LEFT_Y_UP):
-			keyboard_state.left_y = press_event ? -0x7fff : 0;
-			break;
-		case static_cast<int>(ControllerButtonExt::ANALOG_STICK_LEFT_Y_DOWN):
-			keyboard_state.left_y = press_event ? 0x7fff : 0;
-			break;
-		case static_cast<int>(ControllerButtonExt::ANALOG_STICK_LEFT_X_UP):
-			keyboard_state.left_x = press_event ? 0x7fff : 0;
-			break;
-		case static_cast<int>(ControllerButtonExt::ANALOG_STICK_LEFT_X_DOWN):
-			keyboard_state.left_x = press_event ? -0x7fff : 0;
-			break;
-		default:
-			if(press_event)
-				keyboard_state.buttons |= button;
-			else
-				keyboard_state.buttons &= ~button;
-			break;
-	}
-
 	SendFeedbackState();
 }
 
@@ -1503,6 +1480,7 @@ void StreamSession::DpadSendFeedbackState()
 	chiaki_controller_state_or(&state, &state, &sdeck_state);
 #endif
 	chiaki_controller_state_or(&state, &state, &keyboard_state);
+	chiaki_controller_state_or(&state, &state, &keymouse_state);
 	chiaki_controller_state_or(&state, &state, &touch_state);
 	chiaki_controller_state_or(&state, &state, &viewer_state);
 
@@ -1515,6 +1493,7 @@ void StreamSession::DpadSendFeedbackState()
 		{
 			chiaki_controller_state_set_idle(&state);
 			chiaki_controller_state_set_idle(&keyboard_state);
+			chiaki_controller_state_set_idle(&keymouse_state);
 		}
 	}
 	if((dpad_touch_shortcut1 || dpad_touch_shortcut2 || dpad_touch_shortcut3 || dpad_touch_shortcut4) && (!dpad_touch_shortcut1 || (state.buttons & dpad_touch_shortcut1)) && (!dpad_touch_shortcut2 || (state.buttons & dpad_touch_shortcut2)) && (!dpad_touch_shortcut3 || (state.buttons & dpad_touch_shortcut3)) && (!dpad_touch_shortcut4 || (state.buttons & dpad_touch_shortcut4)))
@@ -1566,6 +1545,7 @@ void StreamSession::SendFeedbackState()
 	chiaki_controller_state_or(&state, &state, &sdeck_state);
 #endif
 	chiaki_controller_state_or(&state, &state, &keyboard_state);
+	chiaki_controller_state_or(&state, &state, &keymouse_state);
 	chiaki_controller_state_or(&state, &state, &touch_state);
 	chiaki_controller_state_or(&state, &state, &viewer_state);
 
@@ -1578,6 +1558,7 @@ void StreamSession::SendFeedbackState()
 		{
 			chiaki_controller_state_set_idle(&state);
 			chiaki_controller_state_set_idle(&keyboard_state);
+			chiaki_controller_state_set_idle(&keymouse_state);
 		}
 	}
 	if((dpad_touch_shortcut1 || dpad_touch_shortcut2 || dpad_touch_shortcut3 || dpad_touch_shortcut4) && (!dpad_touch_shortcut1 || (state.buttons & dpad_touch_shortcut1)) && (!dpad_touch_shortcut2 || (state.buttons & dpad_touch_shortcut2)) && (!dpad_touch_shortcut3 || (state.buttons & dpad_touch_shortcut3)) && (!dpad_touch_shortcut4 || (state.buttons & dpad_touch_shortcut4)))

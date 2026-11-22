@@ -1718,12 +1718,6 @@ QString QmlSettings::logDirectory() const
     return GetLogBaseDir();
 }
 
-void QmlSettings::clearKeyMapping()
-{
-    settings->ClearKeyMapping();
-    emit controllerMappingChanged();
-}
-
 QStringList QmlSettings::availableDecoders() const
 {
     static QSet<QString> allowed = {
@@ -1797,20 +1791,6 @@ bool QmlSettings::renameProfile(const QString &from, const QString &to)
 QVariantMap QmlSettings::profileSummary(const QString &profile) const
 {
     return settings->ProfileSummary(profile);
-}
-
-QVariantList QmlSettings::controllerMapping() const
-{
-    QVariantList out;
-    auto key_map = settings->GetControllerMapping();
-    for (auto it = key_map.cbegin(); it != key_map.cend(); ++it) {
-        QVariantMap m;
-        m["buttonName"] = Settings::GetChiakiControllerButtonName(it.key());
-        m["buttonValue"] = it.key();
-        m["keyName"] = QKeySequence(it.value()).toString();
-        out.append(m);
-    }
-    return out;
 }
 
 QString QmlSettings::stringForDpadShortcut() const
@@ -1913,14 +1893,6 @@ void QmlSettings::refreshAudioDevices()
     }));
 }
 
-QString QmlSettings::changeControllerKey(int button, int key)
-{
-    Qt::Key qt_key = Qt::Key(key);
-    settings->SetControllerButtonMapping(button, qt_key);
-    emit controllerMappingChanged(); // Refresh the list, otherwise it still holds the old mapping and "Reset All Keys" may not update it
-    return QKeySequence(qt_key).toString();
-}
-
 void QmlSettings::setSettings(Settings *new_settings)
 {
     settings = new_settings;
@@ -2012,7 +1984,6 @@ void QmlSettings::refreshAllKeys()
     emit streamMenuShortcut2Changed();
     emit streamMenuShortcut3Changed();
     emit streamMenuShortcut4Changed();
-    emit controllerMappingChanged();
     emit packetLossReportedMaxChanged();
     emit currentProfileChanged();
     emit profilesChanged();

@@ -1057,6 +1057,21 @@ FocusScope {
                 }
 
                 DockButton {
+                    id: mouseAimButton
+                    // Mouse and keyboard as a controller: whether the mouse aims while playing.
+                    // Its keys and how it aims are under Settings → Keyboard & mouse
+                    visible: Chiaki.settings.keyboardEnabled
+                    checked: Chiaki.keyMouse.aim
+                    iconName: "keyboard"
+                    text: qsTr("Mouse aims")
+                    tip: !checked ? qsTr("Aim with the mouse and walk with the keys, as in a game on a computer")
+                         : Chiaki.keyMouse.catchKey.length > 0
+                           ? qsTr("While you play, the mouse is caught and aims. %1 lets it go and catches it again.").arg(Chiaki.keyMouse.catchKey)
+                           : qsTr("While you play, the mouse is caught and aims. This menu lets it go.")
+                    onClicked: Chiaki.keyMouse.aim = !Chiaki.keyMouse.aim
+                }
+
+                DockButton {
                     id: displaySettingsButton
                     iconName: "sliders"
                     tip: qsTr("Display settings")
