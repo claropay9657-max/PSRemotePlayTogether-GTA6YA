@@ -4,7 +4,7 @@
 //  - the system's own screen sharing (xdg-desktop-portal's ScreenCast) asks which window or
 //    screen, on Wayland and X11 alike, and gives a PipeWire stream of it;
 //  - the pictures come through PipeWire in memory, scaled into the picture size keeping
-//    their shape (libswscale);
+//    their shape (pcscale.cpp);
 //  - the sound is the game's own (its PipeWire streams, linked to ours), else every
 //    program's but this app's and voice chats';
 //  - the game is found among the processes the way the GamerNova client finds it, with
@@ -12,6 +12,7 @@
 // libpipewire is opened when needed, so the app also starts where there is none.
 
 #include "pcsource_p.h"
+#include "pcscale.h"
 
 #include <QCoreApplication>
 #include <QDBusArgument>
@@ -53,7 +54,6 @@
 
 extern "C" {
 #include <libavutil/imgutils.h>
-#include <libswscale/swscale.h>
 }
 
 // ------------------------------------------------------------------ libpipewire, opened when needed
@@ -666,17 +666,18 @@ PcSource::Game PcLinux::DetectGame(const PcSource::Target &target)
 
 namespace {
 
-AVPixelFormat FromSpa(uint32_t format)
+/** Where red, green and blue sit in a pixel of a PipeWire format; false for formats not asked for. */
+bool FromSpa(uint32_t format, PcScaler::Layout *layout)
 {
 	switch(format)
 	{
-		case SPA_VIDEO_FORMAT_BGRx: return AV_PIX_FMT_BGR0;
-		case SPA_VIDEO_FORMAT_BGRA: return AV_PIX_FMT_BGRA;
-		case SPA_VIDEO_FORMAT_RGBx: return AV_PIX_FMT_RGB0;
-		case SPA_VIDEO_FORMAT_RGBA: return AV_PIX_FMT_RGBA;
-		case SPA_VIDEO_FORMAT_xRGB: return AV_PIX_FMT_0RGB;
-		case SPA_VIDEO_FORMAT_xBGR: return AV_PIX_FMT_0BGR;
-		default: return AV_PIX_FMT_NONE;
+		case SPA_VIDEO_FORMAT_BGRx:
+		case SPA_VIDEO_FORMAT_BGRA: *layout = { 2, 1, 0 }; return true;
+		case SPA_VIDEO_FORMAT_RGBx:
+		case SPA_VIDEO_FORMAT_RGBA: *layout = { 0, 1, 2 }; return true;
+		case SPA_VIDEO_FORMAT_xRGB: *layout = { 1, 2, 3 }; return true;
+		case SPA_VIDEO_FORMAT_xBGR: *layout = { 3, 2, 1 }; return true;
+		default: return false;
 	}
 }
 
@@ -697,7 +698,6 @@ class PwVideo : public PcFrameSource
 			connection.Close();
 			if(latest)
 				av_frame_free(&latest);
-			sws_freeContext(sws);
 		}
 
 		bool Open(const PcCapture::Config &config, AVPixelFormat out, std::string *error)
@@ -821,7 +821,7 @@ class PwVideo : public PcFrameSource
 			spa_zero(info);
 			if(spa_format_video_raw_parse(param, &info) < 0)
 				return;
-			self->format_in = FromSpa(info.format);
+			self->format_known = FromSpa(info.format, &self->layout);
 			self->in_width = static_cast<int>(info.size.width);
 			self->in_height = static_cast<int>(info.size.height);
 			// Buffers in memory, and where a window's picture lies in them
@@ -859,7 +859,7 @@ class PwVideo : public PcFrameSource
 
 		void Take(spa_buffer *buf)
 		{
-			if(!buf || buf->n_datas < 1 || format_in == AV_PIX_FMT_NONE)
+			if(!buf || buf->n_datas < 1 || !format_known)
 				return;
 			const spa_data &d = buf->datas[0];
 			if(!d.data || !d.chunk || d.chunk->size == 0 || (d.chunk->flags & SPA_CHUNK_FLAG_CORRUPTED))
@@ -908,21 +908,6 @@ class PwVideo : public PcFrameSource
 			const int fh = std::clamp(static_cast<int>(h * fit) & ~1, 2, height);
 			const int ox = ((width - fw) / 2) & ~1;
 			const int oy = ((height - fh) / 2) & ~1;
-			if(!sws || sws_w != w || sws_h != h || sws_format != format_in || sws_fw != fw || sws_fh != fh)
-			{
-				sws_freeContext(sws);
-				sws = sws_getContext(w, h, format_in, fw, fh, format_out, SWS_BILINEAR, nullptr, nullptr, nullptr);
-				if(!sws)
-					return nullptr;
-				// The screen's full-range RGB into BT.709 video range, as the encoder says it is
-				sws_setColorspaceDetails(sws, sws_getCoefficients(SWS_CS_DEFAULT), 1,
-					sws_getCoefficients(SWS_CS_ITU709), 0, 0, 1 << 16, 1 << 16);
-				sws_w = w;
-				sws_h = h;
-				sws_format = format_in;
-				sws_fw = fw;
-				sws_fh = fh;
-			}
 			AVFrame *f = av_frame_alloc();
 			f->format = format_out;
 			f->width = width;
@@ -944,15 +929,12 @@ class PwVideo : public PcFrameSource
 						memset(f->data[2] + row * f->linesize[2], 128, static_cast<size_t>(width / 2));
 				}
 			}
-			uint8_t *dst[4] = {
-				f->data[0] + oy * f->linesize[0] + ox,
-				f->data[1] + (oy / 2) * f->linesize[1] + (planar ? ox / 2 : ox),
-				planar ? f->data[2] + (oy / 2) * f->linesize[2] + ox / 2 : nullptr,
-				nullptr,
-			};
-			const uint8_t *src[4] = { pixels, nullptr, nullptr, nullptr };
-			const int src_stride[4] = { stride, 0, 0, 0 };
-			sws_scale(sws, src, src_stride, 0, h, dst, f->linesize);
+			// The screen's full-range RGB into BT.709 video range, as the encoder says it is
+			scaler.Convert(pixels, stride, w, h, layout,
+				f->data[0] + oy * f->linesize[0] + ox, f->linesize[0],
+				f->data[1] + (oy / 2) * f->linesize[1] + (planar ? ox / 2 : ox), f->linesize[1],
+				planar ? f->data[2] + (oy / 2) * f->linesize[2] + ox / 2 : nullptr, planar ? f->linesize[2] : 0,
+				fw, fh);
 			return f;
 		}
 
@@ -977,12 +959,10 @@ class PwVideo : public PcFrameSource
 
 		int width = 1920, height = 1080, fps = 60;
 		AVPixelFormat format_out = AV_PIX_FMT_NV12;
-		AVPixelFormat format_in = AV_PIX_FMT_NONE;
+		bool format_known = false;
+		PcScaler::Layout layout;
 		int in_width = 0, in_height = 0;
-
-		SwsContext *sws = nullptr;
-		int sws_w = 0, sws_h = 0, sws_fw = 0, sws_fh = 0;
-		AVPixelFormat sws_format = AV_PIX_FMT_NONE;
+		PcScaler scaler;
 
 		bool have_last = false;
 		std::chrono::steady_clock::time_point last_frame;

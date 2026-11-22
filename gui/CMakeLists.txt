@@ -106,6 +106,8 @@ set(SOURCE_FILES
 	include/pcsource.h
 	include/pcsource_p.h
 	src/pcsource.cpp
+	include/pcscale.h
+	src/pcscale.cpp
 	include/virtualpads.h
 	src/virtualpads.cpp
 	)
@@ -179,29 +181,6 @@ if(WIN32)
 	endif()
 	# Windows, the program's name and its sound
 	target_link_libraries(chiaki dwmapi ole32 version)
-elseif(APPLE)
-	# A window or a screen and its sound through ScreenCaptureKit (macOS 13 and later)
-	target_sources(chiaki PRIVATE src/pcsource_mac.mm)
-	set_source_files_properties(src/pcsource_mac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
-	target_link_libraries(chiaki "-framework ScreenCaptureKit" "-framework CoreMedia" "-framework CoreVideo"
-		"-framework CoreGraphics" "-framework AppKit")
-	target_compile_definitions(chiaki PRIVATE PSRPT_PC_SCREENCAPTUREKIT=1)
-	message(STATUS "Sharing a game on this computer: ScreenCaptureKit")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-	# The system's screen sharing (xdg-desktop-portal over D-Bus) and PipeWire, which is opened
-	# when needed (only its headers here), the pictures scaled with libswscale
-	find_package(PkgConfig REQUIRED)
-	pkg_check_modules(PIPEWIRE libpipewire-0.3)
-	find_package(FFMPEG COMPONENTS swscale)
-	if(PIPEWIRE_FOUND AND TARGET FFMPEG::swscale AND Qt6DBus_FOUND)
-		target_sources(chiaki PRIVATE src/pcsource_linux.cpp)
-		target_include_directories(chiaki PRIVATE ${PIPEWIRE_INCLUDE_DIRS})
-		target_link_libraries(chiaki FFMPEG::swscale ${CMAKE_DL_LIBS})
-		target_compile_definitions(chiaki PRIVATE PSRPT_PC_PIPEWIRE=1)
-		message(STATUS "Sharing a game on this computer: PipeWire ${PIPEWIRE_VERSION} headers, libswscale")
-	else()
-		message(WARNING "No PipeWire headers (libpipewire-0.3-dev), libswscale or Qt D-Bus: sharing a game on this computer is off")
-	endif()
 	# The players' controllers as Xbox 360 controllers of the ViGEmBus driver: ViGEmClient
 	# (MIT), the library that talks to it, at a fixed commit (the project is archived)
 	include(FetchContent)
@@ -228,6 +207,28 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	target_link_libraries(vigemclient PUBLIC setupapi)
 	target_link_libraries(chiaki vigemclient)
 	target_compile_definitions(chiaki PRIVATE PSRPT_VIGEM=1)
+elseif(APPLE)
+	# A window or a screen and its sound through ScreenCaptureKit (macOS 13 and later)
+	target_sources(chiaki PRIVATE src/pcsource_mac.mm)
+	set_source_files_properties(src/pcsource_mac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+	target_link_libraries(chiaki "-framework ScreenCaptureKit" "-framework CoreMedia" "-framework CoreVideo"
+		"-framework CoreGraphics" "-framework AppKit")
+	target_compile_definitions(chiaki PRIVATE PSRPT_PC_SCREENCAPTUREKIT=1)
+	message(STATUS "Sharing a game on this computer: ScreenCaptureKit")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	# The system's screen sharing (xdg-desktop-portal over D-Bus) and PipeWire, which is opened
+	# when needed (only its headers here); the pictures are scaled by pcscale.cpp
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(PIPEWIRE libpipewire-0.3)
+	if(PIPEWIRE_FOUND AND Qt6DBus_FOUND)
+		target_sources(chiaki PRIVATE src/pcsource_linux.cpp)
+		target_include_directories(chiaki PRIVATE ${PIPEWIRE_INCLUDE_DIRS})
+		target_link_libraries(chiaki ${CMAKE_DL_LIBS})
+		target_compile_definitions(chiaki PRIVATE PSRPT_PC_PIPEWIRE=1)
+		message(STATUS "Sharing a game on this computer: PipeWire ${PIPEWIRE_VERSION} headers")
+	else()
+		message(WARNING "No PipeWire headers (libpipewire-0.3-dev) or Qt D-Bus: sharing a game on this computer is off")
+	endif()
 endif()
 if(CHIAKI_ENABLE_CLI)
 	add_definitions(-DCHIAKI_ENABLE_CLI)

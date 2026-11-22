@@ -171,7 +171,8 @@ controllers on a real Windows PC, the Xbox app, ultrawide windows on the guests'
   Start, OpenPipeWireRemote). The Host page lists "A window or a screen" (the system asks) and,
   once shared, "The window/screen you chose" with the portal's restore token (shared again without
   asking). The picture comes through PipeWire in memory (BGRx and friends, the crop of a window),
-  scaled into the picture size keeping its shape with libswscale (BT.709, video range), and
+  scaled into the picture size keeping its shape by `gui/src/pcscale.cpp` (bilinear, BT.709 video
+  range; checked against libswscale: within 1 step of luma on average), and
   encoded with NVENC, VAAPI (uploaded to the card), or OpenH264. libpipewire is opened with
   `dlopen`, so the AppImage neither bundles it nor needs it to start.
 - The sound: an unlinked PipeWire capture stream that the app links itself (link-factory) to the
@@ -185,7 +186,8 @@ controllers on a real Windows PC, the Xbox app, ultrawide windows on the guests'
   (045e:028e, the same buttons and axes, rumble through force feedback). The app's own controller
   list leaves them out by their name. Without access to `/dev/uinput` the Host page shows a
   udev rule (`TAG+="uaccess"`, as Steam's) to copy.
-- Build: `libpipewire-0.3-dev` headers in CI, FFmpeg with `--enable-swscale`.
+- Build: `libpipewire-0.3-dev` headers in CI. (No libswscale: FFmpeg 9's x86 assembly for it does not
+  build with the NASM of the CI image.)
 
 Tested in a Debian container: the portal handshake up to Start (the headless compositor there
 cannot capture), the picture from a PipeWire video source at 30 fps, decoded on the Mac with the

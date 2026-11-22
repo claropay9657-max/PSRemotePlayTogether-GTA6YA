@@ -55,9 +55,6 @@ FFMPEG_LIVE_FLAGS+=(
     --enable-demuxer=flac,mp3,ogg,wav
     --enable-parser=flac,mpegaudio,opus,vorbis
 )
-# This computer as the game source (gui/src/pcsource_linux.cpp): the screen's pictures scaled
-# and made YUV for the encoder
-FFMPEG_LIVE_FLAGS+=(--enable-swscale)
 # Cisco's OpenH264 for computers without a hardware encoder, where the system has it
 if pkg-config --exists openh264
 then
