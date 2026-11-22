@@ -553,6 +553,58 @@ Item {
         }
     }
 
+    // The console sleeps and the room stays: who may wakes it in the stream menu
+    readonly property bool consoleAsleep: !!Chiaki.session && Chiaki.session.coplayConsoleAsleep
+    Rectangle {
+        anchors.fill: parent
+        visible: view.consoleAsleep
+        color: "#07060f"
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 48, 560)
+            spacing: 14
+
+            C.Icon {
+                Layout.alignment: Qt.AlignHCenter
+                iconName: "moon"
+                size: 56
+                color: "#c4b5fd"
+            }
+
+            Label {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                font.pixelSize: 26
+                font.bold: true
+                color: "white"
+                text: Chiaki.session && Chiaki.session.coplayWaking ? qsTr("Waking the console…") : qsTr("The console is asleep")
+            }
+
+            BusyIndicator {
+                Layout.alignment: Qt.AlignHCenter
+                visible: !!Chiaki.session && Chiaki.session.coplayWaking
+                running: visible
+            }
+
+            Label {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                font.pixelSize: 17
+                color: "#d4d4e8"
+                visible: !Chiaki.session || !Chiaki.session.coplayWaking
+                text: {
+                    const menu = Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : (Qt.platform.os === "osx" ? "⌘O" : "Ctrl+O");
+                    if (Chiaki.session && Chiaki.session.coplayMayWake)
+                        return qsTr("The room stays. To play on, wake the console: %1 opens the stream menu.").arg(menu);
+                    return qsTr("The room stays. The host can wake the console.");
+                }
+            }
+        }
+    }
+
     // The menu over the whole game picture: it slides its parts in and out by itself, and
     // says when it is gone (onHidden above)
     Item {

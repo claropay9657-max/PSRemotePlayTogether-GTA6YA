@@ -48,6 +48,7 @@ const ui = {
   stage: $('stage'),
   screen: $('screen'),
   note: $('stage-note'),
+  asleep: $('asleep'),
   notices: $('notices'),
   banner: $('banner'),
   handle: $('menu-handle'),
@@ -859,6 +860,8 @@ function showStageNote() {
 
 function leaveStage() {
   if (keyMouse) keyMouse.setOn(false);
+  ui.asleep.hidden = true;
+  wakeAsked = false;
   keyMouseAllowed = false;
   clearInterval(padTimer);
   clearInterval(slowTimer);
@@ -1071,6 +1074,21 @@ function showPlayers() {
     : 'Everybody who joins can read along';
 }
 
+/** The console sleeps and the room stays: who may, wakes it. */
+let wakeAsked = false;
+function showAsleep(s) {
+  const asleep = !!s.stream.asleep;
+  if (!asleep) wakeAsked = false;
+  ui.asleep.hidden = !asleep;
+  if (!asleep) return;
+  const own = s.participants.find((p) => p.slot === s.yourSlot);
+  const mayWake = !!own && (own.flags & P.PARTICIPANT_MAY_WAKE) !== 0;
+  $('asleep-title').textContent = wakeAsked ? 'Waking the console…' : 'The console is asleep';
+  $('asleep-text').textContent = wakeAsked ? 'Everybody comes back on their own once it plays.'
+    : mayWake ? 'The room stays. Wake the console to play on.' : 'The room stays. The host can wake the console.';
+  $('asleep-wake').hidden = !mayWake || wakeAsked;
+}
+
 /** Whether the host lets this player use mouse and keyboard; switched off when it stops. */
 function updateKeyMouse(s) {
   const own = s.participants.find((p) => p.slot === s.yourSlot);
@@ -1097,6 +1115,7 @@ function onState(s) {
   const before = lastState;
   lastState = s;
   updateKeyMouse(s);
+  showAsleep(s);
   if (player) player.setCodec(s.stream.codec);
   sound.setGameFormat(s.audio);
   applyFeedback(s.feedback, false);
@@ -1866,6 +1885,13 @@ function start() {
   }));
   $('join-keys').addEventListener('click', () => (keys.showModal ? keys.showModal() : keys.setAttribute('open', '')));
   $('keys-close').addEventListener('click', () => keys.close());
+
+  $('asleep-wake').addEventListener('click', () => {
+    if (!session) return;
+    session.requestWake();
+    wakeAsked = true;
+    if (lastState) showAsleep(lastState);
+  });
 
   // ------------------------------------------------ keys and the mouse
   window.addEventListener('keydown', (e) => {

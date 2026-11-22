@@ -1120,6 +1120,7 @@ struct TestHost
 	std::string sleep_name; // who asked for the console to sleep
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
 	std::vector<KeyMouseUpdate> key_mouse;
+	std::atomic<int> wake_requests{0};
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 	std::vector<ChatMessage> chats;
 	std::vector<BlobRef> chat_images;
@@ -1157,6 +1158,7 @@ struct TestHost
 			std::lock_guard<std::mutex> lock(mutex);
 			cams.emplace_back(slot, jpeg);
 		};
+		cb.on_wake_requested = [this](uint8_t, const std::string &) { wake_requests++; };
 		cb.on_key_mouse = [this](const KeyMouseUpdate &u) {
 			std::lock_guard<std::mutex> lock(mutex);
 			key_mouse.push_back(u);
@@ -1807,6 +1809,42 @@ TEST(net_key_mouse_only_from_guests_allowed)
 		std::lock_guard<std::mutex> lock(h.mutex);
 		return !h.key_mouse.empty() && h.key_mouse.back().gone;
 	}, 1000));
+}
+
+TEST(net_guest_wakes_the_sleeping_console_only_when_allowed)
+{
+	TestHost h;
+	StreamInfo info;
+	info.console_asleep = true;
+	h.host->SetStreamInfo(info);
+	TestGuest a(h.MakeInvite(), "One", 0);
+	CHECK(a.Connect());
+	CHECK(WaitFor([&] { return a.LastState().stream.console_asleep; }, 1000));
+	uint8_t slot = a.LastState().your_slot;
+	auto may_wake = [&] {
+		for(const Participant &p : a.LastState().participants)
+			if(p.slot == slot)
+				return (p.flags & kParticipantMayWake) != 0;
+		return false;
+	};
+	// Not allowed: nothing happens
+	CHECK(!may_wake());
+	a.client->RequestWake();
+	std::this_thread::sleep_for(std::chrono::milliseconds(150));
+	CHECK(h.wake_requests == 0);
+	// Allowed: the guest is told, and its wish reaches the host
+	h.host->SetGuestsMayWake(true);
+	CHECK(WaitFor([&] { return may_wake(); }, 1000));
+	a.client->RequestWake();
+	CHECK(WaitFor([&] { return h.wake_requests >= 1; }, 1000));
+	// Awake again: nothing more to wake
+	int before = h.wake_requests;
+	info.console_asleep = false;
+	h.host->SetStreamInfo(info);
+	CHECK(WaitFor([&] { return !a.LastState().stream.console_asleep; }, 1000));
+	a.client->RequestWake();
+	std::this_thread::sleep_for(std::chrono::milliseconds(150));
+	CHECK(h.wake_requests == before);
 }
 
 TEST(net_each_player_on_a_controller_of_their_own)

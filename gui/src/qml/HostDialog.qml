@@ -1272,6 +1272,16 @@ DialogView {
                                     onToggled: Chiaki.settings.coplayGuestsMaySleep = checked
                                 }
 
+                                // The room stays while the console sleeps, and friends wake it to play on
+                                C.ToggleRow {
+                                    visible: !dialog.pcChosen
+                                    iconName: "power"
+                                    title: qsTr("Room stays while it sleeps")
+                                    subtitle: qsTr("Friends can wake the console")
+                                    checked: !!Chiaki.settings.coplayKeepRoomAsleep
+                                    onToggled: Chiaki.settings.coplayKeepRoomAsleep = checked
+                                }
+
                                 // The same setting as "On this computer" (Settings › General), where picture and
                                 // sound can also be switched off one by one
                                 C.ToggleRow {

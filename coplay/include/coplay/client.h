@@ -144,6 +144,8 @@ class Client
 		 * and wheel (KeyMouseState). Only a host that lets this player (kParticipantKeyMouse) acts on it.
 		 */
 		void SetKeyMouse(const KeyMouseState &state);
+		/** Asks the host to wake its sleeping console (only a host that lets this player does it). */
+		void RequestWake();
 		/** Changes which streams the host sends, for example to switch to controller-only. */
 		void SetWant(uint8_t want);
 		uint8_t Want() const { return want; }

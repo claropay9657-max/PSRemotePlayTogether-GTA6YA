@@ -407,6 +407,12 @@ export class Session {
     this.send(P.inputFrame(this.inputSeq, this.pad));
   }
 
+  /** Asks the host to wake its sleeping console; it acts on the first that arrives. */
+  requestWake() {
+    if (!this.connected) return;
+    for (let i = 0; i < 3; i++) this.send(P.wakeFrame());
+  }
+
   /** Mouse and keyboard for a game on the host's computer; sent at once, and again a moment later. */
   setKeyMouse(km) {
     if (!this.connected) return;

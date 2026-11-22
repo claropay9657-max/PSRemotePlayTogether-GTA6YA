@@ -566,6 +566,16 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     });
     connect(wakeup_start_timer, &QTimer::timeout, this, [this]
     {
+        // Woken for the friends in its room, and it did not come: the room stays
+        if (asleep_console && session && !session->IsAsleepRoom()) {
+            qCWarning(chiakiGui) << "Play Together: the console did not wake up, the room stays";
+            wakeup_start = false;
+            wakeup_nickname.clear();
+            session->SetKeepGuests(true);
+            if (enterAsleepRoom())
+                emit error(tr("Play Together"), tr("The console did not wake up. You and your friends can try again."));
+            return;
+        }
         emit wakeupStartFailed();
     });
     connect(wakeup_resend_timer, &QTimer::timeout, this, [this]
@@ -1232,6 +1242,69 @@ void QmlBackend::consoleReconnectAttempt()
     emit sessionEnded();
 }
 
+bool QmlBackend::keepRoomAsleepPossible() const
+{
+    // Only a console that this computer can wake: one on its own network
+    return settings->GetCoPlayKeepRoomAsleep() && session_info.coplay_host_enabled && !session_info.pc_source
+            && !session_info.coplay_client && session_info.duid.isEmpty() && !session_info.host.isEmpty()
+            && !session_info.regist_key.isEmpty();
+}
+
+bool QmlBackend::enterAsleepRoom()
+{
+    const StreamSessionConnectInfo console = session_info;
+    StreamSessionConnectInfo info = console;
+    info.coplay_asleep = true;
+    info.coplay_room_game = QString();
+    asleep_console = std::make_unique<StreamSessionConnectInfo>(console);
+    qCInfo(chiakiGui) << "Play Together: the console sleeps, the room stays";
+    teardownSession();
+    wakeup_nickname.clear();
+    wakeup_start = false;
+    wakeup_start_timer->stop();
+    createSession(info);
+    // The console, to wake later
+    session_info = console;
+    if (!session) {
+        asleep_console.reset();
+        emit sessionChanged(nullptr);
+        sleep_inhibit->release();
+        setDiscoveryEnabled(true);
+        emit sessionEnded();
+        return true;
+    }
+    // To see the console wake up
+    setDiscoveryEnabled(true);
+    return true;
+}
+
+void QmlBackend::wakeAsleepConsole(const QString &who)
+{
+    if (!session || !session->IsAsleepRoom() || !asleep_console)
+        return;
+    const StreamSessionConnectInfo console = *asleep_console;
+    if (!sendWakeup(console.host, console.regist_key, chiaki_target_is_ps5(console.target))) {
+        emit error(tr("Play Together"), tr("The console could not be woken from this computer."));
+        return;
+    }
+    qCInfo(chiakiGui) << "Play Together:" << (who.isEmpty() ? QStringLiteral("the host") : who) << "wakes the console";
+    session->SetKeepGuests(true);
+    teardownSession();
+    // createSession() waits for the console to come up (wakeup_start), then connects
+    wakeup_nickname = console.nickname;
+    createSession(console);
+    if (!session) {
+        asleep_console.reset();
+        emit sessionChanged(nullptr);
+        sleep_inhibit->release();
+        setDiscoveryEnabled(true);
+        emit sessionEnded();
+        return;
+    }
+    // Until the console plays: the friends wait for it, and a failure brings the room back
+    session->SetKeepGuests(true);
+}
+
 void QmlBackend::stopConsoleReconnect()
 {
     console_reconnect_timer->stop();
@@ -1247,6 +1320,8 @@ void QmlBackend::stopConsoleReconnect()
 /** The current session is over for good: takes it apart and tells everybody. */
 void QmlBackend::finishSession()
 {
+    asleep_console.reset();
+    asleep_room_pending = false;
     // Who had the key of a public room cannot come back to the next one
     if (session && session->GetCoPlayPublic())
         settings->SetCoPlayPublicSecret(QString::fromStdString(coplay::SecretToString(coplay::GenerateSecret())));
@@ -1520,10 +1595,21 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 
         // Lost rather than ended: the session object and the stream view stay while a
         // new session is made, see consoleReconnectAttempt()
-        if (session_for_connections->ReconnectWanted() && !session_for_connections->StopRequested()
-                && scheduleConsoleReconnect())
+        const bool lost = session_for_connections->ReconnectWanted() && !session_for_connections->StopRequested();
+        if (lost && scheduleConsoleReconnect())
             return;
         stopConsoleReconnect();
+
+        // The console sleeps, did not come back, or did not wake: where the host wants it, the
+        // room stays and the friends may wake it
+        if (!session_for_connections->IsAsleepRoom()) {
+            const bool woken_failed = asleep_console && !session_for_connections->StopRequested();
+            const bool keep = asleep_room_pending || woken_failed || (lost && keepRoomAsleepPossible());
+            asleep_room_pending = false;
+            if (keep && enterAsleepRoom())
+                return;
+        }
+        asleep_room_pending = false;
 
         if (chiaki_quit_reason_is_error(reason)) {
             QString m = tr("Chiaki Session has quit") + ":\n" + chiaki_quit_reason_string(reason);
@@ -1574,6 +1660,13 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
         emit error(tr("Play Together"), tr("%1 left and put the console to sleep.").arg(name));
     });
 
+    // Somebody in the room of the sleeping console wants it woken; not from inside the session's signal
+    connect(session, &StreamSession::CoPlayWakeRequested, this, [this, session_for_connections](const QString &who) {
+        if (session != session_for_connections)
+            return;
+        QTimer::singleShot(0, this, [this, who]() { wakeAsleepConsole(who); });
+    });
+
     connect(session, &StreamSession::AutoRegistSucceeded, this, &QmlBackend::finishAutoRegister);
 
     connect(session, &StreamSession::ConnectedChanged, this, [this, session_for_connections]() {
@@ -1584,8 +1677,14 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
             return;
         // A public room tells the list which game runs, which the console's discovery answers say.
         // A game on this computer leaves the consoles alone.
-        if (!session_for_connections->GetCoPlayPublic() && !session_for_connections->IsPcSource())
+        if (!session_for_connections->GetCoPlayPublic() && !session_for_connections->IsPcSource()
+                && !session_for_connections->IsAsleepRoom())
             setDiscoveryEnabled(false);
+        // The console of the room woke up and plays: what ends it from now on ends it as always
+        if (!session_for_connections->IsAsleepRoom() && asleep_console) {
+            asleep_console.reset();
+            session_for_connections->SetKeepGuests(false);
+        }
         if (console_reconnecting) {
             qCInfo(chiakiGui) << "Connected to the console again after" << console_reconnect_clock.elapsed() << "ms";
             // The clock runs on: a session that is lost again at once does not get all the time anew
@@ -1653,6 +1752,8 @@ bool QmlBackend::closeRequested()
             stop = false;
             emit sessionStopDialogRequested();
         }
+    } else if (session->IsAsleepRoom()) {
+        // The console sleeps already: nothing to ask, the room just ends
     } else if (session->IsConnected()) {
         switch (settings->GetDisconnectAction()) {
         case DisconnectAction::Ask:
@@ -1660,8 +1761,8 @@ bool QmlBackend::closeRequested()
             emit sessionStopDialogRequested();
             break;
         case DisconnectAction::AlwaysSleep:
-            session->GoToBed();
-            break;
+            stopSession(true);
+            return false;
         default:
             break;
         }
@@ -2284,6 +2385,12 @@ void QmlBackend::stopSession(bool sleep)
         // There is no console to tell; this ends what is left of the session
         cancelReconnect();
         return;
+    }
+
+    // Sharing: where the host wants it, the room stays while the console sleeps
+    if (sleep && !session->IsAsleepRoom() && session->IsCoPlayHosting() && keepRoomAsleepPossible()) {
+        asleep_room_pending = true;
+        session->SetKeepGuests(true);
     }
 
     if (sleep)

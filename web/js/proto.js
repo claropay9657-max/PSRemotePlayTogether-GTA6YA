@@ -22,6 +22,7 @@ export const PT = {
   ChatUp: 0x15,
   ChatAck: 0x16,
   KeyMouse: 0x17,
+  WakeUp: 0x18,
   Video: 0x20,
   Audio: 0x21,
   Haptics: 0x22,
@@ -76,6 +77,15 @@ export const PARTICIPANT_IN_CONTROL = 1 << 2;
 export const PARTICIPANT_MAY_SLEEP = 1 << 3;
 /** The host lets this player use mouse and keyboard in the game on its computer. */
 export const PARTICIPANT_KEY_MOUSE = 1 << 4;
+/** The room stays while the console sleeps, and this player may wake it. */
+export const PARTICIPANT_MAY_WAKE = 1 << 5;
+
+/** Asks the host to wake its sleeping console. */
+export function wakeFrame() {
+  const w = new Writer(1);
+  w.u8(PT.WakeUp);
+  return w.done();
+}
 
 export const BATTERY_UNKNOWN = 0xff;
 export const BATTERY_WIRED = 0xfe;
@@ -165,7 +175,11 @@ function readStreamInfo(r) {
   const height = r.u16();
   const fps = r.u8();
   const flags = r.u8();
-  return { codec, width, height, fps, ps5: (flags & 1) !== 0, dualsense: (flags & 2) !== 0, source: (flags >> 2) & 3 };
+  return {
+    codec, width, height, fps, ps5: (flags & 1) !== 0, dualsense: (flags & 2) !== 0, source: (flags >> 2) & 3,
+    // The console sleeps and the room stays
+    asleep: (flags & 0x10) !== 0,
+  };
 }
 
 function readAudioHeader(r) {

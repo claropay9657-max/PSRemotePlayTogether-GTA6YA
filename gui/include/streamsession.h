@@ -155,6 +155,8 @@ class SdeckHapticsWorker;
 		QString coplay_meet_server;
 		/** Guests may put the console to sleep when they leave. */
 		bool coplay_guests_may_sleep = false;
+		/** Hosting a console: the room stays while it sleeps, and guests may wake it. */
+		bool coplay_keep_room_asleep = false;
 		/** How many friends may join at the same time. */
 		int coplay_max_guests = 4;
 		/** A public room: listed for everybody, with a key of its own (coplay_secret is that one). */
@@ -196,6 +198,11 @@ class SdeckHapticsWorker;
 		std::shared_ptr<const coplay::ClientConfig> coplay_client_config;
 		/** Get a lost connection back without asking: the console's, or as a guest the host's. */
 		bool auto_reconnect = false;
+		/**
+		 * Hosting a console that sleeps: no console session, the room stays open and the guests
+		 * may wake the console (QmlBackend::enterAsleepRoom()).
+		 */
+		bool coplay_asleep = false;
 		// This computer as the game source instead of a console (pcsource.h, docs/pc-source.md):
 		// a window or a screen of it, shared with the guests, who play on virtual controllers
 		bool pc_source = false;
@@ -271,6 +278,12 @@ class StreamSession : public QObject
 	Q_PROPERTY(bool coplayKeyMouseAllowed READ GetCoPlayKeyMouseAllowed NOTIFY CoPlayChanged)
 	/** That guest plays with mouse and keyboard now: this window takes them for the game. */
 	Q_PROPERTY(bool coplayKeyMouse READ GetCoPlayKeyMouse WRITE SetCoPlayKeyMouse NOTIFY CoPlayChanged)
+	/** The console sleeps and the room stays (the host's room, or the one this guest is in). */
+	Q_PROPERTY(bool coplayConsoleAsleep READ GetCoPlayConsoleAsleep NOTIFY CoPlayChanged)
+	/** This player may wake it: the host always, a guest where the host lets guests. */
+	Q_PROPERTY(bool coplayMayWake READ GetCoPlayMayWake NOTIFY CoPlayChanged)
+	/** Asked to wake it, and waiting for the console. */
+	Q_PROPERTY(bool coplayWaking READ GetCoPlayWaking NOTIFY CoPlayChanged)
 	// This computer shows no picture / plays no sound of the console in this session: the host plays
 	// on the TV (controller only), or a guest joined with the controller only
 	Q_PROPERTY(bool pictureOff READ GetPictureOff NOTIFY CoPlayChanged)
@@ -468,6 +481,11 @@ class StreamSession : public QObject
 		CoPlayChatState *coplay_chat = nullptr;
 		// This computer as the game source (streamsession_pc.cpp)
 		bool pc_source = false;
+		bool asleep_room = false;
+		bool asleep_finished = false;
+		bool keep_guests = false;
+		void AsleepStart();
+		void AsleepFinish(ChiakiQuitReason reason);
 		QVariantMap pc_target;
 		std::shared_ptr<PcPortal> pc_portal;
 		int pc_portal_fd = -1;
@@ -618,6 +636,15 @@ class StreamSession : public QObject
 		bool GetCantDisplay()	{ return cant_display; }
 		bool IsCoPlayGuest() const;
 		bool IsPcSource() const { return pc_source; }
+		/** No console session: the room of a console that sleeps (StreamSessionConnectInfo::coplay_asleep). */
+		bool IsAsleepRoom() const { return asleep_room; }
+		/** The guests wait when this session ends, for the one that comes next (asleep room, waking). */
+		void SetKeepGuests(bool keep) { keep_guests = keep; }
+		bool GetCoPlayConsoleAsleep() const;
+		bool GetCoPlayMayWake() const;
+		bool GetCoPlayWaking() const;
+		/** Wakes the sleeping console: a guest asks the host, the host does it. */
+		Q_INVOKABLE void coplayWake();
 		QString GetPcSourceName() const;
 		QString GetPcPadsProblem() const { return pc_pads_problem; }
 		/** A guest whose host lets guests put the console to sleep when they leave. */
@@ -824,6 +851,8 @@ class StreamSession : public QObject
 		void CoPlayNotice(const QString &text);
 		/** Host: a guest left and asked for the console to be put to sleep, and guests may. */
 		void CoPlaySleepRequested(const QString &name);
+		/** Somebody in the room wants the sleeping console woken: a guest's name, or empty for the host. */
+		void CoPlayWakeRequested(const QString &name);
 		/** Host: somebody knocks on the public room (QML: onCoplayKnock). */
 		void coplayKnock(const QString &name);
 

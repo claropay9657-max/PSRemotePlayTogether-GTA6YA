@@ -130,7 +130,8 @@ static void WriteStreamInfo(ByteWriter &w, const StreamInfo &s)
 	w.U16(s.width);
 	w.U16(s.height);
 	w.U8(s.fps);
-	w.U8(static_cast<uint8_t>((s.ps5 ? 1 : 0) | (s.dualsense ? 2 : 0) | ((static_cast<uint8_t>(s.source) & 3) << 2)));
+	w.U8(static_cast<uint8_t>((s.ps5 ? 1 : 0) | (s.dualsense ? 2 : 0) | ((static_cast<uint8_t>(s.source) & 3) << 2)
+		| (s.console_asleep ? 0x10 : 0)));
 }
 
 static bool ReadStreamInfo(ByteReader &r, StreamInfo &s)
@@ -142,6 +143,7 @@ static bool ReadStreamInfo(ByteReader &r, StreamInfo &s)
 	uint8_t flags = r.U8();
 	s.ps5 = (flags & 1) != 0;
 	s.dualsense = (flags & 2) != 0;
+	s.console_asleep = (flags & 0x10) != 0;
 	uint8_t source = (flags >> 2) & 3;
 	if(!r.ok() || codec > static_cast<uint8_t>(VideoCodec::H265Hdr) || source > static_cast<uint8_t>(GameSource::XboxApp))
 		return false;

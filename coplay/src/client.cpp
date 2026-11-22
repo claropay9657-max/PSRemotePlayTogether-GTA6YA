@@ -390,6 +390,15 @@ void Client::SendKeyMouse(uint64_t now_ms)
 	Send(PacketType::KeyMouse, payload);
 }
 
+void Client::RequestWake()
+{
+	if(!connected || lost)
+		return;
+	// The host acts on the first that arrives
+	for(int i = 0; i < 3; i++)
+		Send(PacketType::WakeUp, {});
+}
+
 void Client::SetKeyMouse(const KeyMouseState &state)
 {
 	if(!connected || lost)

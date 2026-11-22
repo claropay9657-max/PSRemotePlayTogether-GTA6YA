@@ -404,6 +404,17 @@ private:
     void finishSession();
     // Getting a lost console session back, see qmlbackend.cpp
     bool scheduleConsoleReconnect();
+    // The room of a console that sleeps (docs/later.md: guests wake the console)
+    /** Whether this session's room may stay while its console sleeps (Host page, a console on this network). */
+    bool keepRoomAsleepPossible() const;
+    /** Ends the console session for a session without a console that keeps the room; false if none could be made. */
+    bool enterAsleepRoom();
+    /** Wakes the console of the room and hosts it again; who asked, empty for the host. */
+    void wakeAsleepConsole(const QString &who);
+    /** The console ends with "sleep" while sharing: the room stays (keepRoomAsleepPossible()). */
+    bool asleep_room_pending = false;
+    /** The console of the room that waits for it, while it sleeps or wakes. */
+    std::unique_ptr<StreamSessionConnectInfo> asleep_console;
     void consoleReconnectAttempt();
     void stopConsoleReconnect();
 

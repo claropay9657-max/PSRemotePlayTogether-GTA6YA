@@ -228,6 +228,8 @@ void Host::Fire(Deferred &d)
 		callbacks.on_reach_changed();
 	if(d.sleep_requested && callbacks.on_sleep_requested)
 		callbacks.on_sleep_requested(d.sleep_slot, d.sleep_name);
+	if(d.wake_requested && callbacks.on_wake_requested)
+		callbacks.on_wake_requested(d.wake_slot, d.wake_name);
 	if(d.pending_changed && callbacks.on_pending_changed)
 		callbacks.on_pending_changed();
 	if(callbacks.on_voice)
@@ -595,6 +597,16 @@ bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, 
 			if(mixer.Mode() == MixMode::EachOwn && state != mixer.Raw(g.slot, now_ms))
 				d.input_changed = true;
 			mixer.SetSource(g.slot, state, now_ms);
+			break;
+		}
+		case PacketType::WakeUp: {
+			// Only while the console sleeps, and only where the host lets guests wake it
+			if(config.guests_may_wake && stream.console_asleep && g.confirmed && !d.wake_requested)
+			{
+				d.wake_requested = true;
+				d.wake_slot = g.slot;
+				d.wake_name = g.name;
+			}
 			break;
 		}
 		case PacketType::KeyMouse: {
@@ -1109,7 +1121,8 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 		Participant p;
 		p.slot = other.slot;
 		p.flags = static_cast<uint8_t>((other.can_control ? kParticipantCanControl : 0) | (other.in_control ? kParticipantInControl : 0)
-			| (config.guests_may_sleep ? kParticipantMaySleep : 0) | (other.key_mouse_allowed ? kParticipantKeyMouse : 0));
+			| (config.guests_may_sleep ? kParticipantMaySleep : 0) | (other.key_mouse_allowed ? kParticipantKeyMouse : 0)
+			| (config.guests_may_wake ? kParticipantMayWake : 0));
 		p.name = other.name;
 		p.controller = other.controller;
 		p.battery = other.battery;
@@ -1530,6 +1543,16 @@ void Host::SetBattery(uint8_t battery)
 	if(config.battery == battery)
 		return;
 	config.battery = battery;
+	state_seq++;
+	BroadcastState(NowMs());
+}
+
+void Host::SetGuestsMayWake(bool allowed)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	if(config.guests_may_wake == allowed)
+		return;
+	config.guests_may_wake = allowed;
 	state_seq++;
 	BroadcastState(NowMs());
 }

@@ -105,6 +105,8 @@ enum class PacketType : uint8_t
 	ChatAck = 0x16,         // guest -> host
 	/** guest -> host: mouse and keyboard for a game on the host's computer (KeyMouseState). */
 	KeyMouse = 0x17,
+	/** guest -> host, empty: wake the sleeping console (kParticipantMayWake, StreamInfo::console_asleep). */
+	WakeUp = 0x18,
 
 	Video = 0x20,           // host -> guest
 	Audio = 0x21,           // host -> guest
@@ -413,11 +415,13 @@ struct StreamInfo
 	bool ps5 = true;
 	bool dualsense = false; // the console session has DualSense features enabled
 	GameSource source = GameSource::Console;
+	/** The console sleeps and the room stays: no picture until somebody wakes it. */
+	bool console_asleep = false;
 
 	bool operator==(const StreamInfo &o) const
 	{
 		return codec == o.codec && width == o.width && height == o.height && fps == o.fps && ps5 == o.ps5
-			&& dualsense == o.dualsense && source == o.source;
+			&& dualsense == o.dualsense && source == o.source && console_asleep == o.console_asleep;
 	}
 };
 
@@ -462,7 +466,9 @@ enum ParticipantFlags : uint8_t
 	/** May put the console to sleep when leaving (ByeReason::Sleep). The host always may. */
 	kParticipantMaySleep = 1 << 3,
 	/** The host lets this player use mouse and keyboard in the shared game (a game on its computer). */
-	kParticipantKeyMouse = 1 << 4
+	kParticipantKeyMouse = 1 << 4,
+	/** The room stays while the console sleeps, and this player may wake it (PacketType::WakeUp). */
+	kParticipantMayWake = 1 << 5
 };
 
 struct Participant

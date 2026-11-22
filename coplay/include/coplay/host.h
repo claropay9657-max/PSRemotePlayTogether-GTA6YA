@@ -67,6 +67,8 @@ struct HostConfig
 	InputMixer::Config mixer;
 	/** Guests may put the console to sleep when they leave; see Host::SetGuestsMaySleep(). */
 	bool guests_may_sleep = false;
+	/** The room stays while the console sleeps, and guests may wake it; see Host::SetGuestsMayWake(). */
+	bool guests_may_wake = false;
 	/** Who gets in; see Host::SetJoinPolicy(). */
 	JoinPolicy join_policy = JoinPolicy::Open;
 	/** A guest that knocked and stopped asking is forgotten after this long. */
@@ -172,6 +174,8 @@ struct HostCallbacks
 	std::function<void(uint8_t slot, const std::string &name)> on_sleep_requested;
 	/** A guest's mouse and keyboard, for a game on the host's computer; only guests allowed to. */
 	std::function<void(const KeyMouseUpdate &)> on_key_mouse;
+	/** A guest asks to wake the sleeping console (StreamInfo::console_asleep, guests_may_wake). */
+	std::function<void(uint8_t slot, const std::string &name)> on_wake_requested;
 	/** Somebody knocked, or stopped waiting; see Host::Pending(). */
 	std::function<void()> on_pending_changed;
 	std::function<void(const std::string &)> on_log;
@@ -285,6 +289,8 @@ class Host
 		 * told, so that their app only offers it when it will work.
 		 */
 		void SetGuestsMaySleep(bool allowed);
+		/** Whether guests may wake the console while it sleeps and the room stays; everybody is told. */
+		void SetGuestsMayWake(bool allowed);
 		bool GuestsMaySleep();
 		/**
 		 * Who gets in from now on. Players who are in stay in; a player who was let in or
@@ -388,6 +394,10 @@ class Host
 			/** A guest asked for the console to be put to sleep: its slot and name. */
 			bool sleep_requested = false;
 			bool pending_changed = false;
+			/** A guest asked to wake the console: its slot and name. */
+			bool wake_requested = false;
+			uint8_t wake_slot = 0;
+			std::string wake_name;
 			uint8_t sleep_slot = 0;
 			std::string sleep_name;
 			std::vector<std::string> logs;

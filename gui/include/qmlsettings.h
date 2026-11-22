@@ -115,6 +115,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(bool coplayWebSupported READ coplayWebSupported CONSTANT)
     Q_PROPERTY(bool coplayWebGuests READ coplayWebGuests WRITE setCoplayWebGuests NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayGuestsMaySleep READ coplayGuestsMaySleep WRITE setCoplayGuestsMaySleep NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayKeepRoomAsleep READ coplayKeepRoomAsleep WRITE setCoplayKeepRoomAsleep NOTIFY coplayChanged)
     Q_PROPERTY(int coplayMaxGuests READ coplayMaxGuests WRITE setCoplayMaxGuests NOTIFY coplayChanged)
     // Hosting a public room, and the list of rooms
     Q_PROPERTY(bool coplayHostPublic READ coplayHostPublic WRITE setCoplayHostPublic NOTIFY coplayChanged)
@@ -724,6 +725,8 @@ public:
     void setCoplayMaxGuests(int n);
     /** Guests may put the console to sleep when they leave; otherwise only the host does. */
     bool coplayGuestsMaySleep() const;
+    bool coplayKeepRoomAsleep() const;
+    void setCoplayKeepRoomAsleep(bool on);
     void setCoplayGuestsMaySleep(bool allowed);
     // Friends who join from a web browser, without the app
     /** Whether this build can take them at all. */

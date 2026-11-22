@@ -775,6 +775,36 @@ Rectangle {
                     text: qsTr("Nobody can join this session: you chose Play. To play, talk and use the webcam with friends, choose Host on the start page instead.")
                 }
 
+                // The console sleeps and the room stays: who may, wakes it from here
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: panel.active && !!panel.session && panel.session.coplayConsoleAsleep
+                    spacing: 10
+
+                    C.Icon {
+                        iconName: "moon"
+                        size: 22
+                        color: "#c4b5fd"
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 13
+                        color: C.Theme.textSoft
+                        text: !!panel.session && panel.session.coplayWaking ? qsTr("Waking the console…")
+                              : (!!panel.session && panel.session.coplayMayWake ? qsTr("The console is asleep. Wake it to play on.")
+                                                                                 : qsTr("The console is asleep. The host can wake it."))
+                    }
+
+                    C.PillButton {
+                        kind: "primary"
+                        visible: !!panel.session && panel.session.coplayMayWake && !panel.session.coplayWaking
+                        text: qsTr("Wake the console")
+                        onClicked: panel.session.coplayWake()
+                    }
+                }
+
                 // A guest the host lets play with mouse and keyboard: this window takes them for the game
                 C.ToggleRow {
                     visible: panel.guest && panel.active && !!panel.session && panel.session.coplayKeyMouseAllowed

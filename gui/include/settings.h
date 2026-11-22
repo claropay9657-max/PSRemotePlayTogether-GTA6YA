@@ -334,6 +334,9 @@ class Settings : public QObject
 		void SetCoPlayPcHeight(int h)			{ settings.setValue("coplay/pc_height", h); }
 		/** A game on this computer: friends may use mouse and keyboard in it (pcinput.h). */
 		bool GetCoPlayPcKeyMouse() const		{ return settings.value("coplay/pc_keymouse", false).toBool(); }
+		/** Hosting a console: the room stays while it sleeps, and friends may wake it. */
+		bool GetCoPlayKeepRoomAsleep() const	{ return settings.value("coplay/keep_room_asleep", false).toBool(); }
+		void SetCoPlayKeepRoomAsleep(bool on)	{ settings.setValue("coplay/keep_room_asleep", on); }
 		void SetCoPlayPcKeyMouse(bool on)		{ settings.setValue("coplay/pc_keymouse", on); }
 		void SetCoPlayMixMode(int mode)			{ settings.setValue("coplay/mix_mode", mode); }
 		QString GetCoPlayLastInvite() const		{ return settings.value("coplay/last_invite").toString(); }

@@ -27,7 +27,30 @@ static const int kGameCheckMs = 15000;
 
 bool StreamSession::HasConsole() const
 {
-	return !IsCoPlayGuest() && !pc_source;
+	return !IsCoPlayGuest() && !pc_source && !asleep_room;
+}
+
+// ------------------------------------------------------------------ the room of a console that sleeps
+
+void StreamSession::AsleepStart()
+{
+	// Open for guests at once: there is no picture to wait for
+	ChiakiEvent connected = {};
+	connected.type = CHIAKI_EVENT_CONNECTED;
+	Event(&connected);
+}
+
+void StreamSession::AsleepFinish(ChiakiQuitReason reason)
+{
+	if(asleep_finished)
+		return;
+	asleep_finished = true;
+	if(reason == CHIAKI_QUIT_REASON_STOPPED)
+		stop_requested = true;
+	ChiakiEvent quit = {};
+	quit.type = CHIAKI_EVENT_QUIT;
+	quit.quit.reason = reason;
+	Event(&quit);
 }
 
 QString StreamSession::GetPcSourceName() const

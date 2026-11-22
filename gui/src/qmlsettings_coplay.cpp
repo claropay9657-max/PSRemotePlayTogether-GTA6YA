@@ -485,6 +485,19 @@ void QmlSettings::setCoplayMaxGuests(int n)
     emit coplayChanged();
 }
 
+bool QmlSettings::coplayKeepRoomAsleep() const
+{
+    return settings->GetCoPlayKeepRoomAsleep();
+}
+
+void QmlSettings::setCoplayKeepRoomAsleep(bool on)
+{
+    if (on == settings->GetCoPlayKeepRoomAsleep())
+        return;
+    settings->SetCoPlayKeepRoomAsleep(on);
+    emit coplayChanged();
+}
+
 bool QmlSettings::coplayGuestsMaySleep() const
 {
     return settings->GetCoPlayGuestsMaySleep();

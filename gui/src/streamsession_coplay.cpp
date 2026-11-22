@@ -99,6 +99,10 @@ struct CoPlayState
 	std::atomic<bool> guest_quit_sent{false};
 	/** The host lets guests put the console to sleep when they leave (from the session state). */
 	std::atomic<bool> may_sleep{false};
+	/** The host's console sleeps and the room stays; and whether this guest may wake it, and asked. */
+	std::atomic<bool> console_asleep{false};
+	std::atomic<bool> may_wake{false};
+	bool wake_asked = false;
 	/** The host lets this guest use mouse and keyboard; and whether it does now. */
 	std::atomic<bool> key_mouse_allowed{false};
 	bool key_mouse_on = false;
@@ -441,6 +445,8 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	};
 	// A guest that leaves may send the console to sleep, if the host has said so
 	config.guests_may_sleep = connect_info.coplay_guests_may_sleep;
+	// A console that sleeps keeps the room where the host wants it, and the guests may wake it
+	config.guests_may_wake = connect_info.coplay_keep_room_asleep && !pc_source;
 	// Who gets in: everybody with the invite, unless the room is public
 	coplay->is_public = connect_info.coplay_public;
 	coplay->join_policy = std::clamp(connect_info.coplay_join_policy, 0, 2);
@@ -455,6 +461,11 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	// A game on this computer: the guests' mouse and keyboard (pcinput.h)
 	callbacks.on_key_mouse = [this](const coplay::KeyMouseUpdate &u) {
 		QMetaObject::invokeMethod(this, [this, u] { PcKeyMouse(u); }, Qt::QueuedConnection);
+	};
+	// The console sleeps and the room stays: a guest wants it woken
+	callbacks.on_wake_requested = [this](uint8_t, const std::string &name) {
+		const QString who = QString::fromStdString(name);
+		QMetaObject::invokeMethod(this, [this, who] { emit CoPlayWakeRequested(who); }, Qt::QueuedConnection);
 	};
 	// Friends without the app join from a web browser; the meeting point leads them here
 	if(connect_info.coplay_web_guests && config.meet.Enabled() && coplay::WebGuestsSupported())
@@ -484,6 +495,7 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	info.fps = static_cast<uint8_t>(connect_info.video_profile.max_fps);
 	info.ps5 = ps5;
 	info.dualsense = connect_info.enable_dualsense;
+	info.console_asleep = asleep_room;
 	if(pc_source)
 	{
 		// H.264 from this computer's encoder; no DualSense features, no touchpad
@@ -859,8 +871,9 @@ void StreamSession::CoPlayStopHost()
 	}
 	if(!coplay->host)
 		return;
-	// Guests wait for a host that is getting its console back, and leave one that is done
-	if(reconnect_wanted)
+	// Guests wait for a host that is getting its console back, or that keeps its room while the
+	// console sleeps or wakes, and leave one that is done
+	if(reconnect_wanted || keep_guests)
 		coplay->host->StopForReconnect();
 	else
 		coplay->host->Stop();
@@ -1017,6 +1030,37 @@ void StreamSession::SetCoPlayMixMode(int mode)
 	CoPlayUpdatePlayers();
 	// The combined state may have changed with the mode
 	SendFeedbackState();
+}
+
+bool StreamSession::GetCoPlayConsoleAsleep() const
+{
+	if(asleep_room)
+		return true;
+	return IsCoPlayGuest() && coplay->console_asleep;
+}
+
+bool StreamSession::GetCoPlayMayWake() const
+{
+	if(asleep_room)
+		return true;
+	return IsCoPlayGuest() && coplay->console_asleep && coplay->may_wake;
+}
+
+bool StreamSession::GetCoPlayWaking() const
+{
+	return coplay && coplay->wake_asked;
+}
+
+void StreamSession::coplayWake()
+{
+	if(!GetCoPlayMayWake() || !coplay)
+		return;
+	coplay->wake_asked = true;
+	if(IsCoPlayGuest())
+		coplay->client->RequestWake();
+	else
+		emit CoPlayWakeRequested(QString());
+	emit CoPlayChanged();
 }
 
 bool StreamSession::GetCoPlayKeyMouseAllowed() const
@@ -1539,6 +1583,8 @@ void StreamSession::CoPlayStartGuest()
 				coplay->may_sleep = (p.flags & coplay::kParticipantMaySleep) != 0;
 			if(p.slot == your_slot)
 				coplay->key_mouse_allowed = (p.flags & coplay::kParticipantKeyMouse) != 0;
+			if(p.slot == your_slot)
+				coplay->may_wake = (p.flags & coplay::kParticipantMayWake) != 0;
 			m["keyMouse"] = (p.flags & coplay::kParticipantKeyMouse) != 0;
 			m["controller"] = static_cast<int>(p.controller);
 			m["battery"] = static_cast<int>(p.battery);
@@ -1635,6 +1681,10 @@ void StreamSession::CoPlayStartGuest()
 		}
 		a = f;
 		coplay->applied_any = true;
+
+		// The host's console sleeps, or woke
+		if(coplay->console_asleep.exchange(s.stream.console_asleep) != s.stream.console_asleep)
+			QMetaObject::invokeMethod(this, [this] { emit CoPlayChanged(); }, Qt::QueuedConnection);
 
 		coplay->participants = s.participants;
 		rebuild_players(s.your_slot, static_cast<int>(s.mix_mode));

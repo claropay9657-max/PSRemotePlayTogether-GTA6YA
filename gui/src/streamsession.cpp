@@ -362,6 +362,7 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	this->coplay_stun_server = settings->GetCoPlayStunServer();
 	this->coplay_meet_server = settings->GetCoPlayMeetServer();
 	this->coplay_guests_may_sleep = settings->GetCoPlayGuestsMaySleep();
+	this->coplay_keep_room_asleep = settings->GetCoPlayKeepRoomAsleep();
 	this->coplay_max_guests = settings->GetCoPlayMaxGuests();
 	this->coplay_public = this->coplay_host_enabled && settings->GetCoPlayPublic();
 	// A public room has a key of its own (QmlBackend::hostConsole makes sure there is one)
@@ -439,6 +440,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	memset(&session, 0, sizeof(session));
 	// A game on this computer has no console either: picture, sound and controllers stay here
 	pc_source = connect_info.pc_source && !connect_info.coplay_client;
+	asleep_room = connect_info.coplay_asleep && !connect_info.coplay_client && !pc_source;
 	if(pc_source)
 	{
 		pc_target = connect_info.pc_target;
@@ -947,6 +949,11 @@ void StreamSession::Start()
 		PcStart();
 		return;
 	}
+	if(asleep_room)
+	{
+		AsleepStart();
+		return;
+	}
 	ChiakiErrorCode err = chiaki_session_start(&session);
 	if(err != CHIAKI_ERR_SUCCESS)
 	{
@@ -988,6 +995,11 @@ void StreamSession::Stop()
 		PcFinish(CHIAKI_QUIT_REASON_STOPPED, QString());
 		return;
 	}
+	if(asleep_room)
+	{
+		AsleepFinish(CHIAKI_QUIT_REASON_STOPPED);
+		return;
+	}
 	chiaki_session_stop(&session);
 }
 
@@ -1026,6 +1038,12 @@ void StreamSession::GoToBed()
 	if(pc_source)
 	{
 		PcFinish(CHIAKI_QUIT_REASON_STOPPED, QString());
+		return;
+	}
+	// The console sleeps already: the room ends
+	if(asleep_room)
+	{
+		AsleepFinish(CHIAKI_QUIT_REASON_STOPPED);
 		return;
 	}
 	chiaki_session_goto_bed(&session);
@@ -3066,6 +3084,8 @@ bool StreamSession::RequestIDR()
 		pc_capture->RequestKeyframe();
 		return true;
 	}
+	if(asleep_room)
+		return false;
 	ChiakiErrorCode err = chiaki_session_request_idr(&session);
 	if(err == CHIAKI_ERR_SUCCESS)
 	{

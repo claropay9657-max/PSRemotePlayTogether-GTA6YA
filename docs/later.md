@@ -34,7 +34,10 @@ Done: friends join with only a browser, see `docs/web-guests.md`. What is left:
 
 ## Guests wake the console
 
-Wanted on 2026-11-22 ("wenn der host das erlaubt, wäre das sinnvoll"); designed, not built yet.
+Wanted on 2026-11-22 ("wenn der host das erlaubt, wäre das sinnvoll"); built the same day
+(packet `WakeUp`, `StreamInfo::console_asleep`, `kParticipantMayWake`; the room is a session
+without a console, `StreamSession::asleep_room`, made by `QmlBackend::enterAsleepRoom()` and
+left by `wakeAsleepConsole()`). Not tested with a real console yet. What it was designed as:
 Today the session and the room end when the console goes to sleep (also when a guest who may
 puts it to sleep), so nobody is left to ask. The idea:
 
