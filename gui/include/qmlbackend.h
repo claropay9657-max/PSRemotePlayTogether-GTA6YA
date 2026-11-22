@@ -99,6 +99,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(QObject* deviceCheck READ deviceCheckObject CONSTANT)
     // What macOS has to allow (Settings → Permissions); nothing elsewhere
     Q_PROPERTY(QObject* permissions READ permissionsObject CONSTANT)
+    // The sound of the intro film, kept in step with it by the film itself
+    Q_PROPERTY(QObject* introSound READ introSoundObject CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
     Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
     // A release newer than this build, found by the check at start; empty if there is none
@@ -275,6 +277,7 @@ public:
     QObject *viewerActionsObject() const;
     QObject *deviceCheckObject() const;
     QObject *permissionsObject() const;
+    QObject *introSoundObject() const;
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
     QString updateVersion() const { return update_version; }
@@ -499,6 +502,7 @@ private:
     class ViewerActions *viewer_actions = {};
     class DeviceCheck *device_check = {};
     class MacPermissions *permissions = {};
+    class IntroSound *intro_sound = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};

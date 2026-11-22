@@ -256,11 +256,19 @@ Item {
         stack.push(controllerMappingDialogComponent)
     }
 
+    /** The intro film: what the app is for and how it works. "How it works" on the start page shows it again. */
+    function showIntro() {
+        stack.push(introViewComponent);
+    }
+
     Component.onCompleted: {
         if (Chiaki.session)
             stack.replace(stack.get(0), streamViewComponent, {}, StackView.Immediate);
         else if (Chiaki.autoConnect)
             stack.replace(stack.get(0), autoConnectViewComponent, {}, StackView.Immediate);
+        else if (Chiaki.settings.introState === "pending" && !Chiaki.window.directStream)
+            // A new installation: the film first, once
+            stack.push(introViewComponent, {}, StackView.Immediate);
     }
 
     NovaBackground {
@@ -590,6 +598,11 @@ Item {
     Component {
         id: psnViewComponent
         PsnView {}
+    }
+
+    Component {
+        id: introViewComponent
+        IntroView { }
     }
 
     Component {

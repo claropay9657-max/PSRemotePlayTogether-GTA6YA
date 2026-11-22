@@ -1,6 +1,8 @@
 <div align="center">
 
-![PSRemotePlayTogether: play one PlayStation together, from anywhere](docs/images/banner.png)
+![PSRemotePlayTogether in under a minute: friends' controllers play one game; shared from a PlayStation, a computer or an Xbox; invited with a link, in the app or a browser; voice chat, webcams and streaming built in](docs/images/intro.webp)
+
+<sub>The app's intro film. In the app it plays with music, on the first start and from <b>How it works</b> on the start page.</sub>
 
 # 🎮 PSRemotePlayTogether
 

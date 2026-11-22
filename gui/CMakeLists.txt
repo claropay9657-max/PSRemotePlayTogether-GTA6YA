@@ -67,6 +67,8 @@ set(SOURCE_FILES
 	src/voicechat.cpp
 	include/devicecheck.h
 	src/devicecheck.cpp
+	include/introsound.h
+	src/introsound.cpp
 	include/livestream.h
 	src/livestream.cpp
 	include/livecontroller.h

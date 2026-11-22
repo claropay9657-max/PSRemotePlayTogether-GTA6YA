@@ -432,6 +432,18 @@ class Settings : public QObject
 		bool GetStreamerMode() const		{ return settings.value("settings/streamer_mode", false).toBool(); }
 		void SetStreamerMode(bool enabled)	{ settings.setValue("settings/streamer_mode", enabled); }
 
+		/**
+		 * The intro film (gui/src/qml/intro): "pending" on a new installation, where it plays by
+		 * itself once; "seen" once somebody has watched it or left it; empty on an installation
+		 * older than the film, where the start page only points at it. One for the whole app, not
+		 * for each setting set.
+		 */
+		QString GetIntroState() const				{ return default_settings.value("settings/intro").toString(); }
+		void SetIntroState(const QString &state)	{ default_settings.setValue("settings/intro", state); }
+		/** The film's sound: on unless it was switched off in the film. */
+		bool GetIntroSound() const					{ return default_settings.value("settings/intro_sound", true).toBool(); }
+		void SetIntroSound(bool on)					{ default_settings.setValue("settings/intro_sound", on); }
+
 		bool GetButtonsByPosition() const 		{ return settings.value("settings/buttons_by_pos", false).toBool(); }
 		void SetButtonsByPosition(bool enabled) { settings.setValue("settings/buttons_by_pos", enabled); }
 

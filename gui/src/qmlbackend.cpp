@@ -4,6 +4,7 @@
 #include "livealerts.h"
 #include "devicecheck.h"
 #include "macpermissions.h"
+#include "introsound.h"
 #include "twitch.h"
 #include "twitchelements.h"
 #include "vieweractions.h"
@@ -444,6 +445,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     connect(this, &QmlBackend::sessionChanged, viewer_actions, &ViewerActions::SetSession);
     device_check = new DeviceCheck(settings, this);
     permissions = new MacPermissions(&discovery_manager, this);
+    intro_sound = new IntroSound(settings, this);
     // While playing, the session has the microphone, the speakers and the webcam
     connect(this, &QmlBackend::sessionChanged, device_check, [this]() {
         if (session)
@@ -829,6 +831,8 @@ void QmlBackend::profileChanged()
     window->setSettings(settings);
     if (device_check)
         device_check->SetSettings(settings);
+    if (intro_sound)
+        intro_sound->SetSettings(settings);
     setDiscoveryEnabled(true);
 
     auto_connect_mac = settings->GetAutoConnectHost().GetServerMAC();

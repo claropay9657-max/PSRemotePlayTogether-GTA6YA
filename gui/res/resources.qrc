@@ -18,6 +18,7 @@
     <file alias="music-starting.flac">sounds/music-starting.flac</file>
     <file alias="music-brb.flac">sounds/music-brb.flac</file>
     <file alias="music-ending.flac">sounds/music-ending.flac</file>
+    <file alias="intro.flac">sounds/intro.flac</file>
   </qresource>
   <qresource prefix="/twitch">
     <file alias="follow-big.svg">twitch/follow-big.svg</file>

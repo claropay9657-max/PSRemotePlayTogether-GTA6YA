@@ -127,6 +127,32 @@ void QmlSettings::setStreamerMode(bool enabled)
     emit streamerModeChanged();
 }
 
+QString QmlSettings::introState() const
+{
+    return settings->GetIntroState();
+}
+
+void QmlSettings::setIntroState(const QString &state)
+{
+    if (state == settings->GetIntroState())
+        return;
+    settings->SetIntroState(state);
+    emit introStateChanged();
+}
+
+bool QmlSettings::introSound() const
+{
+    return settings->GetIntroSound();
+}
+
+void QmlSettings::setIntroSound(bool on)
+{
+    if (on == settings->GetIntroSound())
+        return;
+    settings->SetIntroSound(on);
+    emit introSoundChanged();
+}
+
 bool QmlSettings::updateCheckEnabled() const
 {
     return settings->GetUpdateCheckEnabled();

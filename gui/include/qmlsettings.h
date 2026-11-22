@@ -34,6 +34,9 @@ class QmlSettings : public QObject
 #endif
     Q_PROPERTY(bool showStreamStats READ showStreamStats WRITE setShowStreamStats NOTIFY showStreamStatsChanged)
     Q_PROPERTY(bool streamerMode READ streamerMode WRITE setStreamerMode NOTIFY streamerModeChanged)
+    // The intro film: "pending" (plays by itself at the next start), "seen", or "" (never opened here)
+    Q_PROPERTY(QString introState READ introState WRITE setIntroState NOTIFY introStateChanged)
+    Q_PROPERTY(bool introSound READ introSound WRITE setIntroSound NOTIFY introSoundChanged)
     Q_PROPERTY(bool updateCheckEnabled READ updateCheckEnabled WRITE setUpdateCheckEnabled NOTIFY updateCheckEnabledChanged)
     Q_PROPERTY(float hapticOverride READ hapticOverride WRITE setHapticOverride NOTIFY hapticOverrideChanged)
     Q_PROPERTY(int displayTargetContrast READ displayTargetContrast WRITE setDisplayTargetContrast NOTIFY displayTargetContrastChanged)
@@ -260,6 +263,10 @@ public:
     void setShowStreamStats(bool enabled);
 
     bool streamerMode() const;
+    QString introState() const;
+    void setIntroState(const QString &state);
+    bool introSound() const;
+    void setIntroSound(bool on);
     bool updateCheckEnabled() const;
     void setUpdateCheckEnabled(bool enabled);
     void setStreamerMode(bool enabled);
@@ -896,6 +903,8 @@ signals:
     void audioVideoDisabledChanged();
     void showStreamStatsChanged();
     void streamerModeChanged();
+    void introStateChanged();
+    void introSoundChanged();
     void updateCheckEnabledChanged();
     void fpsLocalPS4Changed();
     void fpsRemotePS4Changed();

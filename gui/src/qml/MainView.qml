@@ -92,7 +92,8 @@ Pane {
                 lastFocusItem.focus = false;
             forceActiveFocus(Qt.TabFocusReason);
         }
-        if(!Chiaki.autoConnect && !root.initialAsk && !Chiaki.window.directStream)
+        // On a new installation the intro film comes first (Main.qml); the questions follow it
+        if(!Chiaki.autoConnect && !root.initialAsk && !Chiaki.window.directStream && Chiaki.settings.introState !== "pending")
         {
             root.initialAsk = true;
             if(Chiaki.settings.addSteamShortcutAsk && (typeof Chiaki.createSteamShortcut === "function"))
@@ -170,7 +171,7 @@ Pane {
     /** The page in rows, top to bottom: each console card is a row of its own. */
     function focusRows() {
         let rows = [
-            { items: [profileButton, settingsButton, moreButton, quitButton] }
+            { items: [introButton, introIconButton, profileButton, settingsButton, moreButton, quitButton] }
         ];
         if (doorsStacked) {
             rows.push({ items: [hostButton] });
@@ -623,6 +624,37 @@ Pane {
                     color: C.Theme.textDim
                     text: qsTr("Experience a new way of playing together online.")
                 }
+            }
+
+            // The intro film again: what the app is for and how it works. Never opened on this
+            // installation (one from before the film): a small light on the button says it is new.
+            PageButton {
+                id: introButton
+                visible: !consolePane.narrow
+                iconName: "play"
+                text: qsTr("How it works")
+                Accessible.description: qsTr("Plays the short intro film")
+                onClicked: root.showIntro()
+
+                Rectangle {
+                    visible: Chiaki.settings.introState === ""
+                    x: parent.width - 13
+                    y: 3
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: C.Theme.focus
+                    border.width: 2
+                    border.color: C.Theme.ground
+                }
+            }
+
+            PageIconButton {
+                id: introIconButton
+                visible: consolePane.narrow
+                iconName: "play"
+                tip: qsTr("How it works")
+                onClicked: root.showIntro()
             }
 
             // Who you are in Play Together: opens the profile and the Play Together settings

@@ -268,6 +268,13 @@ Settings::Settings(const QString &conf, QObject *parent) : QObject(parent),
 	default_settings(QCoreApplication::organizationName(), QCoreApplication::applicationName()),
 	placebo_settings(QCoreApplication::organizationName(), QStringLiteral("pl_render_params"))
 {
+	// Nothing saved at all yet: a new installation, where the intro film plays by itself once.
+	// Looked at before anything is written, and only by the first Settings of this run.
+	static bool looked_for_install = false;
+	default_settings.setFallbacksEnabled(false);
+	const bool new_install = !looked_for_install && default_settings.allKeys().isEmpty();
+	looked_for_install = true;
+
 	settings.setFallbacksEnabled(false);
 	MigrateSettings(&settings);
 	MigrateVideoProfile(&settings);
@@ -282,6 +289,8 @@ Settings::Settings(const QString &conf, QObject *parent) : QObject(parent),
 	MigrateSettings(&default_settings);
 	MigrateVideoProfile(&default_settings);
 	default_settings.setValue("version", SETTINGS_VERSION);
+	if(new_install)
+		default_settings.setValue("settings/intro", QStringLiteral("pending"));
 	LoadProfiles();
 	InitializePlaceboSettings(&placebo_settings);
 	MigrateLegacyFrameMixerSetting(&settings, &placebo_settings, &profiles);

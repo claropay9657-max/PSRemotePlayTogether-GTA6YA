@@ -3,6 +3,13 @@
     <file>qtquickcontrols2.conf</file>
     <file>Main.qml</file>
     <file>MainView.qml</file>
+    <file>IntroView.qml</file>
+    <file>intro/Film.js</file>
+    <file>intro/IntroBackdrop.qml</file>
+    <file>intro/IntroFilm.qml</file>
+    <file>intro/IntroGame.qml</file>
+    <file>intro/IntroIcon.qml</file>
+    <file>intro/IntroPlayer.qml</file>
     <file>StreamView.qml</file>
     <file>StreamMenuWindow.qml</file>
     <file>StreamMenuContent.qml</file>
