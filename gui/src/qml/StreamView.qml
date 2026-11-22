@@ -248,7 +248,8 @@ Item {
                 text: {
                     const menu = qsTr("Press %1 for the stream menu.").arg(Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : (Qt.platform.os === "osx" ? "⌘O" : "Ctrl+O"));
                     if (Chiaki.session && Chiaki.session.coplayGuest)
-                        return qsTr("You joined without picture and sound. Your controller plays along.") + "\n" + menu;
+                        return qsTr("Controller only: no picture and sound here. Your controller plays along.") + "\n" + menu
+                            + "\n" + qsTr("To get picture and sound: stream menu → Picture and sound.");
                     const what = view.soundOff ? qsTr("The game is on your TV. This computer sends your controller and feeds the overlays.")
                                                : qsTr("The picture is switched off for this computer.");
                     const friends = Chiaki.session && Chiaki.session.coplayActive ? "\n" + qsTr("Friends who join still get picture and sound.") : "";

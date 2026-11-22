@@ -781,16 +781,7 @@ function enterStage() {
   feedback = { rumble: 0, trigger: 0, led: 0, player: 0 };
   statsLast = { at: performance.now(), bytes: 0, shown: 0, fragments: 0, nacks: 0 };
 
-  if (hasPicture() && !player) {
-    player = new VideoPlayer(ui.screen, {
-      onNeedKeyframe: () => {
-        if (session) session.requestKeyframe();
-      },
-      onSize: () => applyPicture(),
-      onError: (text) => notice(text),
-    });
-  }
-  if (player) player.setCodec(session.welcome.stream.codec);
+  makePlayer();
   sound.setGameFormat(session.welcome.audio);
   sound.onVoiceFrame = (opus) => {
     if (session) session.sendVoice(opus);
@@ -819,15 +810,47 @@ function enterStage() {
   }
 }
 
+/** The picture's player, while this browser shows the picture. */
+function makePlayer() {
+  if (!hasPicture() || player || !session) return;
+  player = new VideoPlayer(ui.screen, {
+    onNeedKeyframe: () => {
+      if (session) session.requestKeyframe();
+    },
+    onSize: () => applyPicture(),
+    onError: (text) => notice(text),
+  });
+  player.setCodec(session.welcome.stream.codec);
+}
+
+/** Picture and sound here, or the controller only: at joining, and any time after. */
+function setPictureOn(on) {
+  controllerOnly = !on;
+  remember('psrpt.controllerOnly', controllerOnly ? '1' : '0');
+  if (hasPicture()) {
+    // The host sends the picture's setup and a key frame again once it is wanted
+    makePlayer();
+  } else if (player) {
+    player.close();
+    player = null;
+  }
+  applyWant();
+  showStageNote();
+  syncVoice();
+  if (menu) menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+  if (player) applyPicture();
+}
+
 /** Without the console's picture: what the app writes there. */
 function showStageNote() {
   const off = !hasPicture();
   ui.note.hidden = !off;
   if (!off) return;
   $('stage-note-title').textContent = 'Controller only';
-  const why = controllerOnly ? 'You joined without picture and sound. Your controller plays along.'
+  const why = controllerOnly ? 'No picture and sound here. Your controller plays along.'
     : 'This browser cannot show the picture. Your controller plays along.';
-  $('stage-note-text').textContent = `${why}\nPress ${pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY} for the stream menu.`;
+  const back = controllerOnly ? '\nTo get picture and sound: stream menu → Controller only.' : '';
+  $('stage-note-text').textContent = `${why}\nPress ${pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY} for the stream menu.${back}`;
 }
 
 function leaveStage() {
@@ -1008,8 +1031,10 @@ function playersNow() {
     // Of the others the page cannot tell whether they came with a browser; of itself it can
     web: p.slot === s.yourSlot,
     host: p.host,
-    // Guests watch while only the host plays ("Only me"), whatever they may do otherwise
-    canControl: p.canControl && (p.host || s.mixMode !== P.MIX_HOST_ONLY),
+    // Guests watch while only the host plays ("Only me"), whatever they may do otherwise, and in
+    // Each their own controller without a controller of their own
+    canControl: p.canControl && (p.host || s.mixMode !== P.MIX_HOST_ONLY) && (p.host || s.mixMode !== P.MIX_EACH_OWN || p.player > 0),
+    player: p.player || 0,
     onlyHost: !p.host && s.mixMode === P.MIX_HOST_ONLY,
     inControl: p.inControl,
     voice: (p.media & P.MEDIA_VOICE) !== 0,
@@ -1399,6 +1424,7 @@ function syncVoice() {
     camOn: camera.on,
     camSize: prefs.camSize,
     pictureOff: !hasPicture(),
+    pictureSwitch: VideoPlayer.supported(),
     noStreams: prefs.noStreams,
   });
 }
@@ -1588,6 +1614,7 @@ function start() {
       syncVoice();
     },
     onCam: () => (camera.on ? stopCamera() : startCamera()),
+    onPicture: () => setPictureOn(controllerOnly),
     onNoStreams: () => {
       prefs.noStreams = !prefs.noStreams;
       remember('psrpt.noStreams', prefs.noStreams ? '1' : '0');

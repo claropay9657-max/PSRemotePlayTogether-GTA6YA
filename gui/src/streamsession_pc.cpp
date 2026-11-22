@@ -14,6 +14,8 @@
 
 #include <QTimer>
 
+#include <algorithm>
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -169,18 +171,91 @@ void StreamSession::PcPlugPads()
 		return;
 	coplay::Host *host = CoPlayHost();
 	const bool each = host && host->GetMixMode() == coplay::MixMode::EachOwn;
-	// Each their own: players 2, 3 and 4 (the host is 1), the guest in place n is player n + 1.
+	// Each their own: players 2, 3 and 4 (the host is 1), given out as guests come (PcAssignPlayers).
 	// Otherwise the one controller the guests share. They are plugged in that order, so that the
 	// game numbers them the same way.
 	const int count = each ? VirtualPads::kMaxPads - 1 : 1;
 	pc_pads->SetCount(count);
-	if(host && each)
-	{
-		// Their controller's lights say which player they are (0 is player 1)
-		for(int slot = 1; slot <= count; slot++)
-			host->SetGuestPlayerIndex(static_cast<uint8_t>(slot), static_cast<uint8_t>(slot));
-	}
+	PcAssignPlayers();
 	PcUpdatePads();
+}
+
+void StreamSession::PcAssignPlayers()
+{
+	coplay::Host *host = pc_source && IsCoPlayHosting() ? CoPlayHost() : nullptr;
+	if(!host || host->GetMixMode() != coplay::MixMode::EachOwn)
+		return;
+	const int pads = VirtualPads::kMaxPads - 1;
+	std::vector<uint8_t> places;
+	for(const coplay::GuestInfo &g : host->Guests())
+		places.push_back(g.slot);
+	std::map<uint8_t, int> players;
+	{
+		std::lock_guard<std::mutex> lock(pc_players_mutex);
+		for(auto it = pc_pad_of.begin(); it != pc_pad_of.end();)
+		{
+			if(std::find(places.begin(), places.end(), it->first) == places.end())
+				it = pc_pad_of.erase(it);
+			else
+				++it;
+		}
+		// Newcomers, in the order they came: the lowest player nobody is
+		for(uint8_t slot : places)
+		{
+			if(pc_pad_of.count(slot))
+				continue;
+			int free_pad = -1;
+			for(int pad = 0; pad < pads && free_pad < 0; pad++)
+			{
+				bool taken = false;
+				for(const auto &e : pc_pad_of)
+					taken = taken || e.second == pad;
+				if(!taken)
+					free_pad = pad;
+			}
+			pc_pad_of[slot] = free_pad;
+		}
+		players = pc_pad_of;
+	}
+	// Their controller's lights and everybody's list say which player they are (0 is player 1)
+	for(const auto &e : players)
+		host->SetGuestPlayerIndex(e.first, e.second >= 0 ? static_cast<uint8_t>(e.second + 1) : coplay::Host::kNoPlayer);
+}
+
+int StreamSession::PcPlayerOf(uint8_t slot)
+{
+	coplay::Host *host = pc_source ? CoPlayHost() : nullptr;
+	if(!host || host->GetMixMode() != coplay::MixMode::EachOwn)
+		return 0;
+	if(slot == 0)
+		return 1;
+	std::lock_guard<std::mutex> lock(pc_players_mutex);
+	auto it = pc_pad_of.find(slot);
+	return it != pc_pad_of.end() && it->second >= 0 ? it->second + 2 : 0;
+}
+
+void StreamSession::coplaySetPlayerNumber(int slot, int number)
+{
+	const int pads = VirtualPads::kMaxPads - 1;
+	if(!pc_source || slot < 1 || slot > 255 || number < 2 || number > pads + 1)
+		return;
+	const int pad = number - 2;
+	{
+		std::lock_guard<std::mutex> lock(pc_players_mutex);
+		auto mine = pc_pad_of.find(static_cast<uint8_t>(slot));
+		if(mine == pc_pad_of.end())
+			return;
+		const int old = mine->second;
+		for(auto &e : pc_pad_of)
+		{
+			if(e.first != slot && e.second == pad)
+				e.second = old;
+		}
+		mine->second = pad;
+	}
+	PcAssignPlayers();
+	PcUpdatePads();
+	CoPlayUpdatePlayers();
 }
 
 void StreamSession::PcUpdatePads()
@@ -196,8 +271,21 @@ void StreamSession::PcUpdatePads()
 	}
 	if(host->GetMixMode() == coplay::MixMode::EachOwn)
 	{
+		std::map<uint8_t, int> players;
+		{
+			std::lock_guard<std::mutex> lock(pc_players_mutex);
+			players = pc_pad_of;
+		}
 		for(int i = 0; i < pc_pads->Count(); i++)
-			pc_pads->Set(i, host->GuestInput(static_cast<uint8_t>(i + 1)));
+		{
+			coplay::PadState state;
+			for(const auto &e : players)
+			{
+				if(e.second == i)
+					state = host->GuestInput(e.first);
+			}
+			pc_pads->Set(i, state);
+		}
 		return;
 	}
 	// Together, one at a time, or only the host: what the guests play, the host's own
@@ -212,7 +300,15 @@ void StreamSession::PcOnRumble(int index, uint8_t left, uint8_t right)
 	if(!host || !IsCoPlayHosting())
 		return;
 	if(host->GetMixMode() == coplay::MixMode::EachOwn)
-		host->SetGuestRumble(static_cast<uint8_t>(index + 1), left, right);
+	{
+		// To whoever drives that controller
+		std::lock_guard<std::mutex> lock(pc_players_mutex);
+		for(const auto &e : pc_pad_of)
+		{
+			if(e.second == index)
+				host->SetGuestRumble(e.first, left, right);
+		}
+	}
 	else if(index == 0)
 		host->SetRumble(left, right);
 }

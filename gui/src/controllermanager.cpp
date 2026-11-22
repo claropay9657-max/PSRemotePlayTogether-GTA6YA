@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
 #include <controllermanager.h>
+#include "virtualpads.h"
 
 #include <QCoreApplication>
 #include <QByteArray>
@@ -214,6 +215,21 @@ void ControllerManager::UpdateAvailableControllers()
 		const char *joystick_name = SDL_JoystickNameForIndex(i);
 		if(joystick_name && strstr(joystick_name, "PSRemotePlayTogether"))
 			continue;
+		const SDL_JoystickID instance = SDL_JoystickGetDeviceInstanceID(i);
+		if(!first_seen.contains(instance))
+			first_seen.insert(instance, VirtualPads::PlugGeneration());
+#ifdef _WIN32
+		// On Windows they are XInput's Xbox 360 controllers, nameless: by the XInput slot the
+		// driver gave them, else by having come while this app's were being plugged in
+		if(VirtualPads::AnyPlugged() && SDL_JoystickGetDeviceVendor(i) == 0x045e && SDL_JoystickGetDeviceProduct(i) == 0x028e)
+		{
+			const int slot = SDL_JoystickGetDevicePlayerIndex(i);
+			const bool own = slot >= 0 ? VirtualPads::IsOwnSlot(slot)
+				: first_seen.value(instance) >= VirtualPads::PlugGeneration();
+			if(own)
+				continue;
+		}
+#endif
 
 		// We'll try to identify pads with Motion Control
 		SDL_JoystickGUID guid = SDL_JoystickGetGUID(SDL_JoystickOpen(i));
@@ -232,7 +248,7 @@ void ControllerManager::UpdateAvailableControllers()
 			}
 		}
 
-		current_controllers.insert(SDL_JoystickGetDeviceInstanceID(i));
+		current_controllers.insert(instance);
 	}
 
 	if(current_controllers != available_controllers)

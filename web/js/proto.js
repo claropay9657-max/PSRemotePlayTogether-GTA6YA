@@ -255,6 +255,8 @@ export function readState(payload) {
     p.controller = r.u8();
     p.media = r.u8();
     p.battery = r.u8();
+    // Each their own controller: the player the game sees (1 the host), 0 if none
+    p.player = r.u8();
     if (!r.ok) return null;
     p.host = (p.flags & PARTICIPANT_HOST) !== 0;
     p.canControl = (p.flags & PARTICIPANT_CAN_CONTROL) !== 0;

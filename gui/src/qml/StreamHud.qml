@@ -393,6 +393,15 @@ Item {
                             Row {
                                 spacing: 6
 
+                                // Each their own controller: the player the game sees
+                                Text {
+                                    visible: (chip.modelData.player || 0) > 0
+                                    color: "#7dd3fc"
+                                    font.pixelSize: 9
+                                    font.bold: true
+                                    text: qsTr("P%1").arg(chip.modelData.player)
+                                }
+
                                 Text {
                                     visible: !!chip.modelData.host
                                     color: hud.cyan

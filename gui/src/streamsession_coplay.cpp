@@ -1118,10 +1118,13 @@ void StreamSession::CoPlayUpdatePlayers()
 {
 	if(!coplay || !coplay->host)
 		return;
+	// Each their own controller on this computer: newcomers get a player, leavers free theirs
+	PcAssignPlayers();
 	QVariantList players;
 	if(coplay->hosting)
 	{
 		QVariantMap me;
+		me["player"] = PcPlayerOf(0);
 		me["slot"] = 0;
 		me["name"] = coplay->host_name;
 		me["host"] = true;
@@ -1156,6 +1159,7 @@ void StreamSession::CoPlayUpdatePlayers()
 			MediaToMap(p, g.media);
 			p["twitch"] = QString::fromStdString(g.twitch);
 			p["mutedHere"] = coplay->voice->PlayerMuted(g.slot);
+			p["player"] = PcPlayerOf(g.slot);
 			players.append(p);
 		}
 	}
@@ -1424,6 +1428,7 @@ void StreamSession::CoPlayStartGuest()
 				coplay->may_sleep = (p.flags & coplay::kParticipantMaySleep) != 0;
 			m["controller"] = static_cast<int>(p.controller);
 			m["battery"] = static_cast<int>(p.battery);
+			m["player"] = static_cast<int>(p.player);
 			// Only once the picture itself is here
 			coplay::BlobData data = p.avatar.Valid() ? coplay->client->Avatar(p.avatar.hash) : nullptr;
 			m["avatar"] = data ? AvatarId(p.avatar) : QString();

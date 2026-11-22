@@ -372,12 +372,12 @@ private:
 
         DiscoveryHost discovery_host;
         ManualHost manual_host;
-        bool discovered;
+        bool discovered = false;
 
         PsnHost psn_host;
         QString duid;
         RegisteredHost registered_host;
-        bool registered;
+        bool registered = false;
 
         QString GetHostAddr() const { return discovered ? discovery_host.host_addr : manual_host.GetHost(); }
         bool IsPS5() const { return discovered ? discovery_host.ps5 :

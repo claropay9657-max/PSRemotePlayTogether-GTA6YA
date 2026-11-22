@@ -440,6 +440,8 @@ struct Participant
 	ControllerKind controller = ControllerKind::None;
 	uint8_t media = 0; // MediaFlags
 	uint8_t battery = kBatteryUnknown;
+	/** MixMode::EachOwn: the player the game sees (1 the host, 2.. the guests); 0 if none (watching). */
+	uint8_t player = 0;
 };
 
 /** Buttons, triggers and sticks of one player, without touch and motion. */

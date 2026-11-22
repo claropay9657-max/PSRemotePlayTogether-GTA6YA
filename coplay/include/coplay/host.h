@@ -241,8 +241,12 @@ class Host
 		 * player; the others keep what SetRumble() says.
 		 */
 		void SetGuestRumble(uint8_t slot, uint8_t left, uint8_t right);
-		/** MixMode::EachOwn: the player number a guest's controller shows (its lights). */
+		/**
+		 * MixMode::EachOwn: the player a guest is in the game (0 is player 1, the host), which its
+		 * controller's lights show and everybody's list of players; kNoPlayer: none, it watches.
+		 */
 		void SetGuestPlayerIndex(uint8_t slot, uint8_t index);
+		static constexpr uint8_t kNoPlayer = 0xff;
 
 		/** The kind of controller the host itself holds. */
 		void SetController(ControllerKind kind);

@@ -226,6 +226,11 @@
   color: var(--hud-cyan);
 }
 
+/* Each their own controller: the player the game sees */
+.hud-tag-player {
+  color: #7dd3fc;
+}
+
 .hud-tag-watching {
   opacity: 0.6;
 }
@@ -1297,6 +1302,10 @@
 
 .ptag.host {
   background: rgba(122, 60, 245, 0.92);
+}
+
+.ptag.player {
+  background: rgba(14, 165, 233, 0.92);
 }
 
 .ptag.web {

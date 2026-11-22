@@ -1060,6 +1060,7 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 	host.controller = config.controller;
 	host.battery = config.battery;
 	host.media = config.media;
+	host.player = s.mix_mode == MixMode::EachOwn ? 1 : 0;
 	s.participants.push_back(host);
 	for(auto &entry : guests)
 	{
@@ -1074,6 +1075,12 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 		p.controller = other.controller;
 		p.battery = other.battery;
 		p.media = static_cast<uint8_t>(other.media | (other.silenced ? kMediaSilenced : 0));
+		if(s.mix_mode == MixMode::EachOwn)
+		{
+			auto player = guest_feedback.find(other.slot);
+			if(player != guest_feedback.end() && player->second.player_index)
+				p.player = static_cast<uint8_t>(player->second.index + 1);
+		}
 		// Only once it is here completely, or the others would ask for it in vain
 		if(blobs.Has(other.avatar))
 			p.avatar = other.avatar;
@@ -1369,16 +1376,16 @@ void Host::SetGuestPlayerIndex(uint8_t slot, uint8_t index)
 {
 	std::lock_guard<std::mutex> lock(mutex);
 	GuestFeedback &f = guest_feedback[slot];
-	if(f.player_index && f.index == index)
+	const bool has = index != kNoPlayer;
+	if(f.player_index == has && (!has || f.index == index))
 		return;
-	f.player_index = true;
-	f.index = index;
+	f.player_index = has;
+	f.index = has ? index : 0;
 	BumpSeq(feedback.player_index_seq);
 	f.player_index_seq = feedback.player_index_seq;
 	state_seq++;
-	Guest *g = FindBySlot(slot);
-	if(g && g->confirmed)
-		SendState(*g, NowMs());
+	// Everybody's list of players says who is which
+	BroadcastState(NowMs());
 }
 
 void Host::SetTriggerEffects(uint8_t type_left, uint8_t type_right, const uint8_t left[10], const uint8_t right[10])

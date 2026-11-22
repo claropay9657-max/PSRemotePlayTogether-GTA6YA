@@ -133,7 +133,7 @@ export class StreamMenu {
     this.messages = [];
     /** The open list: {el, owner, where, fill, kind, slot}. */
     this.popup = null;
-    this.voice = { voice: false, voiceOn: false, micMuted: false, deafened: false, cam: false, camOn: false, camSize: 1, pictureOff: false, noStreams: false };
+    this.voice = { voice: false, voiceOn: false, micMuted: false, deafened: false, cam: false, camOn: false, camSize: 1, pictureOff: false, pictureSwitch: false, noStreams: false };
     this.controller = { touch: false, haptics: 1, dualsense: false, dualsenseOn: false, note: '', padKind: 0 };
     this.presets = { names: [], active: 0 };
     this.hasSound = true;
@@ -241,7 +241,10 @@ export class StreamMenu {
     this.leaveVoiceButton.setAttribute('aria-label', 'Leave voice chat');
     // Whether players who go live from the app may show us in their streams
     this.streamsButton = this.ownSwitch(() => h.onNoStreams());
-    this.own.append(this.voiceButton, this.micButton, this.soundButton, this.camButton, this.leaveVoiceButton, this.streamsButton);
+    // Picture and sound here, or the controller only: any time, as in the app
+    this.pictureButton = this.ownSwitch(() => h.onPicture());
+    this.own.append(this.voiceButton, this.micButton, this.soundButton, this.camButton, this.leaveVoiceButton, this.streamsButton,
+      this.pictureButton);
 
     // While the webcam runs: what this browser sends of it
     this.camRow = el('div', 'mcamsize');
@@ -948,7 +951,7 @@ export class StreamMenu {
 
   /**
    * One's own switches.
-   * @param {object} v {voice, voiceOn, micMuted, deafened, cam, camOn, camSize, pictureOff, noStreams}
+   * @param {object} v {voice, voiceOn, micMuted, deafened, cam, camOn, camSize, pictureOff, pictureSwitch, noStreams}
    */
   setVoice(v) {
     this.voice = v;
@@ -966,6 +969,11 @@ export class StreamMenu {
     this.streamsButton.setAttribute('aria-label', v.noStreams
       ? 'Left out of live streams: players who go live do not show your voice, webcam or name'
       : 'Players who go live may show your voice, webcam and name');
+    this.pictureButton.hidden = !v.pictureSwitch;
+    this.pictureButton.set(v.pictureOff ? 'gamepad' : 'eye', v.pictureOff ? 'Controller only' : 'Picture and sound', v.pictureOff ? 'dim' : '');
+    this.pictureButton.setAttribute('aria-label', v.pictureOff
+      ? 'Controller only: no picture and sound here. Switch them on'
+      : 'Picture and sound here. Switch to controller only');
     this.camRow.hidden = !v.cam || !v.camOn;
     this.camSizeButton.label.textContent = CAM_SIZES[v.camSize] || CAM_SIZES[1];
     this.roomNote.hidden = !v.pictureOff;
@@ -1055,6 +1063,7 @@ export class StreamMenu {
     }
     // Live right now, host, from a browser, only watching
     const tags = el('div', 'ptile-tags');
+    if (p.player > 0) tags.append(el('span', 'ptag player', `P${p.player}`));
     if (p.live) tags.append(el('span', 'ptag live', 'LIVE'));
     if (p.host) tags.append(el('span', 'ptag host', 'HOST'));
     if (p.web) tags.append(el('span', 'ptag web', 'WEB'));

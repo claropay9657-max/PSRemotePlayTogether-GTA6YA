@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 
 #include <algorithm>
+#include <atomic>
 
 #if PSRPT_VIGEM
 #include <windows.h>
@@ -287,6 +288,13 @@ static XUSB_REPORT ToXusb(const PadState &p)
 }
 #endif
 
+namespace {
+/** Every VirtualPads alive, for IsOwnSlot() and AnyPlugged(). */
+std::mutex registry_mutex;
+std::vector<VirtualPads *> registry;
+std::atomic<int> plug_generation{0};
+}
+
 struct VirtualPads::Private
 {
 	mutable std::mutex mutex;
@@ -353,11 +361,55 @@ VirtualPads::VirtualPads() : d(std::make_unique<Private>())
 #if PSRPT_VIGEM
 	d->owner = this;
 #endif
+	std::lock_guard<std::mutex> lock(registry_mutex);
+	registry.push_back(this);
 }
 
 VirtualPads::~VirtualPads()
 {
+	{
+		std::lock_guard<std::mutex> lock(registry_mutex);
+		registry.erase(std::remove(registry.begin(), registry.end(), this), registry.end());
+	}
 	Close();
+}
+
+bool VirtualPads::IsOwnSlot(int slot)
+{
+#if PSRPT_VIGEM
+	std::lock_guard<std::mutex> registry_lock(registry_mutex);
+	for(VirtualPads *pads : registry)
+	{
+		std::lock_guard<std::mutex> lock(pads->d->mutex);
+		if(!pads->d->client)
+			continue;
+		for(PVIGEM_TARGET pad : pads->d->pads)
+		{
+			ULONG index = 0;
+			if(VIGEM_SUCCESS(vigem_target_x360_get_user_index(pads->d->client, pad, &index)) && static_cast<int>(index) == slot)
+				return true;
+		}
+	}
+#else
+	(void)slot;
+#endif
+	return false;
+}
+
+int VirtualPads::PlugGeneration()
+{
+	return plug_generation;
+}
+
+bool VirtualPads::AnyPlugged()
+{
+	std::lock_guard<std::mutex> registry_lock(registry_mutex);
+	for(VirtualPads *pads : registry)
+	{
+		if(pads->Count() > 0)
+			return true;
+	}
+	return false;
 }
 
 bool VirtualPads::Open(std::string *error)
@@ -439,6 +491,8 @@ void VirtualPads::SetCount(int count)
 		client = d->client;
 		if(!client)
 			return;
+		if(d->pads.empty() && count > 0)
+			plug_generation++;
 		while(static_cast<int>(d->pads.size()) < count)
 		{
 			PVIGEM_TARGET pad = vigem_target_x360_alloc();
@@ -474,6 +528,8 @@ void VirtualPads::SetCount(int count)
 		std::lock_guard<std::mutex> lock(d->mutex);
 		if(!d->open)
 			return;
+		if(d->pads.empty() && count > 0)
+			plug_generation++;
 		while(static_cast<int>(d->pads.size()) < count)
 		{
 			const int index = static_cast<int>(d->pads.size());

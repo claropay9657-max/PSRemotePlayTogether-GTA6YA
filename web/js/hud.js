@@ -474,6 +474,7 @@ export class Hud {
       const name = el('div', 'hud-chip-name', playerName(p));
       name.hidden = !cfg.names;
       const tags = el('div', 'hud-chip-tags');
+      if (p.player > 0) tags.append(el('span', 'hud-tag-player', `P${p.player}`));
       if (p.host) tags.append(el('span', 'hud-tag-host', 'HOST'));
       if (p.live) tags.append(el('span', 'hud-tag-live', 'LIVE'));
       if (this.shared && !p.canControl) tags.append(el('span', 'hud-tag-watching', 'WATCHING'));

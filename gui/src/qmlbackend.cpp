@@ -1811,9 +1811,14 @@ bool QmlBackend::registerHost(const QString &host, const QString &psn_id, const 
             cb.call({QString(), true, true});
 
         settings->AddRegisteredHost(rhost);
-        if(regist_dialog_server.discovered == false)
+        // The console clicked on before may be another one (a registration from Settings by its
+        // address): only the console found on the network at this very address needs no entry
+        const DisplayServer chosen = regist_dialog_server;
+        regist_dialog_server = {};
+        const bool found_on_network = chosen.discovered && chosen.GetHostAddr() == host;
+        if(!found_on_network && host != QLatin1String("255.255.255.255"))
         {
-            ManualHost manual_host = regist_dialog_server.manual_host;
+            ManualHost manual_host = !chosen.discovered && chosen.manual_host.GetHost() == host ? chosen.manual_host : ManualHost();
             if(manual_host.GetHost().isEmpty())
                 manual_host.SetHost(host);
             manual_host.Register(rhost);

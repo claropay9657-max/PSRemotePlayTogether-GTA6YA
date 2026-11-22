@@ -6,6 +6,7 @@
 #include <chiaki/controller.h>
 
 #include <QObject>
+#include <QHash>
 #include <QSet>
 #include <QMap>
 #include <QString>
@@ -30,6 +31,8 @@ class ControllerManager : public QObject
 	private:
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 		QSet<SDL_JoystickID> available_controllers;
+		/** When each controller was first seen, in VirtualPads::PlugGeneration() (Windows). */
+		QHash<SDL_JoystickID, int> first_seen;
 #endif
 		QMap<int, Controller *> open_controllers;
 		bool creating_controller_mapping;

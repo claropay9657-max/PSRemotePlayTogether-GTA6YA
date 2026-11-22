@@ -36,6 +36,10 @@
 #include <memory>
 
 #include <QObject>
+
+#include <mutex>
+
+#include <map>
 #include <QVariantList>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -472,6 +476,17 @@ class StreamSession : public QObject
 		/** The game found in what is shared (PcSource::DetectGame()). */
 		QString pc_game;
 		bool pc_finished = false;
+		/**
+		 * Each their own controller: which virtual controller each guest drives, by place (0 is
+		 * player 2); -1: none, the host made them watch. Guarded by pc_players_mutex: rumble
+		 * comes on the driver's thread.
+		 */
+		std::map<uint8_t, int> pc_pad_of;
+		mutable std::mutex pc_players_mutex;
+		/** Gives new guests the lowest free player, forgets those who left, lights their controllers. */
+		void PcAssignPlayers();
+		/** The player a guest is (2..4), 0 if none; 1 for the host. Only in Each their own controller. */
+		int PcPlayerOf(uint8_t slot);
 		/** A console is at the other end: neither a guest's session nor a game on this computer. */
 		bool HasConsole() const;
 		void PcStart();
@@ -632,6 +647,11 @@ class StreamSession : public QObject
 		Q_INVOKABLE void coplaySendChat(const QString &text);
 		Q_INVOKABLE void coplayMarkChatRead();
 		Q_INVOKABLE void coplayKick(int slot);
+		/**
+		 * Each their own controller on this computer: makes a guest player `number` (2..4); whoever
+		 * was that player gets the guest's old number, or watches if it had none.
+		 */
+		Q_INVOKABLE void coplaySetPlayerNumber(int slot, int number);
 		/** Removes a guest and keeps it out for the rest of the session. */
 		Q_INVOKABLE void coplayBlock(int slot);
 		/** Lets somebody who knocks in, or not (id from coplayPending). */

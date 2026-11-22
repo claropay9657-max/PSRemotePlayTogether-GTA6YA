@@ -312,6 +312,7 @@ void WriteSessionState(ByteWriter &w, const SessionState &s)
 		w.U8(static_cast<uint8_t>(p.controller));
 		w.U8(p.media);
 		w.U8(p.battery);
+		w.U8(p.player);
 	}
 }
 
@@ -341,6 +342,7 @@ bool ReadSessionState(ByteReader &r, SessionState &s)
 		p.controller = ControllerKindFromWire(r.U8());
 		p.media = r.U8();
 		p.battery = r.U8();
+		p.player = r.U8();
 		s.participants.push_back(std::move(p));
 	}
 	return r.ok();

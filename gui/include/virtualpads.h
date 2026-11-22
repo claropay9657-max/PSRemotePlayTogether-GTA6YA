@@ -31,6 +31,17 @@ class VirtualPads
 		static QString DriverUrl();
 		/** Linux: the command that lets this app add controllers (a udev rule); empty elsewhere. */
 		static QString FixCommand();
+
+		/**
+		 * Windows: whether this XInput slot (0..3) is one of this app's controllers right now, so
+		 * that the app does not take its friends' controllers for the host's own. (On Linux they
+		 * carry "PSRemotePlayTogether" in their name.)
+		 */
+		static bool IsOwnSlot(int slot);
+		/** Counts up each time this app starts plugging controllers in; 0 if it never has. */
+		static int PlugGeneration();
+		/** Whether any of this app's controllers are plugged in now. */
+		static bool AnyPlugged();
 		/**
 		 * Why there are no virtual controllers right now, in words for the Host page; empty if
 		 * there are. Asks the driver, so not every frame.

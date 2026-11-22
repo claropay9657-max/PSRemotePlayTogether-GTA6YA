@@ -13,8 +13,11 @@ becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh
 - **New way to play: Each their own controller.** For a game on this computer: you are player 1, your friends players 2, 3 and 4, each on a controller of their own, and their controller's lights say which. Couch co-op games become online co-op.
 - **Only the game's sound.** Friends hear the shared program (a whole screen: everything but this app), never the voice chat, so nobody hears themselves twice. You hear the game as always.
 - **Sharp and wide.** The picture keeps the window's shape, ultrawide too, at 720p, 1080p, 1440p or 4K (Host page → Picture), never larger than the window. The page says how much upload each friend takes. The picture comes from the graphics card's own encoder (NVIDIA, AMD, Intel or Windows' own).
+- **Player numbers.** In Each their own controller everybody sees who is which player (P1 the host, P2 to P4 the friends), in the app, on the picture and in the browser. Newcomers get the lowest free number; the host gives somebody another one in the player's menu, and whoever had it swaps.
+- **Picture and sound, or the controller only, any time.** A guest switches between the two in the stream menu while playing (in the browser too), no longer only when joining.
 - **Rooms say what the game runs on:** PS5, PS4, PC or Xbox, in the app and in the browser, and a **Console** filter narrows the list to one.
 - **The share command:** `PSRemotePlayTogether share "<part of a window's title>"` (or `screen`) hosts a game on this computer as set up on the Host page.
+- **Registering a console by its address in Settings** now always adds it to the start page; after clicking on a console found on the network first, it could stay missing.
 - **Good to know:** this version speaks a new version of the session protocol: everybody in a session needs it, older apps see the room but cannot join. The list of public rooms needs its update for rooms of games on a computer (`server/rooms/psrpt_rooms.php`). A game in exclusive fullscreen or protected video can stay black: use borderless or windowed. Some anti-cheat systems refuse virtual controllers. On Linux the app needs PipeWire and the screen sharing of your desktop (xdg-desktop-portal).
 
 ## 0.4.3

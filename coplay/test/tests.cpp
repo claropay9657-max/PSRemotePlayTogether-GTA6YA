@@ -1758,6 +1758,19 @@ TEST(net_each_player_on_a_controller_of_their_own)
 		&& a.LastState().feedback.player_index == 2 && b.LastState().feedback.player_index == 3; }, 1000));
 	CHECK(a.LastState().feedback.rumble_right == 40);
 	CHECK(b.LastState().feedback.rumble_left == 0);
+	// and everybody's list says who is which player: the host 1, the guests as given
+	auto player_of = [](const SessionState &s, uint8_t slot) {
+		for(const Participant &p : s.participants)
+			if(p.slot == slot)
+				return static_cast<int>(p.player);
+		return -1;
+	};
+	CHECK(WaitFor([&] { return player_of(b.LastState(), slot_a) == 3 && player_of(b.LastState(), slot_b) == 4; }, 1000));
+	CHECK(player_of(a.LastState(), 0) == 1);
+	// a guest without a controller of its own watches: no number
+	h.host->SetGuestPlayerIndex(slot_b, Host::kNoPlayer);
+	CHECK(WaitFor([&] { return player_of(a.LastState(), slot_b) == 0; }, 1000));
+	h.host->SetGuestPlayerIndex(slot_b, 3);
 	uint16_t seq = a.LastState().feedback.rumble_seq;
 	h.host->SetGuestRumble(slot_a, 0, 0);
 	CHECK(WaitFor([&] { return a.LastState().feedback.rumble_seq != seq; }, 1000));
@@ -1767,6 +1780,8 @@ TEST(net_each_player_on_a_controller_of_their_own)
 	h.host->SetMixMode(MixMode::Together);
 	h.host->SetRumble(90, 90);
 	CHECK(WaitFor([&] { return a.LastState().feedback.rumble_left == 90 && b.LastState().feedback.rumble_left == 90; }, 1000));
+	// no player numbers outside Each their own controller
+	CHECK(WaitFor([&] { return player_of(a.LastState(), slot_b) == 0 && player_of(a.LastState(), 0) == 0; }, 1000));
 }
 
 TEST(net_held_button_is_released_when_guest_vanishes)

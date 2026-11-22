@@ -36,8 +36,12 @@ Rectangle {
     readonly property bool hostOnly: active && session.coplayMixMode === 2
 
     /** Whether a player's buttons reach the console now: the host always, guests when allowed and not "Only me". */
+    /** Each their own controller (a game on this computer): every player has a number. */
+    readonly property bool eachOwn: active && session.coplayMixMode === 3
+
     function playsNow(p) {
-        return !!p && (!!p.host || (!!p.canControl && !hostOnly));
+        // Each their own controller: a guest without a controller of its own watches
+        return !!p && (!!p.host || (!!p.canControl && !hostOnly && (!eachOwn || p.player > 0)));
     }
 
     /** Player tiles side by side: two in the side panel, more when it has the whole width. */
@@ -511,6 +515,13 @@ Rectangle {
                     spacing: 4
 
                     Tag {
+                        // Each their own controller: the player the game sees
+                        visible: (tile.player.player || 0) > 0
+                        color: Qt.rgba(14 / 255, 165 / 255, 233 / 255, 0.92)
+                        text: qsTr("P%1").arg(tile.player.player)
+                    }
+
+                    Tag {
                         // Streams the session live (Twitch, say): everybody sees it
                         visible: !!tile.player.live
                         color: "#e91916"
@@ -757,13 +768,15 @@ Rectangle {
                     text: qsTr("Nobody can join this session: you chose Play. To play, talk and use the webcam with friends, choose Host on the start page instead.")
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    visible: panel.guest && panel.active && !panel.session.coplayVideoEnabled
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: 12
-                    color: C.Theme.wait
-                    text: qsTr("Controller only: no picture from the console")
+                // A guest decides here, any time, whether picture and sound come to this computer
+                C.ToggleRow {
+                    visible: panel.guest && panel.active
+                    implicitHeight: 48
+                    title: qsTr("Picture and sound")
+                    subtitle: checked ? qsTr("The game on this computer too, as the host sends it")
+                                      : qsTr("Controller only: your controller plays along, rumble too")
+                    checked: !!panel.session && panel.session.coplayVideoEnabled
+                    onToggled: panel.session.coplayVideoEnabled = checked
                 }
 
                 Text {
@@ -1312,8 +1325,13 @@ Rectangle {
                     const p = playerMenu.player;
                     if (!p)
                         return "";
+                    if (panel.eachOwn && p.host)
+                        return qsTr("Host · player 1");
                     if (p.host)
                         return qsTr("Host");
+                    if (panel.eachOwn)
+                        return p.player > 0 ? (p.canControl ? qsTr("Player %1").arg(p.player) : qsTr("Player %1 · watching").arg(p.player))
+                                            : qsTr("Watching · no controller of their own free");
                     if (panel.hostOnly)
                         return panel.hosting ? qsTr("Watching · only you play") : qsTr("Watching · only the host plays");
                     if (p.web)
@@ -1333,6 +1351,41 @@ Rectangle {
                 height: 1
                 color: C.Theme.line
             }
+        }
+
+        // Each their own controller: which player they are; whoever was it gets their old number
+        MenuEntry {
+            readonly property int number: 2
+            visible: panel.hosting && panel.eachOwn && !!playerMenu.player && !playerMenu.player.host
+            enabled: visible
+            chosen: visible && playerMenu.player.player === number
+            iconName: "gamepad"
+            text: qsTr("Player %1").arg(number)
+            onTriggered: panel.session.coplaySetPlayerNumber(playerMenu.slot, number)
+        }
+
+        MenuEntry {
+            readonly property int number: 3
+            visible: panel.hosting && panel.eachOwn && !!playerMenu.player && !playerMenu.player.host
+            enabled: visible
+            chosen: visible && playerMenu.player.player === number
+            iconName: "gamepad"
+            text: qsTr("Player %1").arg(number)
+            onTriggered: panel.session.coplaySetPlayerNumber(playerMenu.slot, number)
+        }
+
+        MenuEntry {
+            readonly property int number: 4
+            visible: panel.hosting && panel.eachOwn && !!playerMenu.player && !playerMenu.player.host
+            enabled: visible
+            chosen: visible && playerMenu.player.player === number
+            iconName: "gamepad"
+            text: qsTr("Player %1").arg(number)
+            onTriggered: panel.session.coplaySetPlayerNumber(playerMenu.slot, number)
+        }
+
+        MenuLine {
+            visible: panel.hosting && panel.eachOwn && !!playerMenu.player && !playerMenu.player.host
         }
 
         MenuEntry {
