@@ -52,6 +52,9 @@ DialogView {
         { key: "consoles", group: qsTr("Consoles"), title: qsTr("Your consoles"), icon: "console", file: "ConsolesPage.qml" },
         { key: "psn", group: qsTr("Consoles"), title: qsTr("Away from home (PSN)"), icon: "cloud", file: "PsnPage.qml" },
         { key: "sets", group: qsTr("App"), title: qsTr("Setting sets"), icon: "copies", file: "SetsPage.qml" },
+        // What macOS has to allow: only on a Mac
+        ...(Chiaki.permissions && Chiaki.permissions.supported
+            ? [{ key: "permissions", group: qsTr("App"), title: qsTr("Permissions"), icon: "shield", file: "PermissionsPage.qml" }] : []),
         { key: "updates", group: qsTr("App"), title: qsTr("Updates & logs"), icon: "info", file: "UpdatesPage.qml" }
     ]
     readonly property int pageIndex: Math.max(0, pages.findIndex((p) => p.key === page))

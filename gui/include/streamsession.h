@@ -370,6 +370,8 @@ class StreamSession : public QObject
 		float trigger_override;
 		float haptic_override;
 		bool keyboard_controller_enabled;
+		/** The keyboard has played as a controller: then this player has one, as far as the others see. */
+		bool keyboard_played = false;
 		bool mouse_touch_enabled;
 		bool dpad_regular;
 		bool dpad_regular_touch_switched;

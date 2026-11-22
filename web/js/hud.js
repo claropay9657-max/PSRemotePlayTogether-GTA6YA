@@ -165,25 +165,43 @@ function avatar(size, ringWidth) {
   };
 }
 
+const SVG = 'http://www.w3.org/2000/svg';
+
+/** A plug, for a controller on its cable: two prongs, the body, the cord. */
+function plug() {
+  const s = document.createElementNS(SVG, 'svg');
+  s.setAttribute('viewBox', '0 0 16 12');
+  s.setAttribute('class', 'hud-plug');
+  s.setAttribute('aria-hidden', 'true');
+  s.innerHTML = '<path d="M1 4.5h3M1 7.5h3"/><rect x="4" y="2.5" width="5" height="7" rx="1.6"/><path d="M9 6h2.5a2.5 2.5 0 0 0 2.5-2.5V2"/>';
+  return s;
+}
+
 function battery() {
   const b = el('div', 'hud-battery');
   const cell = el('div', 'hud-battery-cell');
   const fill = el('div', 'hud-battery-fill');
   cell.append(fill, el('div', 'hud-battery-nub'));
+  const cord = plug();
   const text = el('span');
-  b.append(cell, text);
+  b.append(cell, cord, text);
   return {
     el: b,
     /** @param {number} level 0..100, 254 = on a cable, 255 = unknown */
     set(level, enabled) {
       b.hidden = !enabled || level === 255 || level === undefined;
       const cable = level > 100;
-      fill.style.width = Math.max(2, 16 * (cable ? 1 : level / 100)) + 'px';
-      fill.style.background = cable ? 'var(--hud-cyan)' : level <= 20 ? 'var(--hud-red)' : level <= 50 ? '#f5b942' : 'var(--hud-green)';
+      cell.hidden = cable;
+      cord.style.display = cable ? '' : 'none';
+      fill.style.width = Math.max(2, 16 * (level / 100)) + 'px';
+      fill.style.background = level <= 20 ? 'var(--hud-red)' : level <= 50 ? '#f5b942' : 'var(--hud-green)';
       text.textContent = cable ? 'cable' : level + ' %';
     },
   };
 }
+
+/** Whether a player has a controller to draw: one of any kind, the keyboard or the controls on the screen. */
+const hasPad = (p) => p.controller === undefined || p.controller !== 0;
 
 const playerName = (p) => p.name || `Player ${p.slot + 1}`;
 
@@ -530,11 +548,13 @@ export class Hud {
 
   buildPads() {
     const e = this.padsEl;
-    e.hasContent = this.players.length > 0;
+    // Nobody to draw a controller of who has none
+    const players = this.players.filter(hasPad);
+    e.hasContent = players.length > 0;
     e.available = !this.cfg.pads_separate;
     const row = el('div', 'hud-pads');
     if (e.available) {
-      for (const p of this.players) {
+      for (const p of players) {
         const control = p.inControl && this.exclusive;
         row.append(this.padColumn(String(p.slot), playerName(p), control ? 'control' : '', this.exclusive && !p.inControl));
       }
@@ -550,7 +570,7 @@ export class Hud {
 
   /** Each player's controller by itself, with a place and a size of its own. */
   buildOwnPads() {
-    const wanted = this.cfg.pads_separate ? this.players : [];
+    const wanted = this.cfg.pads_separate ? this.players.filter(hasPad) : [];
     const slots = new Set(wanted.map((p) => p.slot));
     for (const [slot, e] of this.ownPads) {
       if (slots.has(slot)) continue;

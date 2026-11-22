@@ -3,6 +3,7 @@
 #include "livescenes.h"
 #include "livealerts.h"
 #include "devicecheck.h"
+#include "macpermissions.h"
 #include "twitch.h"
 #include "twitchelements.h"
 #include "vieweractions.h"
@@ -442,6 +443,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     connect(twitch, &TwitchClient::Event, viewer_actions, &ViewerActions::OnTwitchEvent);
     connect(this, &QmlBackend::sessionChanged, viewer_actions, &ViewerActions::SetSession);
     device_check = new DeviceCheck(settings, this);
+    permissions = new MacPermissions(&discovery_manager, this);
     // While playing, the session has the microphone, the speakers and the webcam
     connect(this, &QmlBackend::sessionChanged, device_check, [this]() {
         if (session)

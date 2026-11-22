@@ -36,6 +36,7 @@
     <file>settings/ConsolesPage.qml</file>
     <file>settings/PsnPage.qml</file>
     <file>settings/SetsPage.qml</file>
+    <file>settings/PermissionsPage.qml</file>
     <file>settings/UpdatesPage.qml</file>
     <file>DisplaySettingsDialog.qml</file>
     <file>PlaceboSettingsDialog.qml</file>

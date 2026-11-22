@@ -8,6 +8,7 @@
 #include "livescenes.h"
 #include "livealerts.h"
 #include "devicecheck.h"
+#include "macpermissions.h"
 #include "twitch.h"
 #include "vieweractions.h"
 #include "twitchelements.h"
@@ -184,6 +185,11 @@ QObject *QmlBackend::viewerActionsObject() const
 QObject *QmlBackend::deviceCheckObject() const
 {
     return device_check;
+}
+
+QObject *QmlBackend::permissionsObject() const
+{
+    return permissions;
 }
 
 QObject *QmlBackend::overlayLayoutSettings() const

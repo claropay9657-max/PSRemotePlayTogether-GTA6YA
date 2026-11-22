@@ -1055,6 +1055,8 @@ function playersNow() {
     live: (p.media & P.MEDIA_LIVE) !== 0,
     noStreams: (p.media & P.MEDIA_NO_STREAMS) !== 0,
     battery: p.battery,
+    // 0: no controller at all (the keyboard and the controls on the screen count as one)
+    controller: p.controller,
     avatarUrl: p.avatar.valid ? (blobUrls.get(P.hashKey(p.avatar.hash)) || '') : '',
   }));
 }

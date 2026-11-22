@@ -145,6 +145,11 @@ jobs:
             ffmpeg libplacebo sdl2-compat opus openssl@3 protobuf@29 speexdsp json-c miniupnpc libevent
 
       - name: Build
+        env:
+          # Optional: the project's own signing identity, so that macOS keeps the permissions
+          # of the app across updates (docs/releasing.md). Without them it is signed ad hoc.
+          PSRPT_MAC_SIGN_P12: ${{ secrets.PSRPT_MAC_SIGN_P12 }}
+          PSRPT_MAC_SIGN_PASSWORD: ${{ secrets.PSRPT_MAC_SIGN_PASSWORD }}
         run: scripts/release-macos.sh
 
       - name: Keep the dmg as an artifact

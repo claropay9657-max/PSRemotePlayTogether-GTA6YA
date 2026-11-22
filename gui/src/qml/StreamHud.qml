@@ -58,6 +58,8 @@ Item {
             : p);
     }
     readonly property var camPlayers: players.filter((p) => !!p.camera)
+    // Whose controller is drawn: everybody with one (any kind, or the keyboard), not who has none
+    readonly property var padPlayers: players.filter((p) => p.controller === undefined || p.controller !== 0)
     readonly property bool wantPads: editing || ((cfg.pads_show || cfg.combined_show) && players.length > 0)
     property var padStates: ({})
 
@@ -111,10 +113,13 @@ Item {
         id: battery
         /** 0..100, 254 = on a cable, 255 = unknown */
         property int level: 255
+        readonly property bool cable: level === 254
         visible: hud.cfg.battery && level !== 255
         spacing: 3
 
+        // On its battery: how full it is
         Rectangle {
+            visible: !battery.cable
             anchors.verticalCenter: parent.verticalCenter
             width: 20
             height: 10
@@ -127,9 +132,9 @@ Item {
                 x: 2
                 y: 2
                 height: parent.height - 4
-                width: Math.max(2, (parent.width - 4) * (battery.level > 100 ? 1 : battery.level / 100))
+                width: Math.max(2, (parent.width - 4) * Math.min(1, battery.level / 100))
                 radius: 1
-                color: battery.level > 100 ? hud.cyan : (battery.level <= 20 ? hud.red : (battery.level <= 50 ? "#f5b942" : hud.green))
+                color: battery.level <= 20 ? hud.red : (battery.level <= 50 ? "#f5b942" : hud.green)
             }
 
             Rectangle {
@@ -141,13 +146,31 @@ Item {
             }
         }
 
+        // On its cable: a plug (two prongs, the body, the cord), as on the page for browsers
+        Shape {
+            visible: battery.cable
+            anchors.verticalCenter: parent.verticalCenter
+            width: 16
+            height: 12
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                strokeColor: hud.cyan
+                strokeWidth: 1.4
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                joinStyle: ShapePath.RoundJoin
+                PathSvg { path: "M1 4.5h3M1 7.5h3M5.6 2.5h1.8a1.6 1.6 0 0 1 1.6 1.6v3.8a1.6 1.6 0 0 1-1.6 1.6h-1.8a1.6 1.6 0 0 1-1.6-1.6v-3.8a1.6 1.6 0 0 1 1.6-1.6zM9 6h2.5a2.5 2.5 0 0 0 2.5-2.5V2" }
+            }
+        }
+
         Text {
             anchors.verticalCenter: parent.verticalCenter
             color: "white"
             opacity: 0.85
             font.pixelSize: 10
             font.bold: true
-            text: battery.level > 100 ? qsTr("cable") : battery.level + " %"
+            text: battery.cable ? qsTr("cable") : battery.level + " %"
         }
     }
 
@@ -529,14 +552,14 @@ Item {
         id: padsElement
         key: "pads"
         title: qsTr("Everybody's controller")
-        hasContent: hud.players.length > 0
+        hasContent: hud.padPlayers.length > 0
         available: !hud.separatePads
 
         Row {
             spacing: 10
 
             Repeater {
-                model: hud.players
+                model: hud.padPlayers
 
                 Column {
                     id: padColumn
@@ -574,7 +597,7 @@ Item {
 
     // Each player's controller by itself, with a place and a size of its own
     Repeater {
-        model: hud.separatePads ? hud.players : []
+        model: hud.separatePads ? hud.padPlayers : []
 
         Element {
             id: ownPad

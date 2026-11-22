@@ -97,6 +97,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(QObject* viewerActions READ viewerActionsObject CONSTANT)
     // Trying the microphone, the speakers and the webcam on the settings page, outside a session
     Q_PROPERTY(QObject* deviceCheck READ deviceCheckObject CONSTANT)
+    // What macOS has to allow (Settings → Permissions); nothing elsewhere
+    Q_PROPERTY(QObject* permissions READ permissionsObject CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
     Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
     // A release newer than this build, found by the check at start; empty if there is none
@@ -272,6 +274,7 @@ public:
     QObject *twitchElementsObject() const;
     QObject *viewerActionsObject() const;
     QObject *deviceCheckObject() const;
+    QObject *permissionsObject() const;
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
     QString updateVersion() const { return update_version; }
@@ -495,6 +498,7 @@ private:
     class TwitchElements *twitch_elements = {};
     class ViewerActions *viewer_actions = {};
     class DeviceCheck *device_check = {};
+    class MacPermissions *permissions = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};

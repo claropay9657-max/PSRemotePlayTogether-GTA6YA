@@ -310,7 +310,15 @@ body.preview {
 
 .tag.battery.mid .fill { background: #f5b942; }
 .tag.battery.low .fill { background: #f0466e; }
-.tag.battery.wired .fill { background: var(--gn-accent); }
+.tag.battery .plug {
+  width: 15px;
+  height: 11px;
+  fill: none;
+  stroke: #00f2ff;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .tag.battery.low { background: rgba(240, 70, 110, 0.35); }
 
 /* Arrange mode (?edit=1) */

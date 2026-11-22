@@ -142,7 +142,15 @@ if(APPLE)
 		src/macMicPermission.m
 		include/macWakeSleep.h
 		src/macWakeSleep.cpp
+		include/macpermissions.h
+		src/macpermissions.mm
 	)
+	set_source_files_properties(src/macpermissions.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+else()
+	list(APPEND SOURCE_FILES include/macpermissions.h src/macpermissions.cpp)
+endif()
+
+if(APPLE)
 elseif(WIN32)
 	list(APPEND SOURCE_FILES
 		include/windowsWakeSleep.h

@@ -1080,8 +1080,20 @@ export class StreamMenu {
     // Name and state along the bottom
     const foot = el('div', 'ptile-foot');
     foot.append(el('span', 'ptile-name', nameOf(p) + (t.you ? ' (you)' : '')));
-    // Plays along, or only watches (the host always plays)
-    if (!p.host) foot.append(icon(p.canControl ? 'gamepad' : 'eye', 14, p.canControl ? 'plays' : 'watches'));
+    // Plays along, or only watches (the host always plays); faint while no controller is connected
+    if (!p.host) {
+      const noPad = p.canControl && p.controller === 0;
+      const sign = icon(p.canControl ? 'gamepad' : 'eye', 14, p.canControl ? 'plays' + (noPad ? ' nopad' : '') : 'watches');
+      if (noPad) {
+        sign.removeAttribute('aria-hidden');
+        sign.setAttribute('role', 'img');
+        sign.setAttribute('aria-label', 'No controller connected');
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = 'No controller connected';
+        sign.prepend(title);
+      }
+      foot.append(sign);
+    }
     if (muted || p.mutedHere) foot.append(el('span', 'ptile-muted', p.mutedHere && !muted ? 'MUTED HERE' : 'MUTED'));
     t.bars = null;
     t.quiet = null;

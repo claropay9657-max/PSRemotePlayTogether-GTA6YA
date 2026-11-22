@@ -27,6 +27,9 @@ becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh
 - **Xbox controllers over Bluetooth show their charge on Windows.** Windows' own controller interface gives none for them, so the room showed no battery; the app now reads what Windows' Bluetooth settings show.
 - **The page for browsers on a phone held upright:** the picture at the top, the controller on the screen below it, every button within reach and none on top of another. Held sideways and on tablets, L3, R3 and PS no longer overlap, and the shoulder buttons stay clear of the first players' names.
 - **A DualSense in the browser (Chrome, Edge):** the light bar now takes its colour over Bluetooth too, and a battery problem (too hot, too cold) no longer shows as a charge.
+- **On a cable, a plug.** A controller on its cable shows a plug and "cable" where the battery was, on the game picture, in the browser and in the OBS overlay.
+- **No controller, no drawing.** "Everybody's controller" leaves out players who have none connected (the keyboard and the controls on a phone's screen count as one), and the stream menu shows their controller sign faint, with "no controller connected" in their menu.
+- **Settings → Permissions (Mac):** what macOS has to allow the app (devices on your network, microphone, camera, screen and system audio recording, accessibility), what each is for, and one click to allow it: macOS asks in its own window where it still asks, otherwise the click opens the right place in System Settings. **Allow all** asks for everything at once.
 - **Good to know:** this version speaks a new version of the session protocol: everybody in a session needs it, older apps see the room but cannot join. A game in exclusive fullscreen or protected video can stay black: use borderless or windowed. Some anti-cheat systems refuse virtual controllers. On Linux the app needs PipeWire and the screen sharing of your desktop (xdg-desktop-portal).
 
 ## 0.4.3

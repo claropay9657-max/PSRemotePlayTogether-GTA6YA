@@ -172,7 +172,50 @@ if [ -n "$LEFTOVER" ]; then
 	exit 1
 fi
 
-codesign --force --entitlements gui/entitlements.xml --deep --sign - "$APP"
+# The signature. With a certificate of our own (the CI secrets PSRPT_MAC_SIGN_P12, base64 of a
+# .p12, and PSRPT_MAC_SIGN_PASSWORD; docs/releasing.md says how to make one) every version is
+# signed by the same identity, so macOS takes an update for the same app: its permissions stay
+# allowed and it keeps one entry under Local Network. Without it the signature is ad hoc, which
+# macOS takes for a new app every time.
+SIGN_ID="-"
+if [ -n "${PSRPT_MAC_SIGN_P12:-}" ]; then
+	SIGN_KEYCHAIN="$PWD/build/psrpt-sign.keychain-db"
+	SIGN_KEYCHAIN_PASS="$(openssl rand -hex 16)"
+	OLD_KEYCHAINS="$(security list-keychains -d user | tr -d '"')"
+	sign_cleanup() {
+		# shellcheck disable=SC2086
+		security list-keychains -d user -s $OLD_KEYCHAINS >/dev/null 2>&1 || true
+		security delete-keychain "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true
+		rm -f "$PWD/build/psrpt-sign.p12"
+	}
+	trap sign_cleanup EXIT
+	mkdir -p build
+	printf '%s' "$PSRPT_MAC_SIGN_P12" | base64 --decode > "$PWD/build/psrpt-sign.p12"
+	security create-keychain -p "$SIGN_KEYCHAIN_PASS" "$SIGN_KEYCHAIN"
+	security set-keychain-settings -lut 3600 "$SIGN_KEYCHAIN"
+	security unlock-keychain -p "$SIGN_KEYCHAIN_PASS" "$SIGN_KEYCHAIN"
+	security import "$PWD/build/psrpt-sign.p12" -k "$SIGN_KEYCHAIN" -P "${PSRPT_MAC_SIGN_PASSWORD:-}" -T /usr/bin/codesign >/dev/null
+	rm -f "$PWD/build/psrpt-sign.p12"
+	security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$SIGN_KEYCHAIN_PASS" "$SIGN_KEYCHAIN" >/dev/null
+	# shellcheck disable=SC2086
+	security list-keychains -d user -s "$SIGN_KEYCHAIN" $OLD_KEYCHAINS
+	# Not "-v": a certificate of our own is not trusted by Apple, and need not be for this
+	SIGN_ID="$(security find-identity -p codesigning "$SIGN_KEYCHAIN" | awk '/^ *1\)/ { print $2; exit }')"
+	if [ -z "$SIGN_ID" ]; then
+		echo "error: PSRPT_MAC_SIGN_P12 holds no certificate for signing code" >&2
+		exit 1
+	fi
+	echo "== Signing with the project's own identity ($SIGN_ID)"
+else
+	echo "== Signing ad hoc (no PSRPT_MAC_SIGN_P12): macOS takes this build for a new app"
+fi
+
+codesign --force --entitlements gui/entitlements.xml --deep --sign "$SIGN_ID" "$APP"
+if [ "$SIGN_ID" != "-" ]; then
+	codesign --verify --deep --strict "$APP"
+	# What macOS will recognise the app by from now on: the same for every version
+	codesign --display --requirements - "$APP" 2>&1 | sed -n 's/^designated => /== Designated requirement: /p'
+fi
 
 echo "== Checking that the packaged app starts"
 # "list" prints the registered consoles and exits; every bundled library has to load for that
@@ -181,6 +224,6 @@ echo "== Checking that the packaged app starts"
 DMG="dist/$APP_NAME-$VERSION-macos-$ARCH.dmg"
 rm -f "$DMG"
 hdiutil create -quiet -volname "$APP_NAME" -srcfolder "$STAGE" -format UDZO "$DMG"
-codesign --force --sign - "$DMG"
+codesign --force --sign "$SIGN_ID" "$DMG"
 ( cd dist && shasum -a 256 "$(basename "$DMG")" > "$(basename "$DMG").sha256" )
 ls -lh "$DMG"

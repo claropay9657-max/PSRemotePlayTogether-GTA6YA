@@ -1170,6 +1170,11 @@ void StreamSession::HandleKeyboardEvent(QKeyEvent *event)
 
 	int button = key_map[Qt::Key(event->key())];
 	bool press_event = event->type() == QEvent::Type::KeyPress;
+	if(press_event && !keyboard_played)
+	{
+		keyboard_played = true;
+		CoPlayUpdateControllerKind();
+	}
 
 	switch(button)
 	{

@@ -1988,6 +1988,9 @@ void StreamSession::CoPlayUpdateControllerKind()
 			kind = k;
 	}
 #endif
+	// Playing with the keyboard counts as having a controller, as in the browser
+	if(kind == coplay::ControllerKind::None && keyboard_played)
+		kind = coplay::ControllerKind::Other;
 	// The charge of the controller that is running out first; on a cable if all are
 	int battery = 255;
 #if CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER

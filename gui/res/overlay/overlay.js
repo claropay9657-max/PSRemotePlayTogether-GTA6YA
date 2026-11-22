@@ -199,7 +199,8 @@
 
       if (w.player) {
         const p = w.player;
-        const showPad = c.pads;
+        // No controller drawn for a player who has none (the keyboard counts as one)
+        const showPad = c.pads && (p.controller === undefined || p.controller !== 0);
         const showCam = c.cams && p.camera;
         card.el.className = 'card player'
           + (p.inControl ? ' in-control' : '')
@@ -245,11 +246,22 @@
           const wired = p.battery > 100;
           const level = wired ? 'wired' : (p.battery <= 20 ? 'low' : (p.battery <= 50 ? 'mid' : 'high'));
           const tag = el('span', 'tag battery ' + level);
-          const cell = el('span', 'cell');
-          const fill = el('span', 'fill');
-          fill.style.width = (wired ? 100 : Math.max(8, p.battery)) + '%';
-          cell.append(fill);
-          tag.append(cell, document.createTextNode(wired ? 'Cable' : p.battery + ' %'));
+          if (wired) {
+            // A plug: two prongs, the body, the cord
+            const plug = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            plug.setAttribute('viewBox', '0 0 16 12');
+            plug.setAttribute('class', 'plug');
+            plug.setAttribute('aria-hidden', 'true');
+            plug.innerHTML = '<path d="M1 4.5h3M1 7.5h3"/><rect x="4" y="2.5" width="5" height="7" rx="1.6"/><path d="M9 6h2.5a2.5 2.5 0 0 0 2.5-2.5V2"/>';
+            tag.append(plug);
+          } else {
+            const cell = el('span', 'cell');
+            const fill = el('span', 'fill');
+            fill.style.width = Math.max(8, p.battery) + '%';
+            cell.append(fill);
+            tag.append(cell);
+          }
+          tag.append(document.createTextNode(wired ? 'Cable' : p.battery + ' %'));
           card.tags.append(tag);
         }
 

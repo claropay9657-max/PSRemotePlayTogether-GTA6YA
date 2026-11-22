@@ -602,12 +602,16 @@ Rectangle {
                             text: panel.nameOf(tile.player) + (tile.you ? qsTr(" (you)") : "")
                         }
 
-                        // Plays along, or only watches (the host always plays)
+                        // Plays along, or only watches (the host always plays); faint while
+                        // no controller is connected (the keyboard counts as one)
                         C.Icon {
+                            readonly property bool noPad: panel.playsNow(tile.player) && tile.player.controller === 0
                             visible: !tile.player.host
                             iconName: panel.playsNow(tile.player) ? "gamepad" : "eye"
                             size: 14
                             color: panel.playsNow(tile.player) ? "#cdb6ff" : C.Theme.textSoft
+                            opacity: noPad ? 0.35 : 1
+                            Accessible.name: noPad ? qsTr("No controller connected") : ""
                         }
 
                         Rectangle {
@@ -1382,9 +1386,10 @@ Rectangle {
                                             : qsTr("Watching · no controller of their own free");
                     if (panel.hostOnly)
                         return panel.hosting ? qsTr("Watching · only you play") : qsTr("Watching · only the host plays");
+                    const noPad = p.controller === 0 ? " · " + qsTr("no controller connected") : "";
                     if (p.web)
-                        return p.canControl ? qsTr("From a web browser · plays along") : qsTr("From a web browser · watching");
-                    return p.canControl ? qsTr("Plays along") : qsTr("Watching");
+                        return p.canControl ? qsTr("From a web browser · plays along") + noPad : qsTr("From a web browser · watching");
+                    return p.canControl ? qsTr("Plays along") + noPad : qsTr("Watching");
                 }
             }
 

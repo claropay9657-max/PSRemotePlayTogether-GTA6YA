@@ -284,6 +284,21 @@
   background: rgba(255, 255, 255, 0.75);
 }
 
+.hud-battery-cell[hidden] {
+  display: none;
+}
+
+/* On the cable: a plug in the display's cyan instead of the battery */
+.hud-plug {
+  width: 16px;
+  height: 12px;
+  fill: none;
+  stroke: var(--hud-cyan);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* A player's picture as a circle, or their initial; the ring lights up while talking */
 .hud-avatar {
   position: relative;
@@ -1352,6 +1367,11 @@
 
 .ptile-foot .plays {
   color: #cdb6ff;
+}
+
+/* May play, but no controller is connected */
+.ptile-foot .plays.nopad {
+  opacity: 0.35;
 }
 
 .ptile-foot .watches {

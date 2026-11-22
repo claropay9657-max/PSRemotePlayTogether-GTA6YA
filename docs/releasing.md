@@ -75,13 +75,43 @@ header lists the Homebrew packages it needs). What it does:
 - builds the app against Homebrew's Qt, FFmpeg, libplacebo and SDL
 - copies every library the app needs into the bundle with `macdeployqt`, adds
   MoltenVK (Vulkan on macOS) and checks that nothing still points into Homebrew
-- signs the bundle ad hoc, starts it once (`list`) to see that every library
-  loads, and packs the dmg
+- signs the bundle (with the project's own identity if there is one, see below,
+  otherwise ad hoc), starts it once (`list`) to see that every library loads,
+  and packs the dmg
 
 The app bundles Homebrew's libraries, which only run on the macOS version they
 were built for or newer. The CI runner is macOS 15, so the dmg needs macOS 15.
 The app is not notarised: on the first start macOS blocks it, and the user
 allows it under System Settings → Privacy & Security → Open Anyway.
+
+### One identity for every version
+
+macOS recognises an app by its signature. Signed ad hoc, every build is a new
+app to it: after each update it asks again for screen recording and
+accessibility, and System Settings lists the app once more under Local Network.
+Signed by the same certificate every time, an update stays the same app.
+
+A certificate of the project's own is enough for that (it does not need to come
+from Apple; it does not remove the Open Anyway step, which only Apple's
+notarisation does). Make it once, keep `sign.p12` and its password somewhere
+safe, and never commit them:
+
+```bash
+openssl req -x509 -newkey rsa:3072 -sha256 -days 3650 -nodes \
+  -keyout key.pem -out cert.pem -subj "/CN=PSRemotePlayTogether" \
+  -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=critical,codeSigning"
+# -legacy: macOS' security tool cannot read OpenSSL 3's default encryption of a .p12
+openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem -name PSRemotePlayTogether -out sign.p12
+base64 -i sign.p12 | pbcopy
+```
+
+Then, in the repository on GitHub, Settings → Secrets and variables → Actions:
+`PSRPT_MAC_SIGN_P12` gets what was copied, `PSRPT_MAC_SIGN_PASSWORD` the
+password given to `pkcs12`. The macOS job then signs with it and prints the
+requirement macOS recognises the app by. The first version signed this way is
+a new app to macOS one last time; from then on updates keep their permissions.
+An Apple Developer ID certificate (with a paid Apple developer account) works
+the same way and can later also be notarised.
 
 ## Reproducing a CI build locally
 
