@@ -103,6 +103,8 @@ enum class PacketType : uint8_t
 	CamUp = 0x14,           // guest -> host
 	ChatUp = 0x15,          // guest -> host, answered with ChatUpAck
 	ChatAck = 0x16,         // guest -> host
+	/** guest -> host: mouse and keyboard for a game on the host's computer (KeyMouseState). */
+	KeyMouse = 0x17,
 
 	Video = 0x20,           // host -> guest
 	Audio = 0x21,           // host -> guest
@@ -348,6 +350,36 @@ struct PadState
 void WritePadState(ByteWriter &w, const PadState &s);
 bool ReadPadState(ByteReader &r, PadState &s);
 
+/** Mouse buttons in KeyMouseState::buttons. */
+enum MouseButton : uint8_t
+{
+	kMouseLeft = 1 << 0,
+	kMouseRight = 1 << 1,
+	kMouseMiddle = 1 << 2,
+	kMouseBack = 1 << 3,
+	kMouseForward = 1 << 4,
+};
+
+/**
+ * A guest's mouse and keyboard. Movement and the wheel are running totals, so that a lost
+ * packet loses nothing and a repeated one adds nothing; the host moves by the difference.
+ */
+struct KeyMouseState
+{
+	uint8_t buttons = 0; // MouseButton
+	int32_t move_x = 0;
+	int32_t move_y = 0;
+	/** In steps of 1/120 of a notch, as Windows counts; up and right are positive. */
+	int32_t wheel_y = 0;
+	int32_t wheel_x = 0;
+	/** The keys held down, as USB HID usages (keyboard page), at most kMaxKeys. */
+	std::vector<uint8_t> keys;
+	static constexpr size_t kMaxKeys = 16;
+};
+
+void WriteKeyMouseState(ByteWriter &w, const KeyMouseState &s);
+bool ReadKeyMouseState(ByteReader &r, KeyMouseState &s);
+
 struct AudioHeader
 {
 	bool valid = false;
@@ -428,7 +460,9 @@ enum ParticipantFlags : uint8_t
 	kParticipantCanControl = 1 << 1,
 	kParticipantInControl = 1 << 2, // currently contributes input to the console
 	/** May put the console to sleep when leaving (ByeReason::Sleep). The host always may. */
-	kParticipantMaySleep = 1 << 3
+	kParticipantMaySleep = 1 << 3,
+	/** The host lets this player use mouse and keyboard in the shared game (a game on its computer). */
+	kParticipantKeyMouse = 1 << 4
 };
 
 struct Participant

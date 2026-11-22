@@ -26,11 +26,15 @@
 
 #include "coplaymeet.h"
 #include "coplayrooms.h"
+#include "keymap.h"
 
 #include <QBuffer>
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QImage>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QWheelEvent>
 #include <QPainter>
 #include <QHash>
 #include <QJsonArray>
@@ -95,6 +99,10 @@ struct CoPlayState
 	std::atomic<bool> guest_quit_sent{false};
 	/** The host lets guests put the console to sleep when they leave (from the session state). */
 	std::atomic<bool> may_sleep{false};
+	/** The host lets this guest use mouse and keyboard; and whether it does now. */
+	std::atomic<bool> key_mouse_allowed{false};
+	bool key_mouse_on = false;
+	coplay::KeyMouseState key_mouse;
 	std::atomic<bool> audio_ready{false};
 	coplay::Feedback applied_feedback;
 	bool applied_any = false;
@@ -443,6 +451,10 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	callbacks.on_sleep_requested = [this](uint8_t, const std::string &name) {
 		QString who = QString::fromStdString(name);
 		QMetaObject::invokeMethod(this, [this, who] { emit CoPlaySleepRequested(who); }, Qt::QueuedConnection);
+	};
+	// A game on this computer: the guests' mouse and keyboard (pcinput.h)
+	callbacks.on_key_mouse = [this](const coplay::KeyMouseUpdate &u) {
+		QMetaObject::invokeMethod(this, [this, u] { PcKeyMouse(u); }, Qt::QueuedConnection);
 	};
 	// Friends without the app join from a web browser; the meeting point leads them here
 	if(connect_info.coplay_web_guests && config.meet.Enabled() && coplay::WebGuestsSupported())
@@ -1007,6 +1019,104 @@ void StreamSession::SetCoPlayMixMode(int mode)
 	SendFeedbackState();
 }
 
+bool StreamSession::GetCoPlayKeyMouseAllowed() const
+{
+	return IsCoPlayGuest() && coplay->key_mouse_allowed;
+}
+
+bool StreamSession::GetCoPlayKeyMouse() const
+{
+	return IsCoPlayGuest() && coplay->key_mouse_on;
+}
+
+void StreamSession::SetCoPlayKeyMouse(bool on)
+{
+	if(!IsCoPlayGuest() || coplay->key_mouse_on == on)
+		return;
+	coplay->key_mouse_on = on;
+	// Let go of everything when it stops
+	coplay->key_mouse.buttons = 0;
+	coplay->key_mouse.keys.clear();
+	coplay->client->SetKeyMouse(coplay->key_mouse);
+	emit CoPlayChanged();
+}
+
+bool StreamSession::CoPlayKeyMouseCapturing() const
+{
+	return IsCoPlayGuest() && coplay->key_mouse_on && coplay->key_mouse_allowed;
+}
+
+void StreamSession::CoPlayKeyMouseMove(int dx, int dy)
+{
+	if(!CoPlayKeyMouseCapturing())
+		return;
+	coplay->key_mouse.move_x += dx;
+	coplay->key_mouse.move_y += dy;
+	coplay->client->SetKeyMouse(coplay->key_mouse);
+}
+
+void StreamSession::CoPlayKeyMouseEvent(QEvent *event)
+{
+	if(!CoPlayKeyMouseCapturing())
+		return;
+	coplay::KeyMouseState &km = coplay->key_mouse;
+	switch(event->type())
+	{
+		case QEvent::KeyPress:
+		case QEvent::KeyRelease:
+		{
+			auto e = static_cast<QKeyEvent *>(event);
+			if(e->isAutoRepeat())
+				return;
+			// The key's place on the keyboard, whatever its letter
+#if defined(Q_OS_WIN)
+			const uint8_t hid = KeyMap::WindowsToHid(e->nativeScanCode());
+#elif defined(Q_OS_MACOS)
+			const uint8_t hid = KeyMap::MacToHid(e->nativeVirtualKey());
+#else
+			const uint8_t hid = e->nativeScanCode() > 8 ? KeyMap::EvdevToHid(e->nativeScanCode() - 8) : 0;
+#endif
+			if(!hid)
+				return;
+			auto it = std::find(km.keys.begin(), km.keys.end(), hid);
+			if(event->type() == QEvent::KeyPress && it == km.keys.end() && km.keys.size() < coplay::KeyMouseState::kMaxKeys)
+				km.keys.push_back(hid);
+			else if(event->type() == QEvent::KeyRelease && it != km.keys.end())
+				km.keys.erase(it);
+			break;
+		}
+		case QEvent::MouseButtonPress:
+		case QEvent::MouseButtonRelease:
+		{
+			const Qt::MouseButtons held = static_cast<QMouseEvent *>(event)->buttons();
+			uint8_t buttons = 0;
+			if(held & Qt::LeftButton)
+				buttons |= coplay::kMouseLeft;
+			if(held & Qt::RightButton)
+				buttons |= coplay::kMouseRight;
+			if(held & Qt::MiddleButton)
+				buttons |= coplay::kMouseMiddle;
+			if(held & Qt::BackButton)
+				buttons |= coplay::kMouseBack;
+			if(held & Qt::ForwardButton)
+				buttons |= coplay::kMouseForward;
+			km.buttons = buttons;
+			break;
+		}
+		case QEvent::Wheel:
+		{
+			// In 1/120 of a notch, up and right positive, as on the wire
+			const QPoint angle = static_cast<QWheelEvent *>(event)->angleDelta();
+			km.wheel_y += angle.y();
+			km.wheel_x += angle.x();
+			break;
+		}
+		default:
+			return;
+	}
+	coplay->client->SetKeyMouse(km);
+}
+
 bool StreamSession::GetCoPlayVideoEnabled() const
 {
 	return !coplay || coplay->video_enabled;
@@ -1160,6 +1270,7 @@ void StreamSession::CoPlayUpdatePlayers()
 			p["twitch"] = QString::fromStdString(g.twitch);
 			p["mutedHere"] = coplay->voice->PlayerMuted(g.slot);
 			p["player"] = PcPlayerOf(g.slot);
+			p["keyMouse"] = g.key_mouse;
 			players.append(p);
 		}
 	}
@@ -1426,6 +1537,9 @@ void StreamSession::CoPlayStartGuest()
 			m["maySleep"] = (p.flags & coplay::kParticipantMaySleep) != 0;
 			if(p.slot == your_slot)
 				coplay->may_sleep = (p.flags & coplay::kParticipantMaySleep) != 0;
+			if(p.slot == your_slot)
+				coplay->key_mouse_allowed = (p.flags & coplay::kParticipantKeyMouse) != 0;
+			m["keyMouse"] = (p.flags & coplay::kParticipantKeyMouse) != 0;
 			m["controller"] = static_cast<int>(p.controller);
 			m["battery"] = static_cast<int>(p.battery);
 			m["player"] = static_cast<int>(p.player);

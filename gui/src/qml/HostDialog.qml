@@ -48,6 +48,8 @@ DialogView {
     property string pcPadsProblem: ""
     /** A permission the system wants first (macOS: Screen Recording); empty if none. */
     property string pcPermission: ""
+    /** Why friends' mouse and keyboard cannot reach the game (macOS: Accessibility); empty if they can. */
+    property string pcKeyMouseProblem: ""
     /** The game found in what is chosen, for the room. */
     property string pcGame: ""
 
@@ -67,6 +69,7 @@ DialogView {
         pcTarget = found || (list.length > 0 ? list[0] : null);
         pcPadsProblem = Chiaki.pcPadsProblem();
         pcPermission = Chiaki.pcPermission();
+        pcKeyMouseProblem = Chiaki.pcKeyMouseProblem();
     }
     onPcTargetChanged: pcGame = pcTarget ? Chiaki.pcGameIn(pcTarget) : ""
     onPcChosenChanged: if (pcChosen) refreshPc()
@@ -687,6 +690,44 @@ DialogView {
                                                   ? qsTr("%1 × %2 in the window's own shape, wide screens too. Each friend gets their own copy: about %3 Mbit/s of your upload for each.")
                                                     .arg(parent.picture.width).arg(parent.picture.height).arg(parent.picture.mbps)
                                                   : ""
+                                        }
+                                    }
+
+                                    // Games played with mouse and keyboard: the friends' go into the game too
+                                    C.ToggleRow {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 52
+                                        title: qsTr("Mouse and keyboard")
+                                        subtitle: checked ? qsTr("Friends you allow use theirs in the game: the mouse one at a time, keys together. Never in other windows.")
+                                                          : qsTr("Off: friends play with controllers only")
+                                        checked: Chiaki.settings.coplayPcKeyMouse
+                                        onToggled: {
+                                            Chiaki.settings.coplayPcKeyMouse = checked;
+                                            dialog.pcKeyMouseProblem = Chiaki.pcKeyMouseProblem();
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: Chiaki.settings.coplayPcKeyMouse && !!dialog.pcKeyMouseProblem
+                                        spacing: 8
+
+                                        Label {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                            color: "#fbd98c"
+                                            font.pixelSize: 13
+                                            text: dialog.pcKeyMouseProblem
+                                        }
+
+                                        C.PillButton {
+                                            kind: "ghost"
+                                            text: qsTr("Allow")
+                                            visible: Qt.platform.os === "osx" || Qt.platform.os === "macos"
+                                            onClicked: {
+                                                Chiaki.pcAskKeyMouse();
+                                                dialog.pcKeyMouseProblem = Chiaki.pcKeyMouseProblem();
+                                            }
                                         }
                                     }
 

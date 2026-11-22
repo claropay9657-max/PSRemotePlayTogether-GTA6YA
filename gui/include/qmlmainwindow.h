@@ -332,6 +332,14 @@ private:
     bool keep_video = false;
     RenderBackend render_backend = RenderBackend::Vulkan;
     int grab_input = 0;
+    // A guest playing the host's game with mouse and keyboard: this window keeps the pointer
+    // in its middle and sends how far it moved (StreamSession::CoPlayKeyMouseMove)
+    bool key_mouse_captured = false;
+    bool key_mouse_recentering = false;
+    bool key_mouse_have_last = false;
+    QPoint key_mouse_last;
+    /** Takes mouse and keys for the host's game while that is on; true if the event was taken. */
+    bool keyMouseEvent(QEvent *event);
     int dropped_frames = 0;
     bool is_window_adjustable = false;
     bool is_stream_window_adjustable = false;

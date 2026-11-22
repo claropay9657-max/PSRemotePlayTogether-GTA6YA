@@ -139,6 +139,11 @@ class Client
 		void Stop(bool sleep_console = false);
 
 		void SetInput(const PadState &state);
+		/**
+		 * Mouse and keyboard for a game on the host's computer, with running totals of movement
+		 * and wheel (KeyMouseState). Only a host that lets this player (kParticipantKeyMouse) acts on it.
+		 */
+		void SetKeyMouse(const KeyMouseState &state);
 		/** Changes which streams the host sends, for example to switch to controller-only. */
 		void SetWant(uint8_t want);
 		uint8_t Want() const { return want; }
@@ -207,6 +212,12 @@ class Client
 		uint32_t input_seq = 0;
 		int input_burst = 0;
 		uint64_t last_input_send_ms = 0;
+		KeyMouseState key_mouse;
+		bool key_mouse_used = false;
+		uint32_t key_mouse_seq = 0;
+		int key_mouse_burst = 0;
+		uint64_t last_key_mouse_send_ms = 0;
+		void SendKeyMouse(uint64_t now_ms);
 
 		std::atomic<uint8_t> want{kWantAll};
 		std::atomic<bool> ping_now{false};

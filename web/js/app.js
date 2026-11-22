@@ -18,6 +18,7 @@ import { KEYBOARD_MAP, Pad, controllerName } from './pad.js';
 import { HUD_KEYS, HUD_PRESETS, PresetSettings } from './presets.js';
 import * as P from './proto.js';
 import { DEFAULT_ROOMS_URL, LANGUAGES, consoleName, fetchRooms, filterRooms, languageName } from './rooms.js';
+import { KeyMouse } from './keymouse.js';
 import { JoinError, Session } from './session.js';
 import { TouchControls } from './touch.js';
 import { VideoPlayer } from './video.js';
@@ -84,6 +85,9 @@ const SLOT_COLORS = ['#b18cff', '#00f2ff', '#34d399', '#f472b6', '#fbbf24', '#60
 let invite = null;
 let session = null;
 let player = null;
+/** Mouse and keyboard for a game on the host's computer, when the host lets this player. */
+let keyMouse = null;
+let keyMouseAllowed = false;
 let pad = null;
 let touch = null;
 let hud = null;
@@ -854,6 +858,8 @@ function showStageNote() {
 }
 
 function leaveStage() {
+  if (keyMouse) keyMouse.setOn(false);
+  keyMouseAllowed = false;
   clearInterval(padTimer);
   clearInterval(slowTimer);
   clearInterval(talkTimer);
@@ -1035,6 +1041,7 @@ function playersNow() {
     // Each their own controller without a controller of their own
     canControl: p.canControl && (p.host || s.mixMode !== P.MIX_HOST_ONLY) && (p.host || s.mixMode !== P.MIX_EACH_OWN || p.player > 0),
     player: p.player || 0,
+    keyMouse: (p.flags & P.PARTICIPANT_KEY_MOUSE) !== 0,
     onlyHost: !p.host && s.mixMode === P.MIX_HOST_ONLY,
     inControl: p.inControl,
     voice: (p.media & P.MEDIA_VOICE) !== 0,
@@ -1064,9 +1071,32 @@ function showPlayers() {
     : 'Everybody who joins can read along';
 }
 
+/** Whether the host lets this player use mouse and keyboard; switched off when it stops. */
+function updateKeyMouse(s) {
+  const own = s.participants.find((p) => p.slot === s.yourSlot);
+  const allowed = !!own && (own.flags & P.PARTICIPANT_KEY_MOUSE) !== 0 && KeyMouse.supported();
+  if (allowed === keyMouseAllowed) return;
+  keyMouseAllowed = allowed;
+  if (!allowed && keyMouse) keyMouse.setOn(false);
+  syncVoice();
+}
+
+function toggleKeyMouse() {
+  if (!keyMouseAllowed) return;
+  if (!keyMouse) {
+    keyMouse = new KeyMouse(ui.stage, (km) => {
+      if (session) session.setKeyMouse(km);
+    }, (e) => e.code === 'KeyO' && (e.ctrlKey || e.metaKey));
+  }
+  keyMouse.setOn(!keyMouse.on);
+  if (keyMouse.on) notice('Click the picture to play with mouse and keyboard. Esc gives the mouse back.');
+  syncVoice();
+}
+
 function onState(s) {
   const before = lastState;
   lastState = s;
+  updateKeyMouse(s);
   if (player) player.setCodec(s.stream.codec);
   sound.setGameFormat(s.audio);
   applyFeedback(s.feedback, false);
@@ -1425,6 +1455,8 @@ function syncVoice() {
     camSize: prefs.camSize,
     pictureOff: !hasPicture(),
     pictureSwitch: VideoPlayer.supported(),
+    keyMouse: keyMouseAllowed,
+    keyMouseOn: !!keyMouse && keyMouse.on,
     noStreams: prefs.noStreams,
   });
 }
@@ -1615,6 +1647,7 @@ function start() {
     },
     onCam: () => (camera.on ? stopCamera() : startCamera()),
     onPicture: () => setPictureOn(controllerOnly),
+    onKeyMouse: () => toggleKeyMouse(),
     onNoStreams: () => {
       prefs.noStreams = !prefs.noStreams;
       remember('psrpt.noStreams', prefs.noStreams ? '1' : '0');

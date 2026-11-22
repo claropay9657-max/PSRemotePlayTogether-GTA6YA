@@ -21,6 +21,7 @@ export const PT = {
   CamUp: 0x14,
   ChatUp: 0x15,
   ChatAck: 0x16,
+  KeyMouse: 0x17,
   Video: 0x20,
   Audio: 0x21,
   Haptics: 0x22,
@@ -73,6 +74,8 @@ export const PARTICIPANT_CAN_CONTROL = 1 << 1;
 export const PARTICIPANT_IN_CONTROL = 1 << 2;
 /** May put the console to sleep when leaving. The host always may; guests if the host has allowed it. */
 export const PARTICIPANT_MAY_SLEEP = 1 << 3;
+/** The host lets this player use mouse and keyboard in the game on its computer. */
+export const PARTICIPANT_KEY_MOUSE = 1 << 4;
 
 export const BATTERY_UNKNOWN = 0xff;
 export const BATTERY_WIRED = 0xfe;
@@ -341,6 +344,22 @@ export function inputFrame(seq, pad) {
     for (let i = 0; i < 3; i++) w.f32(pad.motion.accel[i]);
     for (let i = 0; i < 4; i++) w.f32(pad.motion.orient[i]);
   }
+  return w.done();
+}
+
+/** Mouse and keyboard: movement and wheel as running totals, keys held as USB HID usages. */
+export function keyMouseFrame(seq, km) {
+  const keys = km.keys.slice(0, 16);
+  const w = new Writer(24 + keys.length);
+  w.u8(PT.KeyMouse);
+  w.u32(seq);
+  w.u8(km.buttons & 0xff);
+  w.u32(km.moveX >>> 0);
+  w.u32(km.moveY >>> 0);
+  w.u32(km.wheelY >>> 0);
+  w.u32(km.wheelX >>> 0);
+  w.u8(keys.length);
+  for (const k of keys) w.u8(k);
   return w.done();
 }
 

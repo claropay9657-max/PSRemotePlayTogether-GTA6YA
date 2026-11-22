@@ -332,6 +332,9 @@ class Settings : public QObject
 		/** Its picture's height (720, 1080, 1440, 2160); the width follows the window's shape. */
 		int GetCoPlayPcHeight() const			{ return settings.value("coplay/pc_height", 1080).toInt(); }
 		void SetCoPlayPcHeight(int h)			{ settings.setValue("coplay/pc_height", h); }
+		/** A game on this computer: friends may use mouse and keyboard in it (pcinput.h). */
+		bool GetCoPlayPcKeyMouse() const		{ return settings.value("coplay/pc_keymouse", false).toBool(); }
+		void SetCoPlayPcKeyMouse(bool on)		{ settings.setValue("coplay/pc_keymouse", on); }
 		void SetCoPlayMixMode(int mode)			{ settings.setValue("coplay/mix_mode", mode); }
 		QString GetCoPlayLastInvite() const		{ return settings.value("coplay/last_invite").toString(); }
 		void SetCoPlayLastInvite(const QString &i)	{ settings.setValue("coplay/last_invite", i); }

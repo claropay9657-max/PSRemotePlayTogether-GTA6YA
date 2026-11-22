@@ -93,6 +93,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(int coplayMixMode READ coplayMixMode WRITE setCoplayMixMode NOTIFY coplayChanged)
     /** A game on this computer: the picture's height (720, 1080, 1440, 2160). */
     Q_PROPERTY(int coplayPcHeight READ coplayPcHeight WRITE setCoplayPcHeight NOTIFY coplayChanged)
+    Q_PROPERTY(bool coplayPcKeyMouse READ coplayPcKeyMouse WRITE setCoplayPcKeyMouse NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayLastInvite READ coplayLastInvite WRITE setCoplayLastInvite NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayControllerOnly READ coplayControllerOnly WRITE setCoplayControllerOnly NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayAutoReconnect READ coplayAutoReconnect WRITE setCoplayAutoReconnect NOTIFY coplayChanged)
@@ -640,6 +641,8 @@ public:
     int coplayMixMode() const;
     int coplayPcHeight() const;
     void setCoplayPcHeight(int height);
+    bool coplayPcKeyMouse() const;
+    void setCoplayPcKeyMouse(bool on);
     void setCoplayMixMode(int mode);
     QString coplayLastInvite() const;
     void setCoplayLastInvite(const QString &invite);

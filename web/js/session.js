@@ -407,6 +407,20 @@ export class Session {
     this.send(P.inputFrame(this.inputSeq, this.pad));
   }
 
+  /** Mouse and keyboard for a game on the host's computer; sent at once, and again a moment later. */
+  setKeyMouse(km) {
+    if (!this.connected) return;
+    this.keyMouse = km;
+    this.keyMouseBurst = INPUT_BURST - 1;
+    this.sendKeyMouse();
+  }
+
+  sendKeyMouse() {
+    this.keyMouseSeq = ((this.keyMouseSeq || 0) + 1) >>> 0;
+    this.lastKeyMouseMs = nowMs();
+    this.send(P.keyMouseFrame(this.keyMouseSeq, this.keyMouse));
+  }
+
   /** One picture of the own webcam, as JPEG. */
   sendCamFrame(jpeg) {
     if (!this.connected) return;
@@ -641,6 +655,14 @@ export class Session {
         this.sendInput();
       }
     } else if (now - this.lastInputMs >= INPUT_REFRESH_MS) this.sendInput();
+    if (this.keyMouse) {
+      if (this.keyMouseBurst > 0) {
+        if (now - this.lastKeyMouseMs >= INPUT_BURST_SPACING_MS) {
+          this.keyMouseBurst--;
+          this.sendKeyMouse();
+        }
+      } else if (now - this.lastKeyMouseMs >= INPUT_REFRESH_MS) this.sendKeyMouse();
+    }
 
     for (const [id, m] of this.chatOut) {
       if (now - m.firstMs > CHAT_GIVE_UP_MS) this.chatOut.delete(id);

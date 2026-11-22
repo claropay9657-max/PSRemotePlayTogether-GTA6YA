@@ -522,6 +522,13 @@ Rectangle {
                     }
 
                     Tag {
+                        // Plays with mouse and keyboard in the game on the host's computer
+                        visible: !!tile.player.keyMouse
+                        color: Qt.rgba(99 / 255, 102 / 255, 241 / 255, 0.92)
+                        text: qsTr("M+K")
+                    }
+
+                    Tag {
                         // Streams the session live (Twitch, say): everybody sees it
                         visible: !!tile.player.live
                         color: "#e91916"
@@ -766,6 +773,17 @@ Rectangle {
                     font.pixelSize: 13
                     color: C.Theme.textSoft
                     text: qsTr("Nobody can join this session: you chose Play. To play, talk and use the webcam with friends, choose Host on the start page instead.")
+                }
+
+                // A guest the host lets play with mouse and keyboard: this window takes them for the game
+                C.ToggleRow {
+                    visible: panel.guest && panel.active && !!panel.session && panel.session.coplayKeyMouseAllowed
+                    implicitHeight: 48
+                    title: qsTr("Mouse and keyboard")
+                    subtitle: checked ? qsTr("They go to the game. %1 opens this menu and lets go.").arg(Chiaki.settings.stringForStreamMenuShortcut())
+                                      : qsTr("The host lets you play with them too")
+                    checked: !!panel.session && panel.session.coplayKeyMouse
+                    onToggled: panel.session.coplayKeyMouse = checked
                 }
 
                 // A guest decides here, any time, whether picture and sound come to this computer
@@ -1386,6 +1404,17 @@ Rectangle {
 
         MenuLine {
             visible: panel.hosting && panel.eachOwn && !!playerMenu.player && !playerMenu.player.host
+        }
+
+        // A game on this computer: mouse and keyboard, for the players the host allows
+        MenuEntry {
+            readonly property bool allowed: !!playerMenu.player && !!playerMenu.player.keyMouse
+            visible: panel.hosting && !!panel.session && panel.session.pcSource && Chiaki.settings.coplayPcKeyMouse
+                     && !!playerMenu.player && !playerMenu.player.host
+            enabled: visible
+            iconName: "keyboard"
+            text: allowed ? qsTr("No mouse and keyboard") : qsTr("Allow mouse and keyboard")
+            onTriggered: panel.session.coplaySetKeyMouse(playerMenu.slot, !allowed)
         }
 
         MenuEntry {

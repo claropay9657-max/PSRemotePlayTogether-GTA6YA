@@ -108,6 +108,10 @@ set(SOURCE_FILES
 	src/pcsource.cpp
 	include/pcscale.h
 	src/pcscale.cpp
+	include/keymap.h
+	src/keymap.cpp
+	include/pcinput.h
+	src/pcinput.cpp
 	include/virtualpads.h
 	src/virtualpads.cpp
 	)
@@ -209,10 +213,10 @@ if(WIN32)
 	target_compile_definitions(chiaki PRIVATE PSRPT_VIGEM=1)
 elseif(APPLE)
 	# A window or a screen and its sound through ScreenCaptureKit (macOS 13 and later)
-	target_sources(chiaki PRIVATE src/pcsource_mac.mm)
-	set_source_files_properties(src/pcsource_mac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+	target_sources(chiaki PRIVATE src/pcsource_mac.mm src/pcinput_mac.mm)
+	set_source_files_properties(src/pcsource_mac.mm src/pcinput_mac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 	target_link_libraries(chiaki "-framework ScreenCaptureKit" "-framework CoreMedia" "-framework CoreVideo"
-		"-framework CoreGraphics" "-framework AppKit")
+		"-framework CoreGraphics" "-framework AppKit" "-framework ApplicationServices")
 	target_compile_definitions(chiaki PRIVATE PSRPT_PC_SCREENCAPTUREKIT=1)
 	message(STATUS "Sharing a game on this computer: ScreenCaptureKit")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")

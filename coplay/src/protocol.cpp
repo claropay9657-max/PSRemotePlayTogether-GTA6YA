@@ -291,6 +291,35 @@ bool ReadInputs(ByteReader &r, InputsSnapshot &s)
 	return r.ok();
 }
 
+void WriteKeyMouseState(ByteWriter &w, const KeyMouseState &s)
+{
+	w.U8(s.buttons);
+	w.U32(static_cast<uint32_t>(s.move_x));
+	w.U32(static_cast<uint32_t>(s.move_y));
+	w.U32(static_cast<uint32_t>(s.wheel_y));
+	w.U32(static_cast<uint32_t>(s.wheel_x));
+	const size_t count = s.keys.size() > KeyMouseState::kMaxKeys ? KeyMouseState::kMaxKeys : s.keys.size();
+	w.U8(static_cast<uint8_t>(count));
+	for(size_t i = 0; i < count; i++)
+		w.U8(s.keys[i]);
+}
+
+bool ReadKeyMouseState(ByteReader &r, KeyMouseState &s)
+{
+	s = KeyMouseState();
+	s.buttons = r.U8();
+	s.move_x = static_cast<int32_t>(r.U32());
+	s.move_y = static_cast<int32_t>(r.U32());
+	s.wheel_y = static_cast<int32_t>(r.U32());
+	s.wheel_x = static_cast<int32_t>(r.U32());
+	const size_t count = r.U8();
+	if(!r.ok() || count > KeyMouseState::kMaxKeys)
+		return false;
+	for(size_t i = 0; i < count; i++)
+		s.keys.push_back(r.U8());
+	return r.ok();
+}
+
 void WriteSessionState(ByteWriter &w, const SessionState &s)
 {
 	w.U32(s.state_seq);

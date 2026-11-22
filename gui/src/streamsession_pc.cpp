@@ -8,9 +8,11 @@
 
 #include "streamsession.h"
 #include "pcsource.h"
+#include "pcinput.h"
 #include "virtualpads.h"
 
 #include <coplay/host.h>
+#include <chiaki/time.h>
 
 #include <QTimer>
 
@@ -65,6 +67,20 @@ void StreamSession::PcStart()
 	connected.type = CHIAKI_EVENT_CONNECTED;
 	Event(&connected);
 	PcPlugPads();
+
+	// Friends' mouse and keyboard, where the host lets them (Host page)
+	if(coplay::Host *host = IsCoPlayHosting() ? CoPlayHost() : nullptr)
+		host->SetKeyMouseForNewcomers(pc_key_mouse);
+	if(pc_key_mouse)
+	{
+		pc_input = std::make_unique<PcInput>(target);
+		std::string input_error;
+		if(!pc_input->Open(&input_error))
+		{
+			CHIAKI_LOGW(GetChiakiLog(), "This computer: no mouse and keyboard for the guests: %s", input_error.c_str());
+			pc_input.reset();
+		}
+	}
 
 	PcCapture::Config config;
 	config.target = target;
@@ -127,6 +143,10 @@ void StreamSession::PcStart()
 
 void StreamSession::PcStop()
 {
+	// Nothing a guest held stays held
+	pc_input.reset();
+	pc_key_mouse_guests.clear();
+	pc_mouse_owner = 0;
 	if(pc_capture)
 	{
 		pc_capture->Stop();
@@ -291,6 +311,59 @@ void StreamSession::PcUpdatePads()
 	// Together, one at a time, or only the host: what the guests play, the host's own
 	// controller is already in the game
 	pc_pads->Set(0, host->GuestsInput());
+}
+
+void StreamSession::coplaySetKeyMouse(int slot, bool allowed)
+{
+	coplay::Host *host = pc_source && IsCoPlayHosting() ? CoPlayHost() : nullptr;
+	if(!host || slot < 1 || slot > 255)
+		return;
+	host->SetGuestKeyMouse(static_cast<uint8_t>(slot), allowed);
+	CoPlayUpdatePlayers();
+}
+
+void StreamSession::PcKeyMouse(const coplay::KeyMouseUpdate &u)
+{
+	if(!pc_input)
+		return;
+	const uint64_t now = chiaki_time_now_monotonic_ms();
+	int dx = 0, dy = 0, wheel_y = 0, wheel_x = 0;
+	if(u.gone)
+	{
+		pc_key_mouse_guests.erase(u.slot);
+		if(pc_mouse_owner == u.slot)
+			pc_mouse_owner = 0;
+	}
+	else
+	{
+		PcKeyMouseGuest &g = pc_key_mouse_guests[u.slot];
+		const bool uses_mouse = u.dx || u.dy || u.wheel_y || u.wheel_x || u.state.buttons != g.buttons;
+		g.keys = u.state.keys;
+		g.buttons = u.state.buttons;
+		if(uses_mouse)
+		{
+			// One mouse: whoever has it keeps it while they use it; somebody else gets it once it rests
+			auto owner = pc_key_mouse_guests.find(pc_mouse_owner);
+			const bool free = owner == pc_key_mouse_guests.end()
+				|| (owner->second.buttons == 0 && now - pc_mouse_owner_ms > 500);
+			if(pc_mouse_owner == u.slot || free)
+			{
+				pc_mouse_owner = u.slot;
+				pc_mouse_owner_ms = now;
+				dx = u.dx;
+				dy = u.dy;
+				wheel_y = u.wheel_y;
+				wheel_x = u.wheel_x;
+			}
+		}
+	}
+	// Keys from everybody together, the buttons of whoever has the mouse
+	std::vector<uint8_t> keys;
+	for(const auto &e : pc_key_mouse_guests)
+		keys.insert(keys.end(), e.second.keys.begin(), e.second.keys.end());
+	auto owner = pc_key_mouse_guests.find(pc_mouse_owner);
+	const uint8_t buttons = owner != pc_key_mouse_guests.end() ? owner->second.buttons : 0;
+	pc_input->Apply(dx, dy, wheel_y, wheel_x, buttons, keys);
 }
 
 void StreamSession::PcOnRumble(int index, uint8_t left, uint8_t right)

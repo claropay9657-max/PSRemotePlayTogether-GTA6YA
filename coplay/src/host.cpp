@@ -250,6 +250,11 @@ void Host::Fire(Deferred &d)
 		for(const BlobRef &ref : d.chat_images)
 			callbacks.on_chat_image(ref);
 	}
+	if(callbacks.on_key_mouse)
+	{
+		for(const KeyMouseUpdate &u : d.key_mouse)
+			callbacks.on_key_mouse(u);
+	}
 	if(d.keyframe_needed && callbacks.on_keyframe_needed)
 		callbacks.on_keyframe_needed();
 	if(d.input_changed && callbacks.on_input_changed)
@@ -327,6 +332,14 @@ void Host::RemoveGuest(uint32_t conn_id, Deferred &d, const std::string &why)
 		d.logs.push_back(g.name + " " + why);
 	mixer.RemoveSource(g.slot);
 	guest_feedback.erase(g.slot);
+	if(g.key_mouse_allowed && g.have_key_mouse)
+	{
+		// Nothing it held stays held on the host's computer
+		KeyMouseUpdate gone;
+		gone.slot = g.slot;
+		gone.gone = true;
+		d.key_mouse.push_back(gone);
+	}
 	BlobRef avatar = g.avatar;
 	if(g.web_peer)
 		web_closing.emplace_back(g.web_peer, NowMs() + kWebCloseDelayMs);
@@ -461,6 +474,7 @@ void Host::HandleHello(const uint8_t *data, size_t size, const PacketHeader &hea
 	g->avatar = hello.avatar;
 	g->media = hello.media & kMediaOwnMask;
 	g->can_control = StartsInControl(hello.player_id);
+	g->key_mouse_allowed = key_mouse_for_newcomers;
 	if(hello.player_id)
 		admitted_players.insert(hello.player_id);
 
@@ -581,6 +595,31 @@ bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, 
 			if(mixer.Mode() == MixMode::EachOwn && state != mixer.Raw(g.slot, now_ms))
 				d.input_changed = true;
 			mixer.SetSource(g.slot, state, now_ms);
+			break;
+		}
+		case PacketType::KeyMouse: {
+			uint32_t seq = r.U32();
+			KeyMouseState state;
+			if(!r.ok() || !ReadKeyMouseState(r, state))
+				break;
+			if(g.have_key_mouse && static_cast<int32_t>(seq - g.last_key_mouse_seq) <= 0)
+				break; // older than what we already have, or the same again
+			KeyMouseUpdate u;
+			u.slot = g.slot;
+			// The first one only says where its totals start
+			if(g.have_key_mouse)
+			{
+				u.dx = state.move_x - g.key_mouse.move_x;
+				u.dy = state.move_y - g.key_mouse.move_y;
+				u.wheel_y = state.wheel_y - g.key_mouse.wheel_y;
+				u.wheel_x = state.wheel_x - g.key_mouse.wheel_x;
+			}
+			g.have_key_mouse = true;
+			g.last_key_mouse_seq = seq;
+			g.key_mouse = state;
+			u.state = state;
+			if(g.key_mouse_allowed)
+				d.key_mouse.push_back(u);
 			break;
 		}
 		case PacketType::Ping: {
@@ -1070,7 +1109,7 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 		Participant p;
 		p.slot = other.slot;
 		p.flags = static_cast<uint8_t>((other.can_control ? kParticipantCanControl : 0) | (other.in_control ? kParticipantInControl : 0)
-			| (config.guests_may_sleep ? kParticipantMaySleep : 0));
+			| (config.guests_may_sleep ? kParticipantMaySleep : 0) | (other.key_mouse_allowed ? kParticipantKeyMouse : 0));
 		p.name = other.name;
 		p.controller = other.controller;
 		p.battery = other.battery;
@@ -1534,6 +1573,35 @@ MixMode Host::GetMixMode()
 	return mixer.Mode();
 }
 
+void Host::SetGuestKeyMouse(uint8_t slot, bool allowed)
+{
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		Guest *g = FindBySlot(slot);
+		if(!g || g->key_mouse_allowed == allowed)
+			return;
+		g->key_mouse_allowed = allowed;
+		if(!allowed && g->have_key_mouse)
+		{
+			KeyMouseUpdate gone;
+			gone.slot = slot;
+			gone.gone = true;
+			d.key_mouse.push_back(gone);
+		}
+		state_seq++;
+		BroadcastState(NowMs());
+		d.guests_changed = true;
+	}
+	Fire(d);
+}
+
+void Host::SetKeyMouseForNewcomers(bool allowed)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	key_mouse_for_newcomers = allowed;
+}
+
 void Host::SetGuestCanControl(uint8_t slot, bool allowed)
 {
 	Deferred d;
@@ -1738,6 +1806,7 @@ std::vector<GuestInfo> Host::Guests()
 		info.twitch = g.twitch;
 		info.can_control = g.can_control;
 		info.in_control = g.in_control;
+		info.key_mouse = g.key_mouse_allowed;
 		info.rtt_ms = g.rtt_ms;
 		info.media = static_cast<uint8_t>(g.media | (g.silenced ? kMediaSilenced : 0));
 		if(blobs.Has(g.avatar))
@@ -2012,6 +2081,7 @@ void Host::HandleWebHello(uint64_t peer_id, const uint8_t *payload, size_t size,
 	g->avatar = hello.avatar;
 	g->media = hello.media & kMediaOwnMask;
 	g->can_control = StartsInControl(hello.player_id);
+	g->key_mouse_allowed = key_mouse_for_newcomers;
 	if(hello.player_id)
 		admitted_players.insert(hello.player_id);
 

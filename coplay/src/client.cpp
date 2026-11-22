@@ -379,6 +379,33 @@ void Client::SetInput(const PadState &state)
 	SendInput(NowMs());
 }
 
+void Client::SendKeyMouse(uint64_t now_ms)
+{
+	// input_mutex is held by the caller
+	std::vector<uint8_t> payload;
+	ByteWriter w(payload);
+	w.U32(++key_mouse_seq);
+	WriteKeyMouseState(w, key_mouse);
+	last_key_mouse_send_ms = now_ms;
+	Send(PacketType::KeyMouse, payload);
+}
+
+void Client::SetKeyMouse(const KeyMouseState &state)
+{
+	if(!connected || lost)
+		return;
+	std::lock_guard<std::mutex> lock(input_mutex);
+	if(key_mouse_used && state.buttons == key_mouse.buttons && state.move_x == key_mouse.move_x
+		&& state.move_y == key_mouse.move_y && state.wheel_y == key_mouse.wheel_y && state.wheel_x == key_mouse.wheel_x
+		&& state.keys == key_mouse.keys)
+		return;
+	key_mouse = state;
+	key_mouse_used = true;
+	// Sent now and twice more a moment later, like the controller: a lost packet costs nothing
+	key_mouse_burst = kInputBurst - 1;
+	SendKeyMouse(NowMs());
+}
+
 void Client::SetWant(uint8_t new_want)
 {
 	new_want &= kWantMask;
@@ -896,6 +923,19 @@ void Client::Tick(uint64_t now_ms)
 		}
 		else if(now_ms - last_input_send_ms >= kInputRefreshMs)
 			SendInput(now_ms);
+		if(key_mouse_used)
+		{
+			if(key_mouse_burst > 0)
+			{
+				if(now_ms - last_key_mouse_send_ms >= kInputBurstSpacingMs)
+				{
+					key_mouse_burst--;
+					SendKeyMouse(now_ms);
+				}
+			}
+			else if(now_ms - last_key_mouse_send_ms >= kInputRefreshMs)
+				SendKeyMouse(now_ms);
+		}
 	}
 
 	ResendChats(now_ms);

@@ -5,6 +5,7 @@
 #include <controllermanager.h>
 #include <livestream.h>
 #include <pcsource.h>
+#include <pcinput.h>
 #include <virtualpads.h>
 
 #include <chiaki/base64.h>
@@ -441,6 +442,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	if(pc_source)
 	{
 		pc_target = connect_info.pc_target;
+		pc_key_mouse = connect_info.settings->GetCoPlayPcKeyMouse();
 		pc_portal = connect_info.pc_portal;
 		pc_portal_fd = connect_info.pc_portal_fd;
 		pc_portal_node = connect_info.pc_portal_node;

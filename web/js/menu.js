@@ -133,7 +133,7 @@ export class StreamMenu {
     this.messages = [];
     /** The open list: {el, owner, where, fill, kind, slot}. */
     this.popup = null;
-    this.voice = { voice: false, voiceOn: false, micMuted: false, deafened: false, cam: false, camOn: false, camSize: 1, pictureOff: false, pictureSwitch: false, noStreams: false };
+    this.voice = { voice: false, voiceOn: false, micMuted: false, deafened: false, cam: false, camOn: false, camSize: 1, pictureOff: false, pictureSwitch: false, keyMouse: false, keyMouseOn: false, noStreams: false };
     this.controller = { touch: false, haptics: 1, dualsense: false, dualsenseOn: false, note: '', padKind: 0 };
     this.presets = { names: [], active: 0 };
     this.hasSound = true;
@@ -243,8 +243,10 @@ export class StreamMenu {
     this.streamsButton = this.ownSwitch(() => h.onNoStreams());
     // Picture and sound here, or the controller only: any time, as in the app
     this.pictureButton = this.ownSwitch(() => h.onPicture());
+    // Mouse and keyboard for the game on the host's computer, where the host allows it
+    this.keyMouseButton = this.ownSwitch(() => h.onKeyMouse());
     this.own.append(this.voiceButton, this.micButton, this.soundButton, this.camButton, this.leaveVoiceButton, this.streamsButton,
-      this.pictureButton);
+      this.pictureButton, this.keyMouseButton);
 
     // While the webcam runs: what this browser sends of it
     this.camRow = el('div', 'mcamsize');
@@ -969,6 +971,11 @@ export class StreamMenu {
     this.streamsButton.setAttribute('aria-label', v.noStreams
       ? 'Left out of live streams: players who go live do not show your voice, webcam or name'
       : 'Players who go live may show your voice, webcam and name');
+    this.keyMouseButton.hidden = !v.keyMouse;
+    this.keyMouseButton.set('keyboard', v.keyMouseOn ? 'Mouse & keys on' : 'Mouse & keys', v.keyMouseOn ? 'good' : '');
+    this.keyMouseButton.setAttribute('aria-label', v.keyMouseOn
+      ? 'Mouse and keyboard go to the game when you click the picture. Switch off'
+      : 'The host lets you play with mouse and keyboard. Switch on');
     this.pictureButton.hidden = !v.pictureSwitch;
     this.pictureButton.set(v.pictureOff ? 'gamepad' : 'eye', v.pictureOff ? 'Controller only' : 'Picture and sound', v.pictureOff ? 'dim' : '');
     this.pictureButton.setAttribute('aria-label', v.pictureOff
@@ -1064,6 +1071,7 @@ export class StreamMenu {
     // Live right now, host, from a browser, only watching
     const tags = el('div', 'ptile-tags');
     if (p.player > 0) tags.append(el('span', 'ptag player', `P${p.player}`));
+    if (p.keyMouse) tags.append(el('span', 'ptag keymouse', 'M+K'));
     if (p.live) tags.append(el('span', 'ptag live', 'LIVE'));
     if (p.host) tags.append(el('span', 'ptag host', 'HOST'));
     if (p.web) tags.append(el('span', 'ptag web', 'WEB'));

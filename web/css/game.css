@@ -1308,6 +1308,10 @@
   background: rgba(14, 165, 233, 0.92);
 }
 
+.ptag.keymouse {
+  background: rgba(99, 102, 241, 0.92);
+}
+
 .ptag.web {
   background: rgba(16, 140, 98, 0.92);
 }

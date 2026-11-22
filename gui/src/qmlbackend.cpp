@@ -46,6 +46,7 @@
 #include <QThreadPool>
 #include "pcsource.h"
 #include "virtualpads.h"
+#include "pcinput.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -1998,6 +1999,16 @@ void QmlBackend::pcAskPermission() const
 QString QmlBackend::pcNote() const
 {
     return PcSource::Note();
+}
+
+QString QmlBackend::pcKeyMouseProblem() const
+{
+    return PcInput::Problem();
+}
+
+void QmlBackend::pcAskKeyMouse() const
+{
+    PcInput::AskPermission();
 }
 
 QVariantMap QmlBackend::pcPicture(const QVariantMap &target, int height) const

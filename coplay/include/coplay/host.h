@@ -124,6 +124,23 @@ struct GuestInfo
 	bool web = false;
 	/** The guest is live on Twitch and wants it shown in the public room list: its login, else empty. */
 	std::string twitch;
+	/** The host lets it use mouse and keyboard (a game on the host's computer). */
+	bool key_mouse = false;
+};
+
+/** What a guest's mouse and keyboard did since its last packet (Host::SetGuestKeyMouse). */
+struct KeyMouseUpdate
+{
+	uint8_t slot = 0;
+	/** Buttons and keys held now. */
+	KeyMouseState state;
+	/** Moved and scrolled since the last update. */
+	int32_t dx = 0;
+	int32_t dy = 0;
+	int32_t wheel_y = 0;
+	int32_t wheel_x = 0;
+	/** The guest left, or may not any more: let go of everything it held. */
+	bool gone = false;
 };
 
 /**
@@ -153,6 +170,8 @@ struct HostCallbacks
 	 * The guest is gone from Guests() by now; nothing else has happened yet.
 	 */
 	std::function<void(uint8_t slot, const std::string &name)> on_sleep_requested;
+	/** A guest's mouse and keyboard, for a game on the host's computer; only guests allowed to. */
+	std::function<void(const KeyMouseUpdate &)> on_key_mouse;
 	/** Somebody knocked, or stopped waiting; see Host::Pending(). */
 	std::function<void()> on_pending_changed;
 	std::function<void(const std::string &)> on_log;
@@ -256,6 +275,12 @@ class Host
 		MixMode GetMixMode();
 		void SetGuestCanControl(uint8_t slot, bool allowed);
 		/**
+		 * Lets a guest use mouse and keyboard (on_key_mouse), or not; everybody's list says so.
+		 * New guests get what SetKeyMouseForNewcomers() says.
+		 */
+		void SetGuestKeyMouse(uint8_t slot, bool allowed);
+		void SetKeyMouseForNewcomers(bool allowed);
+		/**
 		 * Whether a guest that leaves may ask for the console to be put to sleep. Guests are
 		 * told, so that their app only offers it when it will work.
 		 */
@@ -321,6 +346,10 @@ class Host
 			bool awaiting_key = true;
 			bool have_input = false;
 			uint32_t last_input_seq = 0;
+			bool key_mouse_allowed = false;
+			bool have_key_mouse = false;
+			uint32_t last_key_mouse_seq = 0;
+			KeyMouseState key_mouse;
 			uint32_t rtt_ms = 0;
 			BlobRef avatar;
 			std::vector<uint8_t> welcome_packet;
@@ -366,6 +395,7 @@ class Host
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 			std::vector<ChatMessage> chats;
 			std::vector<BlobRef> chat_images;
+			std::vector<KeyMouseUpdate> key_mouse;
 		};
 
 		/** Whether a Hello gets a Welcome; see CheckAdmission(). */
@@ -477,6 +507,8 @@ class Host
 			uint8_t index = 0;
 		};
 		std::map<uint8_t, GuestFeedback> guest_feedback; // by slot
+		/** Whether guests who come may use mouse and keyboard (SetKeyMouseForNewcomers). */
+		bool key_mouse_for_newcomers = false;
 		uint32_t state_seq = 1;
 		uint64_t fast_state_until_ms = 0;
 

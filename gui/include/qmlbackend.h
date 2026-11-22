@@ -237,6 +237,9 @@ public:
     Q_INVOKABLE void pcAskPermission() const;
     /** What the Host page says about sharing on this system. */
     Q_INVOKABLE QString pcNote() const;
+    /** Why friends' mouse and keyboard cannot reach a game here (macOS: Accessibility); empty if they can. */
+    Q_INVOKABLE QString pcKeyMouseProblem() const;
+    Q_INVOKABLE void pcAskKeyMouse() const;
     /** What was shared last time, to choose it again. */
     Q_INVOKABLE QVariantMap pcLastTarget() const;
     /** The game in a window or on a screen, for the Host page; empty if none was found. */

@@ -96,6 +96,18 @@ after the controllers:
   the wheel and keys; a new packet type, so the protocol version goes up again.
 - Some anti-cheat systems refuse input that a program makes; the app says so where it can tell.
 
+Built 2026-11-22: packet `KeyMouse` (0x17: buttons, running totals of movement and wheel, held
+keys as USB HID usages; `coplay::KeyMouseState`), `kParticipantKeyMouse` per player, the host's
+setting on the Host page and per player in the player's menu. Guests: the app keeps the pointer in
+the window's middle and sends how far it moved (`QmlMainWindow::keyMouseEvent`), the page uses
+pointer lock (`web/js/keymouse.js`). The host (`gui/src/pcinput.cpp`, `pcinput_mac.mm`):
+Windows' SendInput with scan codes while the shared window is in front; Linux a uinput keyboard and
+mouse while this app is not in front (Wayland does not say which window is); a Mac posts keys to
+the shared program and moves the pointer while it is in front (Accessibility permission). Key
+tables in `gui/src/keymap.cpp` (104 keys, checked both ways). Tested: the packet and the host's
+permission in the library tests. **Not tested yet:** injection on a real Windows PC, Linux desktop
+and Mac.
+
 ### 8. Xbox, and others
 
 - **Xbox now:** run the official Xbox app on the host's Windows PC, start Remote Play to your own

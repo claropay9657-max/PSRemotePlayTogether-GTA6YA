@@ -76,6 +76,19 @@ void QmlSettings::setCoplayName(const QString &name)
     emit coplayChanged();
 }
 
+bool QmlSettings::coplayPcKeyMouse() const
+{
+    return settings->GetCoPlayPcKeyMouse();
+}
+
+void QmlSettings::setCoplayPcKeyMouse(bool on)
+{
+    if (on == settings->GetCoPlayPcKeyMouse())
+        return;
+    settings->SetCoPlayPcKeyMouse(on);
+    emit coplayChanged();
+}
+
 int QmlSettings::coplayPcHeight() const
 {
     return settings->GetCoPlayPcHeight();

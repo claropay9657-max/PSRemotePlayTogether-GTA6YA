@@ -1119,6 +1119,7 @@ struct TestHost
 	std::mutex mutex;
 	std::string sleep_name; // who asked for the console to sleep
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
+	std::vector<KeyMouseUpdate> key_mouse;
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 	std::vector<ChatMessage> chats;
 	std::vector<BlobRef> chat_images;
@@ -1155,6 +1156,10 @@ struct TestHost
 		cb.on_cam_frame = [this](uint8_t slot, const std::vector<uint8_t> &jpeg) {
 			std::lock_guard<std::mutex> lock(mutex);
 			cams.emplace_back(slot, jpeg);
+		};
+		cb.on_key_mouse = [this](const KeyMouseUpdate &u) {
+			std::lock_guard<std::mutex> lock(mutex);
+			key_mouse.push_back(u);
 		};
 		cb.on_chat = [this](const ChatMessage &m) {
 			std::lock_guard<std::mutex> lock(mutex);
@@ -1717,6 +1722,91 @@ TEST(net_input_reaches_host_and_is_merged)
 	CHECK(h.host->MixedInput().buttons == kButtonCross);
 	CHECK(WaitFor([&] { return g.LastState().mix_mode == MixMode::HostOnly; }, 1000));
 	h.host->SetMixMode(MixMode::Together);
+}
+
+TEST(protocol_key_mouse_roundtrip)
+{
+	KeyMouseState s;
+	s.buttons = kMouseLeft | kMouseBack;
+	s.move_x = -123456;
+	s.move_y = 789;
+	s.wheel_y = -240;
+	s.wheel_x = 120;
+	s.keys = { 0x04, 0x1a, 0xe1 };
+	std::vector<uint8_t> buf;
+	ByteWriter w(buf);
+	WriteKeyMouseState(w, s);
+	ByteReader r(buf.data(), buf.size());
+	KeyMouseState t;
+	CHECK(ReadKeyMouseState(r, t));
+	CHECK(t.buttons == s.buttons && t.move_x == s.move_x && t.move_y == s.move_y);
+	CHECK(t.wheel_y == s.wheel_y && t.wheel_x == s.wheel_x && t.keys == s.keys);
+	// More keys than allowed are refused
+	buf.back() = 0;
+	buf[buf.size() - 4] = 40;
+	ByteReader bad(buf.data(), buf.size());
+	CHECK(!ReadKeyMouseState(bad, t));
+}
+
+TEST(net_key_mouse_only_from_guests_allowed)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "One", 0);
+	CHECK(a.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+	uint8_t slot = h.host->Guests()[0].slot;
+	auto count = [&] { std::lock_guard<std::mutex> lock(h.mutex); return h.key_mouse.size(); };
+
+	// Not allowed: nothing reaches the host's computer
+	KeyMouseState s;
+	s.move_x = 10;
+	a.client->SetKeyMouse(s);
+	std::this_thread::sleep_for(std::chrono::milliseconds(150));
+	CHECK(count() == 0);
+
+	// Allowed: everybody's list says so, and movement arrives as the difference of the totals
+	h.host->SetGuestKeyMouse(slot, true);
+	CHECK(WaitFor([&] {
+		for(const Participant &p : a.LastState().participants)
+			if(p.slot == slot)
+				return (p.flags & kParticipantKeyMouse) != 0;
+		return false;
+	}, 1000));
+	CHECK(h.host->Guests()[0].key_mouse);
+	s.move_x = 25;
+	s.move_y = -7;
+	s.buttons = kMouseLeft;
+	s.keys = { 0x1a };
+	a.client->SetKeyMouse(s);
+	int dx = 0, dy = 0;
+	bool held = false;
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(h.mutex);
+		dx = dy = 0;
+		for(const KeyMouseUpdate &u : h.key_mouse)
+		{
+			dx += u.dx;
+			dy += u.dy;
+			held = u.state.buttons == kMouseLeft && u.state.keys == std::vector<uint8_t>{ 0x1a };
+		}
+		return held && dx == 15 && dy == -7;
+	}, 1000));
+	// Sent again (burst and refresh): no further movement
+	std::this_thread::sleep_for(std::chrono::milliseconds(120));
+	{
+		std::lock_guard<std::mutex> lock(h.mutex);
+		int total = 0;
+		for(const KeyMouseUpdate &u : h.key_mouse)
+			total += u.dx;
+		CHECK(total == 15);
+	}
+
+	// Not allowed any more: let go of everything
+	h.host->SetGuestKeyMouse(slot, false);
+	CHECK(WaitFor([&] {
+		std::lock_guard<std::mutex> lock(h.mutex);
+		return !h.key_mouse.empty() && h.key_mouse.back().gone;
+	}, 1000));
 }
 
 TEST(net_each_player_on_a_controller_of_their_own)

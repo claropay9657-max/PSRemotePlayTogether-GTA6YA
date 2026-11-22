@@ -63,8 +63,28 @@ chmod +x "$OUT"
 echo "== Checking that the AppImage starts"
 # "list" prints the registered consoles and exits; it loads every bundled library on the way
 SMOKE_HOME="$(mktemp -d)"
+OUT_PATH="$PWD/$OUT"
+set +e
 HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_HOME/.config" QT_QPA_PLATFORM=offscreen \
-	"$OUT" --appimage-extract-and-run list
+	"$OUT_PATH" --appimage-extract-and-run list
+status=$?
+set -e
+if [ "$status" -ne 0 ]; then
+	# Say why: a library that is missing, or what the program itself says
+	echo "The AppImage exited with $status" >&2
+	(
+		cd "$SMOKE_HOME"
+		"$OUT_PATH" --appimage-extract >/dev/null 2>&1 || echo "it cannot even be unpacked" >&2
+		if [ -d squashfs-root ]; then
+			ls -l squashfs-root/AppRun >&2 || true
+			ldd squashfs-root/usr/bin/PSRemotePlayTogether 2>&1 | grep -iE 'not found|not a dynamic' >&2 || echo "no library missing" >&2
+			HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_HOME/.config" QT_QPA_PLATFORM=offscreen QT_DEBUG_PLUGINS=1 \
+				squashfs-root/AppRun list
+			echo "AppRun exited with $?" >&2
+		fi
+	) || true
+	exit "$status"
+fi
 rm -rf "$SMOKE_HOME"
 
 ( cd dist && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256" )

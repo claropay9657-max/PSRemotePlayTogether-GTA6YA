@@ -56,6 +56,9 @@ extern "C" {
 #include <QQuickRenderControl>
 #include <QQuickGraphicsDevice>
 #include <QTimer>
+#include <QCursor>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QWaitCondition>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -8118,8 +8121,67 @@ bool QmlMainWindow::nvidiaCard() const
     return nvidia_card;
 }
 
+bool QmlMainWindow::keyMouseEvent(QEvent *event)
+{
+    const bool capture = session && !grab_input && isActive() && session->CoPlayKeyMouseCapturing();
+    if (capture != key_mouse_captured) {
+        // The pointer is the game's while it is captured, and comes back where it was
+        key_mouse_captured = capture;
+        key_mouse_have_last = false;
+        key_mouse_recentering = false;
+        if (capture)
+            setCursor(Qt::BlankCursor);
+        else
+            unsetCursor();
+    }
+    if (!capture)
+        return false;
+    switch (event->type()) {
+    case QEvent::MouseMove: {
+        const QPoint pos = static_cast<QMouseEvent*>(event)->position().toPoint();
+        const QPoint middle(width() / 2, height() / 2);
+        if (key_mouse_recentering && pos == middle) {
+            // The move that putting it back made
+            key_mouse_recentering = false;
+            key_mouse_last = middle;
+            return true;
+        }
+        if (key_mouse_have_last) {
+            const QPoint delta = pos - key_mouse_last;
+            if (!delta.isNull())
+                session->CoPlayKeyMouseMove(qRound(delta.x() * devicePixelRatio()), qRound(delta.y() * devicePixelRatio()));
+        }
+        key_mouse_have_last = true;
+        key_mouse_last = pos;
+        // Back to the middle, so that it never stops at an edge (where the system allows it)
+        if ((pos - middle).manhattanLength() > qMin(width(), height()) / 4) {
+            key_mouse_recentering = true;
+            QCursor::setPos(mapToGlobal(middle));
+        }
+        return true;
+    }
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonRelease:
+    case QEvent::MouseButtonDblClick:
+    case QEvent::Wheel:
+    case QEvent::KeyRelease:
+        session->CoPlayKeyMouseEvent(event);
+        return true;
+    case QEvent::KeyPress:
+        // The stream menu's shortcut still opens it, which lets go of mouse and keys
+        if (handleShortcut(static_cast<QKeyEvent*>(event)))
+            return true;
+        session->CoPlayKeyMouseEvent(event);
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool QmlMainWindow::event(QEvent *event)
 {
+    if (keyMouseEvent(event))
+        return true;
     switch (event->type()) {
     case QEvent::MouseMove:
     case QEvent::MouseButtonPress:

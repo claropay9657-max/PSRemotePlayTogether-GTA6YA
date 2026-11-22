@@ -62,6 +62,9 @@ class QKeyEvent;
 class Settings;
 
 class PcCapture;
+class PcInput;
+class QEvent;
+namespace coplay { struct KeyMouseUpdate; }
 class PcPortal;
 class VirtualPads;
 namespace coplay { class Client; class Host; struct ClientConfig; enum class DisconnectReason; struct ChatMessage; struct ChatEmbed; struct BlobRef; }
@@ -264,6 +267,10 @@ class StreamSession : public QObject
 	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
 	Q_PROPERTY(int coplayMixMode READ GetCoPlayMixMode WRITE SetCoPlayMixMode NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayVideoEnabled READ GetCoPlayVideoEnabled WRITE SetCoPlayVideoEnabled NOTIFY CoPlayChanged)
+	/** A guest whom the host lets use mouse and keyboard in the game on its computer. */
+	Q_PROPERTY(bool coplayKeyMouseAllowed READ GetCoPlayKeyMouseAllowed NOTIFY CoPlayChanged)
+	/** That guest plays with mouse and keyboard now: this window takes them for the game. */
+	Q_PROPERTY(bool coplayKeyMouse READ GetCoPlayKeyMouse WRITE SetCoPlayKeyMouse NOTIFY CoPlayChanged)
 	// This computer shows no picture / plays no sound of the console in this session: the host plays
 	// on the TV (controller only), or a guest joined with the controller only
 	Q_PROPERTY(bool pictureOff READ GetPictureOff NOTIFY CoPlayChanged)
@@ -485,6 +492,19 @@ class StreamSession : public QObject
 		mutable std::mutex pc_players_mutex;
 		/** Gives new guests the lowest free player, forgets those who left, lights their controllers. */
 		void PcAssignPlayers();
+		/** The guests' mouse and keyboard into the game (pcinput.h), when the host allowed it. */
+		std::unique_ptr<PcInput> pc_input;
+		bool pc_key_mouse = false;
+		struct PcKeyMouseGuest
+		{
+			uint8_t buttons = 0;
+			std::vector<uint8_t> keys;
+		};
+		std::map<uint8_t, PcKeyMouseGuest> pc_key_mouse_guests;
+		/** Who has the mouse: whoever moved it last, once the one before has let it rest. */
+		uint8_t pc_mouse_owner = 0;
+		uint64_t pc_mouse_owner_ms = 0;
+		void PcKeyMouse(const coplay::KeyMouseUpdate &u);
 		/** The player a guest is (2..4), 0 if none; 1 for the host. Only in Each their own controller. */
 		int PcPlayerOf(uint8_t slot);
 		/** A console is at the other end: neither a guest's session nor a game on this computer. */
@@ -620,6 +640,15 @@ class StreamSession : public QObject
 		int GetCoPlayMixMode() const;
 		void SetCoPlayMixMode(int mode);
 		bool GetCoPlayVideoEnabled() const;
+		bool GetCoPlayKeyMouseAllowed() const;
+		bool GetCoPlayKeyMouse() const;
+		void SetCoPlayKeyMouse(bool on);
+		/** This window's mouse and keys go to the host's game now (QmlMainWindow::event). */
+		bool CoPlayKeyMouseCapturing() const;
+		/** A key, a mouse button or the wheel, while CoPlayKeyMouseCapturing(). */
+		void CoPlayKeyMouseEvent(QEvent *event);
+		/** The mouse moved this many pixels, while CoPlayKeyMouseCapturing(). */
+		void CoPlayKeyMouseMove(int dx, int dy);
 		void SetCoPlayVideoEnabled(bool enabled);
 		bool GetPictureOff() const;
 		bool GetSoundOff() const;
@@ -652,6 +681,8 @@ class StreamSession : public QObject
 		 * was that player gets the guest's old number, or watches if it had none.
 		 */
 		Q_INVOKABLE void coplaySetPlayerNumber(int slot, int number);
+		/** A game on this computer: lets a guest use mouse and keyboard in it, or not. */
+		Q_INVOKABLE void coplaySetKeyMouse(int slot, bool allowed);
 		/** Removes a guest and keeps it out for the rest of the session. */
 		Q_INVOKABLE void coplayBlock(int slot);
 		/** Lets somebody who knocks in, or not (id from coplayPending). */
