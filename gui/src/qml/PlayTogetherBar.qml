@@ -916,7 +916,10 @@ Rectangle {
                 C.Segmented {
                     Layout.fillWidth: true
                     implicitHeight: 38
-                    model: [qsTr("Together"), qsTr("One at a time"), qsTr("Only me")]
+                    // Each their own controller only for a game on this computer: a console takes one
+                    model: panel.hosting && panel.session.pcSource
+                           ? [qsTr("Together"), qsTr("One at a time"), qsTr("Only me"), qsTr("Each their own")]
+                           : [qsTr("Together"), qsTr("One at a time"), qsTr("Only me")]
                     Accessible.name: qsTr("Who controls")
                     currentIndex: panel.hosting ? panel.session.coplayMixMode : 0
                     onActivated: (index) => panel.session.coplayMixMode = index
@@ -927,7 +930,8 @@ Rectangle {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 12
                     color: C.Theme.textDim
-                    text: [qsTr("Everybody's buttons count at the same time."), qsTr("Whoever moves takes over; the others rest."), qsTr("Your friends watch.")][panel.hosting ? panel.session.coplayMixMode : 0] || ""
+                    text: [qsTr("Everybody's buttons count at the same time."), qsTr("Whoever moves takes over; the others rest."), qsTr("Your friends watch."),
+                           qsTr("Every player is a player of their own: you 1, your friends 2, 3 and 4.")][panel.hosting ? panel.session.coplayMixMode : 0] || ""
                 }
             }
 

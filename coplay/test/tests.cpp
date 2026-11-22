@@ -248,6 +248,27 @@ TEST(session_state_round_trip)
 	}
 }
 
+TEST(session_state_carries_the_game_source_and_each_own_mode)
+{
+	SessionState s;
+	s.stream.source = GameSource::XboxApp;
+	s.mix_mode = MixMode::EachOwn;
+	std::vector<uint8_t> buf;
+	ByteWriter w(buf);
+	WriteSessionState(w, s);
+	SessionState t;
+	ByteReader r(buf.data(), buf.size());
+	CHECK(ReadSessionState(r, t));
+	CHECK(t.stream.source == GameSource::XboxApp && t.stream == s.stream);
+	CHECK(t.mix_mode == MixMode::EachOwn);
+	s.stream.source = GameSource::Computer;
+	buf.clear();
+	ByteWriter w2(buf);
+	WriteSessionState(w2, s);
+	ByteReader r2(buf.data(), buf.size());
+	CHECK(ReadSessionState(r2, t) && t.stream.source == GameSource::Computer);
+}
+
 TEST(largest_session_state_fits_one_packet)
 {
 	SessionState s;
@@ -585,6 +606,53 @@ TEST(mixer_host_only)
 	mixer.SetSource(1, Pad(kButtonCircle), 0);
 	CHECK(mixer.Mix(1).buttons == kButtonCross);
 	CHECK(mixer.InControl(0) && !mixer.InControl(1));
+}
+
+TEST(mixer_each_own_controller)
+{
+	InputMixer::Config config;
+	config.stale_ms = 100;
+	InputMixer mixer(config);
+	mixer.SetMode(MixMode::EachOwn);
+	mixer.SetSource(0, Pad(kButtonCross), 0);
+	mixer.SetSource(1, Pad(kButtonCircle, 20000, 0), 0);
+	mixer.SetSource(2, Pad(kButtonSquare), 0);
+	// Player 1 is the host alone; nobody else's buttons reach it
+	CHECK(mixer.Mix(1).buttons == kButtonCross);
+	// every guest gets what they press on their own controller
+	CHECK(mixer.Player(1, 1).buttons == kButtonCircle && mixer.Player(1, 1).left_x == 20000);
+	CHECK(mixer.Player(2, 1).buttons == kButtonSquare);
+	CHECK(mixer.InControl(0) && mixer.InControl(1) && mixer.InControl(2));
+	// a guest who may not play presses nothing
+	mixer.SetMask(2, InputMask::None());
+	CHECK(mixer.Player(2, 1) == PadState());
+	// a guest who went quiet lets go
+	CHECK(mixer.Player(1, 200) == PadState());
+	CHECK(mixer.Player(7, 1) == PadState());
+}
+
+TEST(mixer_without_the_hosts_own_input)
+{
+	InputMixer::Config config;
+	config.stale_ms = 100000;
+	InputMixer mixer(config);
+	mixer.SetSource(0, Pad(kButtonCross), 0);
+	mixer.SetSource(1, Pad(kButtonCircle), 0);
+	mixer.SetSource(2, Pad(kButtonSquare), 0);
+	mixer.Mix(1);
+	CHECK(mixer.MixWithout(0, 1).buttons == (kButtonCircle | kButtonSquare));
+	mixer.SetMode(MixMode::LastActive);
+	mixer.SetSource(1, Pad(0), 2);
+	mixer.SetSource(2, Pad(0), 2);
+	// the host plays: the guests' controller rests
+	CHECK(mixer.Mix(3).buttons == kButtonCross && mixer.MixWithout(0, 3) == PadState());
+	mixer.SetSource(0, Pad(0), 4);
+	mixer.SetSource(2, Pad(kButtonTriangle), 1000);
+	CHECK(mixer.Mix(1000).buttons == kButtonTriangle);
+	CHECK(mixer.MixWithout(0, 1000).buttons == kButtonTriangle);
+	mixer.SetMode(MixMode::HostOnly);
+	mixer.Mix(1001);
+	CHECK(mixer.MixWithout(0, 1001) == PadState());
 }
 
 TEST(mixer_last_active_passes_control)
@@ -1649,6 +1717,56 @@ TEST(net_input_reaches_host_and_is_merged)
 	CHECK(h.host->MixedInput().buttons == kButtonCross);
 	CHECK(WaitFor([&] { return g.LastState().mix_mode == MixMode::HostOnly; }, 1000));
 	h.host->SetMixMode(MixMode::Together);
+}
+
+TEST(net_each_player_on_a_controller_of_their_own)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "One", 0);
+	TestGuest b(h.MakeInvite(), "Two", 0);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	h.host->SetMixMode(MixMode::EachOwn);
+	CHECK(WaitFor([&] { return a.LastState().mix_mode == MixMode::EachOwn; }, 1000));
+	uint8_t slot_a = a.LastState().your_slot, slot_b = b.LastState().your_slot;
+	CHECK(slot_a != slot_b && slot_a != 0 && slot_b != 0);
+
+	h.host->SetLocalInput(Pad(kButtonCross));
+	int before = h.input_changes;
+	a.client->SetInput(Pad(kButtonCircle));
+	b.client->SetInput(Pad(kButtonSquare, 0, 0, 0, 200));
+	CHECK(WaitFor([&] { return h.host->GuestInput(slot_a).buttons == kButtonCircle
+		&& h.host->GuestInput(slot_b).buttons == kButtonSquare; }, 1000));
+	// The host hears about it, although player 1 stays the same
+	CHECK(h.input_changes > before);
+	CHECK(h.host->MixedInput().buttons == kButtonCross);
+	CHECK(h.host->GuestInput(slot_b).r2 == 200);
+	// everybody plays, on their own controller
+	std::vector<GuestInfo> guests = h.host->Guests();
+	CHECK(guests.size() == 2 && guests[0].in_control && guests[1].in_control);
+	// a guest who may not play gets an idle controller
+	h.host->SetGuestCanControl(slot_b, false);
+	CHECK(h.host->GuestInput(slot_b) == PadState());
+
+	// each one's rumble and player number reach that one only
+	h.host->SetRumble(0, 0);
+	h.host->SetGuestRumble(slot_a, 180, 40);
+	h.host->SetGuestPlayerIndex(slot_a, 2);
+	h.host->SetGuestPlayerIndex(slot_b, 3);
+	CHECK(WaitFor([&] { return a.LastState().feedback.rumble_left == 180
+		&& a.LastState().feedback.player_index == 2 && b.LastState().feedback.player_index == 3; }, 1000));
+	CHECK(a.LastState().feedback.rumble_right == 40);
+	CHECK(b.LastState().feedback.rumble_left == 0);
+	uint16_t seq = a.LastState().feedback.rumble_seq;
+	h.host->SetGuestRumble(slot_a, 0, 0);
+	CHECK(WaitFor([&] { return a.LastState().feedback.rumble_seq != seq; }, 1000));
+	CHECK(a.LastState().feedback.rumble_left == 0);
+
+	// back to one controller for all: the shared rumble again
+	h.host->SetMixMode(MixMode::Together);
+	h.host->SetRumble(90, 90);
+	CHECK(WaitFor([&] { return a.LastState().feedback.rumble_left == 90 && b.LastState().feedback.rumble_left == 90; }, 1000));
 }
 
 TEST(net_held_button_is_released_when_guest_vanishes)

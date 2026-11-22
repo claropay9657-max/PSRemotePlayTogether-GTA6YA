@@ -43,7 +43,7 @@
 
 namespace coplay {
 
-constexpr uint8_t kProtocolVersion = 4;
+constexpr uint8_t kProtocolVersion = 5;
 /** The longest Twitch login a guest may announce (see MediaFlags). */
 constexpr size_t kMaxTwitchLogin = 25;
 /** A Twitch login: 3 to kMaxTwitchLogin of a-z, 0-9 and _. */
@@ -364,6 +364,14 @@ struct AudioHeader
 	}
 };
 
+/** Where the game the guests see runs. */
+enum class GameSource : uint8_t
+{
+	Console = 0,  // a PS4 or PS5 (StreamInfo::ps5 says which)
+	Computer = 1, // the host's own computer: a window or a screen of it
+	XboxApp = 2   // the Xbox app on the host's computer, with Remote Play or cloud gaming
+};
+
 struct StreamInfo
 {
 	VideoCodec codec = VideoCodec::H264;
@@ -372,11 +380,12 @@ struct StreamInfo
 	uint8_t fps = 0;
 	bool ps5 = true;
 	bool dualsense = false; // the console session has DualSense features enabled
+	GameSource source = GameSource::Console;
 
 	bool operator==(const StreamInfo &o) const
 	{
 		return codec == o.codec && width == o.width && height == o.height && fps == o.fps && ps5 == o.ps5
-			&& dualsense == o.dualsense;
+			&& dualsense == o.dualsense && source == o.source;
 	}
 };
 
@@ -485,7 +494,13 @@ enum class MixMode : uint8_t
 {
 	Together = 0,   // everyone controls at the same time
 	LastActive = 1, // one player at a time, control passes to whoever plays while the others rest
-	HostOnly = 2    // guests watch
+	HostOnly = 2,   // guests watch
+	/**
+	 * Every player on a controller of their own: the host is player 1, the guests 2, 3, 4.
+	 * Only for a game on the host's computer (GameSource::Computer), which takes several
+	 * controllers; a console takes one.
+	 */
+	EachOwn = 3
 };
 
 /** Snapshot the host sends to each guest on change and periodically. */

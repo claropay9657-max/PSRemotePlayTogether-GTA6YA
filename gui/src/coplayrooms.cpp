@@ -118,6 +118,12 @@ bool CoPlayRooms::IsCover(const QString &address)
 	return pattern.match(address).hasMatch();
 }
 
+bool CoPlayRooms::IsConsole(const QString &console)
+{
+	return console == QLatin1String("ps5") || console == QLatin1String("ps4")
+		|| console == QLatin1String("pc") || console == QLatin1String("xbox");
+}
+
 /** The square key art ("MASTER") in an answer of the catalog, or empty. */
 static QString CoverIn(const QByteArray &body)
 {
@@ -296,6 +302,9 @@ void CoPlayRoomList::Refresh(const QString &setting)
 			m[QStringLiteral("compatible")] = proto == coplay::kProtocolVersion;
 			m[QStringLiteral("since")] = r.value(QStringLiteral("since")).toInt();
 			m[QStringLiteral("titleId")] = r.value(QStringLiteral("title_id")).toString().left(9);
+			// What the game runs on; empty from an older host
+			const QString console = r.value(QStringLiteral("console")).toString();
+			m[QStringLiteral("console")] = CoPlayRooms::IsConsole(console) ? console : QString();
 			// Who streams on Twitch: channel names only, the links to them are built here
 			static const QRegularExpression twitch_login(QStringLiteral("^[a-z0-9_]{3,25}$"));
 			QStringList twitch;
@@ -540,6 +549,7 @@ void CoPlayRoomAnnouncer::Announce()
 	form.addQueryItem(QStringLiteral("invite"), room.invite);
 	form.addQueryItem(QStringLiteral("proto"), QString::number(room.proto));
 	form.addQueryItem(QStringLiteral("title_id"), room.title_id);
+	form.addQueryItem(QStringLiteral("console"), room.console);
 	form.addQueryItem(QStringLiteral("cover"), room.cover);
 	form.addQueryItem(QStringLiteral("initials"), room.initials);
 	form.addQueryItem(QStringLiteral("twitch"), room.twitch);

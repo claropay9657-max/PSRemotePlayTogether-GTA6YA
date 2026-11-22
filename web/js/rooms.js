@@ -9,6 +9,7 @@ import { PROTOCOL_VERSION } from './proto.js';
 
 export const DEFAULT_ROOMS_URL = 'https://gamernova.net/api/psrpt_rooms.php';
 // As the list itself takes it: nothing that could end the address inside CSS or HTML
+const CONSOLES = ['ps5', 'ps4', 'pc', 'xbox'];
 const COVER = /^https:\/\/image\.api\.playstation\.com\/[A-Za-z0-9._~\/%-]{1,300}$/;
 
 /** The languages a room can say it speaks, as the app offers them: [code, name in that language]. */
@@ -86,7 +87,9 @@ export async function fetchRooms(url) {
       max,
       full: players >= max,
       policy: ['ask', 'watch', 'open'].includes(r.policy) ? r.policy : 'ask',
-      control: ['all', 'turns', 'host'].includes(r.control) ? r.control : 'all',
+      control: ['all', 'turns', 'host', 'each'].includes(r.control) ? r.control : 'all',
+      // What the game runs on; empty from an older host
+      console: CONSOLES.includes(r.console) ? r.console : '',
       web: !!r.web,
       invite,
       compatible: Number(r.proto) === PROTOCOL_VERSION,
@@ -103,19 +106,25 @@ export async function fetchRooms(url) {
   return { rooms, poll: Math.min(60000, Math.max(5000, Number(answer.poll) || 15000)) };
 }
 
+/** What a room's game runs on, as its badge says; empty from an older host. */
+export function consoleName(kind) {
+  return { ps5: 'PS5', ps4: 'PS4', pc: 'PC', xbox: 'Xbox' }[kind] || '';
+}
+
 /**
  * The rooms a search shows: every word in the title, the game, the host or the
  * language, in the chosen language, the ones a browser can join first.
  */
-export function filterRooms(rooms, { search = '', lang = '', hideFull = false, openOnly = false, twitchOnly = false } = {}) {
+export function filterRooms(rooms, { search = '', lang = '', system = '', hideFull = false, openOnly = false, twitchOnly = false } = {}) {
   const words = search.toLowerCase().split(/\s+/).filter((w) => w);
   return rooms
     .filter((r) => {
       if (lang && r.lang && r.lang !== lang) return false;
+      if (system && r.console !== system) return false;
       if (hideFull && r.full) return false;
       if (openOnly && r.policy === 'ask') return false;
       if (twitchOnly && !r.twitch.length) return false;
-      const hay = `${r.title} ${r.game} ${r.host} ${languageName(r.lang)}`.toLowerCase();
+      const hay = `${r.title} ${r.game} ${r.host} ${languageName(r.lang)} ${consoleName(r.console)}`.toLowerCase();
       return words.every((w) => hay.includes(w));
     })
     .sort((a, b) => {

@@ -326,6 +326,7 @@ static QString ControlName(coplay::MixMode mode)
 	{
 		case coplay::MixMode::LastActive: return QStringLiteral("turns");
 		case coplay::MixMode::HostOnly: return QStringLiteral("host");
+		case coplay::MixMode::EachOwn: return QStringLiteral("each");
 		default: return QStringLiteral("all");
 	}
 }
@@ -457,8 +458,11 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	}
 	coplay->host = std::make_unique<coplay::Host>(config, callbacks);
 
-	if(connect_info.coplay_mix_mode >= 0 && connect_info.coplay_mix_mode <= static_cast<int>(coplay::MixMode::HostOnly))
+	// Each on a controller of their own only works for a game on this computer
+	const int max_mode = static_cast<int>(pc_source ? coplay::MixMode::EachOwn : coplay::MixMode::HostOnly);
+	if(connect_info.coplay_mix_mode >= 0 && connect_info.coplay_mix_mode <= max_mode)
 		coplay->host->SetMixMode(static_cast<coplay::MixMode>(connect_info.coplay_mix_mode));
+	coplay->mix_mode = static_cast<int>(coplay->host->GetMixMode());
 
 	bool ps5 = chiaki_target_is_ps5(connect_info.target);
 	coplay::StreamInfo info;
@@ -468,6 +472,23 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	info.fps = static_cast<uint8_t>(connect_info.video_profile.max_fps);
 	info.ps5 = ps5;
 	info.dualsense = connect_info.enable_dualsense;
+	if(pc_source)
+	{
+		// H.264 from this computer's encoder; no DualSense features, no touchpad
+		info.codec = coplay::VideoCodec::H264;
+		info.ps5 = true;
+		info.dualsense = false;
+		info.source = connect_info.pc_target.value(QStringLiteral("xbox")).toBool()
+			? coplay::GameSource::XboxApp : coplay::GameSource::Computer;
+		// Opus as a console sends it (PcCapture: 48 kHz stereo, 10 ms frames)
+		coplay::AudioHeader audio;
+		audio.valid = true;
+		audio.channels = 2;
+		audio.bits = 16;
+		audio.rate = 48000;
+		audio.frame_size = 480;
+		coplay->host->SetAudioHeader(audio);
+	}
 	coplay->host->SetStreamInfo(info);
 
 	coplay->invite_secret = config.secret;
@@ -515,6 +536,8 @@ void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info
 	room.lang = connect_info.coplay_room_lang;
 	room.game = connect_info.coplay_room_game;
 	room.title_id = TitleIdOrEmpty(connect_info.coplay_room_title_id);
+	room.console = pc_source ? (connect_info.pc_target.value(QStringLiteral("xbox")).toBool() ? QStringLiteral("xbox") : QStringLiteral("pc"))
+		: chiaki_target_is_ps5(connect_info.target) ? QStringLiteral("ps5") : QStringLiteral("ps4");
 	room.host = coplay->host_name;
 	room.policy = JoinPolicyName(coplay->join_policy);
 	room.control = ControlName(coplay->host->GetMixMode());
@@ -969,13 +992,16 @@ int StreamSession::GetCoPlayMixMode() const
 
 void StreamSession::SetCoPlayMixMode(int mode)
 {
-	if(!coplay || !coplay->host || mode < 0 || mode > static_cast<int>(coplay::MixMode::HostOnly))
+	const int max_mode = static_cast<int>(pc_source ? coplay::MixMode::EachOwn : coplay::MixMode::HostOnly);
+	if(!coplay || !coplay->host || mode < 0 || mode > max_mode)
 		return;
 	{
 		QMutexLocker locker(&coplay->mutex);
 		coplay->mix_mode = mode;
 	}
 	coplay->host->SetMixMode(static_cast<coplay::MixMode>(mode));
+	// A game on this computer: as many controllers as the new way needs
+	PcPlugPads();
 	CoPlayUpdatePlayers();
 	// The combined state may have changed with the mode
 	SendFeedbackState();
@@ -1067,6 +1093,15 @@ void StreamSession::SendControllerState(ChiakiControllerState *state)
 	if(IsCoPlayGuest())
 	{
 		coplay->client->SetInput(ToPad(*state));
+		return;
+	}
+	if(pc_source)
+	{
+		// The host's own controllers reach the game on this computer directly; they still
+		// count for who is in control and for what the others see the host press
+		if(IsCoPlayHosting())
+			coplay->host->SetLocalInput(ToPad(*state));
+		PcUpdatePads();
 		return;
 	}
 	if(IsCoPlayHosting())

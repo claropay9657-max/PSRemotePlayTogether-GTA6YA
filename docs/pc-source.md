@@ -1,6 +1,7 @@
 # This computer as the game source
 
-*Design for discussion, not built yet.*
+*Phase 1 (Windows) is built on the branch `pc-source` (see "Status" at the end); the decisions
+are at the end too.*
 
 Today a session always starts at a PS4 or PS5. The idea: the host can also share a game that runs on
 the host's own computer, and the guests play it with their own controllers, in the app or in a
@@ -74,15 +75,37 @@ The mixer already keeps every player's input apart (`InputMixer::Raw`), so this 
 `MixMode` that routes each player to their own virtual controller. Older guests do not know the new
 mode: the protocol version goes up, and the list of public rooms shows it like the other modes.
 
-### 6. Xbox, and others
+### 6. The game's name, found by itself
 
-- **Xbox:** run the official Xbox app on the host's Windows PC, start Remote Play to your own Xbox,
-  or Xbox Cloud Gaming with Game Pass, and share its window. The Xbox app takes the virtual Xbox
-  controllers, so the guests play. Nothing unofficial is involved. The docs get a step-by-step
-  recipe.
-- **A built-in Xbox client** (like the app is for PlayStation) would need Microsoft's undocumented
-  streaming protocol and a Microsoft login, as the open-source Greenlight does it. It can change
-  any time and is a lot of work: later at most, if the recipe above is not enough.
+The room says which game runs, as it does for a console. On this computer the app finds it by
+itself, with the game detection of the GamerNova client ported over; without a match it takes the
+shared window's title.
+
+### 7. Mouse and keyboard together
+
+For games played with mouse and keyboard, the guests' mouse and keys go to the shared game, as
+Windows input (no driver needed; games that read raw mouse input get it too). Planned as the step
+after the controllers:
+
+- **Only into the shared window:** while another window is in front, nothing goes through, and the
+  Windows key, Alt+Tab, Ctrl+Esc and the like never do. The host lets each player use mouse and
+  keyboard, like "may play" today.
+- **The mouse has one owner at a time** (whoever moved it last, after a short rest of the one
+  before), keys from everybody count together, like the controller modes.
+- Guests capture the mouse in the app and in the browser (pointer lock) and send movements, buttons,
+  the wheel and keys; a new packet type, so the protocol version goes up again.
+- Some anti-cheat systems refuse input that a program makes; the app says so where it can tell.
+
+### 8. Xbox, and others
+
+- **Xbox now:** run the official Xbox app on the host's Windows PC, start Remote Play to your own
+  Xbox, or Xbox Cloud Gaming with Game Pass, and share its window. The Xbox app takes the virtual
+  Xbox controllers, so the guests play. Nothing unofficial is involved. The docs get a step-by-step
+  recipe, and the room says Xbox.
+- **A built-in Xbox client later** (decided 2026-11-22): connecting to the Xbox console directly,
+  like the app does with a PlayStation through its chiaki-ng base, with the open-source Greenlight
+  and xbox-xcloud-player as the reference for Microsoft's streaming protocol and login. It is a
+  project of its own: the protocol is undocumented and can change.
 - **Nintendo Switch and others** only through a capture card, and their controllers would need extra
   hardware: not planned.
 
@@ -105,12 +128,38 @@ mode: the protocol version goes up, and the list of public rooms shows it like t
    Large: several working sessions, and a tester with a Windows PC.
 2. **Linux:** PipeWire capture and sound, uinput controllers.
 3. **macOS:** picture and sound only.
-4. **Xbox built in:** only if the recipe is not enough.
+4. **Mouse and keyboard together** (section 7).
+5. **Xbox built in** (section 8).
 
-## Open questions
+## Decided (2026-11-22)
 
-1. Windows first, as above?
-2. ViGEmBus as a requirement for guests to play, installed by the host once when the app asks?
-3. Each their own controller already in phase 1, or after the basics work?
-4. The game's sound only (recommended), or the whole computer's sound as an option too?
-5. The name on the Host page: **This computer**, or **This PC**?
+1. Windows first.
+2. ViGEmBus is needed for guests to play; the app says so and links it when it is missing.
+3. Each their own controller is in phase 1.
+4. Only the game's sound (a shared screen: everything but this app); the whole computer's sound
+   may come later as an option.
+5. The name on the Host page: **This computer**.
+6. Public rooms say what the game runs on: PS5, PS4, PC or Xbox.
+
+## Status (2026-11-22)
+
+Built:
+
+- `gui/src/pcsource.cpp`: the windows and screens to share (games first), the game's name (the
+  GamerNova client's rules: store folders, WindowsApps engine marks, ignore list; Steam's own
+  name from its manifests), capture through FFmpeg's `gfxcapture` and `scale_d3d11`, the encoder
+  (NVENC or AMF straight from the graphics card, Media Foundation through memory), the program's
+  sound through Windows' process loopback, Opus. A test picture with a beep on every system for
+  trying it out: `PSRPT_PC_SOURCE_TEST=1`. `PSRPT_PC_DUMP=<file>` writes what goes to the guests.
+- `gui/src/virtualpads.cpp`: Xbox 360 controllers through ViGEmClient (fetched at a fixed commit).
+- `gui/src/streamsession_pc.cpp`: the session without a console; the guests' input to the virtual
+  controllers (Each their own: guest in place n is player n + 1), rumble back to each guest.
+- `coplay`: protocol 5 with `MixMode::EachOwn`, `GameSource` in the stream info, a guest's own
+  rumble and player number, the guests' input without the host's.
+- Host page (This computer, what to share, Picture, Each their own), Join page and browser page
+  (console badge and filter), list server (`console`, `control=each`), the `share` command.
+
+Tested on a Mac with the test picture: the app shares it, a guest (`coplay-sim guest`) gets 60
+pictures a second that decode and the sound; the library tests cover the new mode. The Windows
+build is cross-compiled in Docker. **Not tested yet:** capture, encoders, sound and virtual
+controllers on a real Windows PC, the Xbox app, ultrawide windows on the guests' screens.

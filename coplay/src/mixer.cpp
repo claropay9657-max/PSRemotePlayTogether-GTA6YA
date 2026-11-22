@@ -166,10 +166,44 @@ PadState InputMixer::Raw(uint32_t id, uint64_t now_ms) const
 	return source.state;
 }
 
+PadState InputMixer::Player(uint32_t id, uint64_t now_ms) const
+{
+	auto it = sources.find(id);
+	return it == sources.end() ? PadState() : Effective(id, it->second, now_ms);
+}
+
+PadState InputMixer::MixWithout(uint32_t id, uint64_t now_ms) const
+{
+	switch(mode)
+	{
+		case MixMode::Together: {
+			PadState out;
+			for(const auto &entry : sources)
+			{
+				if(entry.first != id)
+					out = MergePadStates(out, Effective(entry.first, entry.second, now_ms));
+			}
+			return out;
+		}
+		case MixMode::LastActive: {
+			if(!has_holder || holder == id)
+				return PadState();
+			auto it = sources.find(holder);
+			return it == sources.end() ? PadState() : Effective(holder, it->second, now_ms);
+		}
+		case MixMode::HostOnly:
+		case MixMode::EachOwn:
+			break;
+	}
+	return PadState();
+}
+
 PadState InputMixer::Mix(uint64_t now_ms)
 {
 	switch(mode)
 	{
+		// Player 1 is the host; every guest has a controller of its own (Player())
+		case MixMode::EachOwn:
 		case MixMode::HostOnly: {
 			auto it = sources.find(kHostSource);
 			return it == sources.end() ? PadState() : Effective(kHostSource, it->second, now_ms);
@@ -232,6 +266,7 @@ bool InputMixer::InControl(uint32_t id) const
 		case MixMode::HostOnly:
 			return id == kHostSource;
 		case MixMode::Together:
+		case MixMode::EachOwn:
 			return true;
 		case MixMode::LastActive:
 			return has_holder && holder == id;

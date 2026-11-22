@@ -43,6 +43,8 @@
 #include <QBuffer>
 #include <QImage>
 #include <QThreadPool>
+#include "pcsource.h"
+#include "virtualpads.h"
 
 extern "C" {
 #include <chiaki/time.h>
@@ -1574,8 +1576,9 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 
         if (!session_for_connections->IsConnected())
             return;
-        // A public room tells the list which game runs, which the console's discovery answers say
-        if (!session_for_connections->GetCoPlayPublic())
+        // A public room tells the list which game runs, which the console's discovery answers say.
+        // A game on this computer leaves the consoles alone.
+        if (!session_for_connections->GetCoPlayPublic() && !session_for_connections->IsPcSource())
             setDiscoveryEnabled(false);
         if (console_reconnecting) {
             qCInfo(chiakiGui) << "Connected to the console again after" << console_reconnect_clock.elapsed() << "ms";
@@ -1588,6 +1591,10 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 
     // A guest that lost the host joins again inside its session
     connect(session, &StreamSession::CoPlayReconnectingChanged, this, &QmlBackend::reconnectingChanged);
+    // A game on this computer names itself for the stream scenes, as a console's discovery does
+    connect(session, &StreamSession::PcGameChanged, this, [this](const QString &game) {
+        live_scenes->SetGame(game);
+    });
     chiaki_log_mutex.lock();
     chiaki_log_ctx = session->GetChiakiLog();
     chiaki_log_mutex.unlock();
@@ -1928,6 +1935,109 @@ void QmlBackend::hostConsole(int index, QString nickname)
             settings->SetCoPlayPublicSecret(QString::fromStdString(coplay::SecretToString(coplay::GenerateSecret())));
     }
     startConsole(index, nickname);
+}
+
+QVariantList QmlBackend::pcTargets() const
+{
+    QVariantList list;
+    for (const PcSource::Target &t : PcSource::Targets())
+        list.append(t.ToMap());
+    return list;
+}
+
+QString QmlBackend::pcUnsupported() const
+{
+    return PcSource::Unsupported();
+}
+
+QString QmlBackend::pcPadsProblem() const
+{
+    return VirtualPads::Problem();
+}
+
+QString QmlBackend::pcDriverUrl() const
+{
+    return VirtualPads::DriverUrl();
+}
+
+QVariantMap QmlBackend::pcPicture(const QVariantMap &target, int height) const
+{
+    int width = 1920, h = 1080;
+    PcSource::PictureSize(PcSource::Target::FromMap(target), height, &width, &h);
+    const int kbps = settings->GetCoPlayPcBitrate();
+    QVariantMap m;
+    m["width"] = width;
+    m["height"] = h;
+    m["mbps"] = qRound((kbps > 0 ? kbps : PcSource::BitrateFor(width, h, 60)) / 1000.0);
+    return m;
+}
+
+QVariantMap QmlBackend::pcLastTarget() const
+{
+    return settings->GetCoPlayPcTarget();
+}
+
+QString QmlBackend::pcGameIn(const QVariantMap &target) const
+{
+    return PcSource::DetectGame(PcSource::Target::FromMap(target)).title;
+}
+
+void QmlBackend::hostThisComputer(const QVariantMap &target_map)
+{
+    if (session) {
+        qCWarning(chiakiGui) << "Another session is already active";
+        return;
+    }
+    const QString unsupported = PcSource::Unsupported();
+    if (!unsupported.isEmpty()) {
+        emit error(tr("This computer"), unsupported);
+        return;
+    }
+    PcSource::Target target = PcSource::Find(PcSource::Target::FromMap(target_map));
+    if (!target.Valid()) {
+        emit error(tr("This computer"), tr("That window is not open any more. Choose again."));
+        return;
+    }
+    settings->SetCoPlayHostEnabled(true);
+    settings->SetCoPlayPcTarget(target.ToMap());
+    if (settings->GetCoPlayPublic()) {
+        coplay::Secret secret;
+        if (!coplay::SecretFromString(settings->GetCoPlayPublicSecret().toStdString(), secret))
+            settings->SetCoPlayPublicSecret(QString::fromStdString(coplay::SecretToString(coplay::GenerateSecret())));
+    }
+    window->setWindowAdjustable(false);
+    resume_session = false;
+    // The game plays in its own window on this computer: the app's window never covers it,
+    // it only shows what the guests get
+    StreamSessionConnectInfo info(
+            settings,
+            CHIAKI_TARGET_PS5_1,
+            QStringLiteral("127.0.0.1"),
+            QString(),
+            QByteArray(),
+            QByteArray(),
+            QString(),
+            QString(),
+            false,
+            false,
+            false,
+            false);
+    info.pc_source = true;
+    info.pc_target = target.ToMap();
+    // The window's own shape, ultrawide too, as high as chosen on the Host page
+    int width = 1920, height = 1080;
+    PcSource::PictureSize(target, settings->GetCoPlayPcHeight(), &width, &height);
+    info.video_profile.width = static_cast<unsigned int>(width);
+    info.video_profile.height = static_cast<unsigned int>(height);
+    if (info.video_profile.max_fps < 30)
+        info.video_profile.max_fps = 60;
+    const int kbps = settings->GetCoPlayPcBitrate();
+    info.pc_video_kbps = kbps > 0 ? kbps : PcSource::BitrateFor(width, height, static_cast<int>(info.video_profile.max_fps));
+    info.video_profile.codec = CHIAKI_CODEC_H264;
+    info.enable_dualsense = false;
+    info.coplay_room_game = PcSource::DetectGame(target).title;
+    info.coplay_room_title_id = QString();
+    createSession(info);
 }
 
 void QmlBackend::startConsole(int index, QString nickname)

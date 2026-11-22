@@ -1,4 +1,5 @@
 #include "qmlmainwindow.h"
+#include "pcsource.h"
 #include "qmlbackend.h"
 #include "qmlsvgprovider.h"
 #include "coplaycamera.h"
@@ -2555,6 +2556,30 @@ void QmlMainWindow::joinCoPlay(const QString &invite, const QString &name, bool 
         }
     }, Qt::SingleShotConnection);
     backend->joinCoPlay(invite, name, controller_only);
+}
+
+void QmlMainWindow::shareThisComputer(const QString &what)
+{
+    const QList<PcSource::Target> targets = PcSource::Targets();
+    const PcSource::Target *found = nullptr;
+    for (const PcSource::Target &t : targets) {
+        const bool match = what.isEmpty() ? t.game
+            : what.compare(QLatin1String("screen"), Qt::CaseInsensitive) == 0 ? t.kind == QLatin1String("screen")
+            : what.compare(QLatin1String("test"), Qt::CaseInsensitive) == 0 ? t.kind == QLatin1String("test")
+            : t.kind == QLatin1String("window") && t.title.contains(what, Qt::CaseInsensitive);
+        if (match) {
+            found = &t;
+            break;
+        }
+    }
+    if (!found) {
+        const QString text = what.isEmpty() ? tr("No game is running on this computer.")
+                                            : tr("Nothing on this computer is called \"%1\".").arg(what);
+        qWarning().noquote() << "Share:" << text;
+        emit backend->error(tr("This computer"), text);
+        return;
+    }
+    backend->hostThisComputer(found->ToMap());
 }
 
 QmlMainWindow::QmlMainWindow(const StreamSessionConnectInfo &connect_info)

@@ -66,9 +66,29 @@ static const QMap<QString, CLICommand> cli_commands = {
 };
 #endif
 
+int RunShare(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &what)
+{
+	QmlMainWindow main_window(settings, exit_app_on_stream_exit);
+	// This start shares this computer: no console is connected to
+	main_window.cancelAutoConnect();
+	main_window.show();
+	auto timer = new QTimer(&main_window);
+	timer->setInterval(50);
+	QObject::connect(timer, &QTimer::timeout, &main_window, [&main_window, timer, what]() {
+		if(!main_window.isExposed())
+			return;
+		timer->stop();
+		timer->deleteLater();
+		main_window.shareThisComputer(what);
+	});
+	timer->start();
+	return app.exec();
+}
+
 int RunStream(QGuiApplication &app, const StreamSessionConnectInfo &connect_info);
 int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit);
 int RunJoin(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &invite, const QString &name, bool controller_only);
+int RunShare(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &what);
 
 static void CopySettings(QSettings &from, QSettings &to)
 {
@@ -221,6 +241,7 @@ int real_main(int argc, char *argv[])
 	cmds.append("stream");
 	cmds.append("list");
 	cmds.append("join");
+	cmds.append("share");
 #ifdef CHIAKI_ENABLE_CLI
 	cmds.append(cli_commands.keys());
 #endif
@@ -230,6 +251,8 @@ int real_main(int argc, char *argv[])
 			"Use 'list' to get the nickname.");
 	parser.addPositionalArgument("host", "Address to connect to (when using the stream command).");
 	parser.addPositionalArgument("invite", "With the join command (join <invite>): the Play Together invite of the session to join.");
+	parser.addPositionalArgument("what", "With the share command (share [what]): host a game on this computer, as set up on "
+			"the Host page. What to share: part of a window's title, \"screen\" for the main screen, or nothing for the first game.");
 
 	QCommandLineOption coplay_name_option("name", "Your player name when joining a shared session (join command).", "name");
 	parser.addOption(coplay_name_option);
@@ -299,6 +322,11 @@ int real_main(int argc, char *argv[])
 		Settings *active_settings = use_alt_settings ? &alt_settings : &settings;
 		QString name = parser.isSet(coplay_name_option) ? parser.value(coplay_name_option) : active_settings->GetCoPlayName();
 		return RunJoin(app, active_settings, exit_app_on_stream_exit, args[1], name, parser.isSet(coplay_controller_only_option));
+	}
+	if(args[0] == "share")
+	{
+		Settings *active_settings = use_alt_settings ? &alt_settings : &settings;
+		return RunShare(app, active_settings, exit_app_on_stream_exit, args.length() >= 2 ? args.mid(1).join(QLatin1Char(' ')) : QString());
 	}
 	if(args[0] == "list")
 	{

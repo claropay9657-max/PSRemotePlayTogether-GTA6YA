@@ -29,6 +29,7 @@ set(SOURCE_FILES
 	include/streamsession.h
 	src/streamsession.cpp
 	src/streamsession_coplay.cpp
+	src/streamsession_pc.cpp
 	include/sessionlog.h
 	src/sessionlog.cpp
 	include/settings.h
@@ -102,6 +103,10 @@ set(SOURCE_FILES
 	src/qmlsvgprovider.cpp
 	include/systemdinhibit.h
 	src/systemdinhibit.cpp
+	include/pcsource.h
+	src/pcsource.cpp
+	include/virtualpads.h
+	src/virtualpads.cpp
 	)
 set(RESOURCE_FILES "")
 
@@ -156,6 +161,50 @@ target_link_libraries(chiaki PkgConfig::LIBPLACEBO placebo-libav-impl)
 
 target_link_libraries(chiaki chiaki-lib)
 target_link_libraries(chiaki coplay)
+
+# This computer as the game source (docs/pc-source.md): the sound goes out as Opus
+find_package(Opus REQUIRED)
+target_include_directories(chiaki PRIVATE ${Opus_INCLUDE_DIRS})
+target_link_libraries(chiaki ${Opus_LIBRARIES})
+if(WIN32)
+	# A window or a screen through FFmpeg's capture filters (Windows Graphics Capture)
+	find_package(FFMPEG COMPONENTS avfilter)
+	if(TARGET FFMPEG::avfilter)
+		target_link_libraries(chiaki FFMPEG::avfilter)
+		target_compile_definitions(chiaki PRIVATE PSRPT_PC_CAPTURE_FILTERS=1)
+		message(STATUS "Sharing a game on this computer: capture through FFmpeg ${FFMPEG_VERSION}")
+	else()
+		message(WARNING "FFmpeg has no libavfilter: sharing a game on this computer is off")
+	endif()
+	# Windows, the program's name and its sound
+	target_link_libraries(chiaki dwmapi ole32 version)
+	# The players' controllers as Xbox 360 controllers of the ViGEmBus driver: ViGEmClient
+	# (MIT), the library that talks to it, at a fixed commit (the project is archived)
+	include(FetchContent)
+	FetchContent_Declare(vigemclient
+		URL https://github.com/nefarius/ViGEmClient/archive/b66d02d57e32cc8595369c53418b843e958649b4.tar.gz
+		URL_HASH SHA256=c2bc824cc96ed18cf0620b734ae552474f107e7e680485e5c0cb63e675d9f72a)
+	FetchContent_GetProperties(vigemclient)
+	if(NOT vigemclient_POPULATED)
+		# Only its sources: its own CMakeLists.txt builds a resource file and installs
+		FetchContent_Populate(vigemclient)
+	endif()
+	add_library(vigemclient STATIC ${vigemclient_SOURCE_DIR}/src/ViGEmClient.cpp)
+	target_include_directories(vigemclient PUBLIC ${vigemclient_SOURCE_DIR}/include PRIVATE ${vigemclient_SOURCE_DIR}/src)
+	# It names Windows' headers as the Windows SDK spells them; mingw-w64's are lower case,
+	# which only matters on a case-sensitive file system (cross-compiling on Linux)
+	if(NOT CMAKE_HOST_WIN32)
+		target_include_directories(vigemclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/vigem-compat)
+	endif()
+	target_compile_definitions(vigemclient PRIVATE WIN32_LEAN_AND_MEAN)
+	set_target_properties(vigemclient PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+	if(NOT MSVC)
+		target_compile_options(vigemclient PRIVATE -Wno-pragma-pack)
+	endif()
+	target_link_libraries(vigemclient PUBLIC setupapi)
+	target_link_libraries(chiaki vigemclient)
+	target_compile_definitions(chiaki PRIVATE PSRPT_VIGEM=1)
+endif()
 if(CHIAKI_ENABLE_CLI)
 	add_definitions(-DCHIAKI_ENABLE_CLI)
 	target_link_libraries(chiaki chiaki-cli-lib)

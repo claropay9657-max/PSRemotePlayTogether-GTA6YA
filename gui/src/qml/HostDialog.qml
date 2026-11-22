@@ -28,12 +28,59 @@ DialogView {
         for (let i = 0; i < Chiaki.hosts.length; ++i) {
             const h = Chiaki.hosts[i];
             if (h.display && h.registered)
-                list.push({ index: i, name: h.name, discovered: h.discovered, state: h.state, app: h.app || "", titleId: h.titleId || "", psn: !!h.duid });
+                list.push({ index: i, name: h.name, discovered: h.discovered, state: h.state, app: h.app || "", titleId: h.titleId || "", psn: !!h.duid, ps5: !!h.ps5 });
         }
         return list;
     }
+    /** Which console, by its place in consoles; one past the last is this computer. */
     property int consoleChoice: 0
-    readonly property var chosen: consoles.length > 0 ? consoles[Math.min(consoleChoice, consoles.length - 1)] : null
+    readonly property bool pcChosen: consoleChoice >= consoles.length
+    readonly property var chosen: !pcChosen ? consoles[consoleChoice] : null
+
+    // This computer as the game source: a window or a screen of it (pcsource.h)
+    /** Why this computer cannot share a game; empty if it can. */
+    readonly property string pcUnsupported: Chiaki.pcUnsupported()
+    /** The windows and screens there are, read when this computer is chosen and on Refresh. */
+    property var pcTargets: []
+    /** The one chosen, or null. */
+    property var pcTarget: null
+    /** Why friends could only watch (no controller driver); empty if they can play. */
+    property string pcPadsProblem: ""
+    /** The game found in what is chosen, for the room. */
+    property string pcGame: ""
+
+    function refreshPc() {
+        if (pcUnsupported)
+            return;
+        const list = Chiaki.pcTargets();
+        // The same one as before, else what was shared last time, else the first (a game, if one runs)
+        const keep = pcTarget || Chiaki.pcLastTarget();
+        let found = null;
+        if (keep && keep.kind) {
+            found = list.find((t) => t.kind === keep.kind && t.handle === keep.handle)
+                || list.find((t) => t.kind === keep.kind && t.kind === "window" && t.app && t.app === keep.app && t.title === keep.title)
+                || null;
+        }
+        pcTargets = list;
+        pcTarget = found || (list.length > 0 ? list[0] : null);
+        pcPadsProblem = Chiaki.pcPadsProblem();
+    }
+    onPcTargetChanged: pcGame = pcTarget ? Chiaki.pcGameIn(pcTarget) : ""
+    onPcChosenChanged: if (pcChosen) refreshPc()
+    Component.onCompleted: if (pcChosen) refreshPc()
+
+    /** What a window or screen of this computer is, under its name. */
+    function pcLine(t) {
+        if (!t)
+            return "";
+        if (t.kind === "screen")
+            return qsTr("Whole screen · %1 × %2").arg(t.width).arg(t.height);
+        if (t.kind === "test")
+            return qsTr("Moving test picture and a beep, for trying it out");
+        if (t.xbox)
+            return qsTr("Xbox app · Remote Play or cloud gaming");
+        return t.app || "";
+    }
     readonly property bool resting: !!chosen && chosen.state === "standby"
     readonly property bool publicRoom: !!Chiaki.settings.coplayHostPublic
     readonly property bool roomsOn: !!Chiaki.settings.coplayRoomsOn && !!Chiaki.settings.coplayMeetOn
@@ -44,7 +91,7 @@ DialogView {
     readonly property string defaultTitle: qsTr("%1's room").arg(hostName)
     readonly property string roomTitle: titleField.text.replace(/\s+/g, " ").trim() || defaultTitle
     /** The game the console runs, where the console was found in the network. */
-    readonly property string roomGame: chosen && chosen.discovered ? chosen.app : ""
+    readonly property string roomGame: pcChosen ? pcGame : chosen && chosen.discovered ? chosen.app : ""
     /** The game's picture, only where the app already has one: a room in the list it read plays the same game. */
     readonly property string roomCover: {
         const id = chosen && chosen.discovered ? chosen.titleId : "";
@@ -59,17 +106,21 @@ DialogView {
     }
     readonly property bool roomWeb: !!Chiaki.settings.coplayWebSupported && !!Chiaki.settings.coplayWebGuests
     /** How the room is played, by Chiaki.settings.coplayMixMode, in the words of the room list. */
-    readonly property var controlNames: [qsTr("Everybody plays together"), qsTr("One plays at a time"), qsTr("Only the host plays")]
+    readonly property var controlNames: [qsTr("Everybody plays together"), qsTr("One plays at a time"), qsTr("Only the host plays"), qsTr("Each their own controller")]
     /** How one gets in, by Chiaki.settings.coplayJoinPolicy, in the words of the room list. */
     readonly property var doorNames: [qsTr("Ask to join"), qsTr("Join as viewer"), qsTr("Join and play")]
     /** What each way of controlling means, under the choice. */
-    readonly property var controlHints: [qsTr("Everybody's buttons count at the same time."), qsTr("Whoever moves takes over; the others rest."), qsTr("Your friends watch.")]
-    readonly property string controlName: controlNames[Chiaki.settings.coplayMixMode] || controlNames[0]
+    readonly property var controlHints: [qsTr("Everybody's buttons count at the same time."), qsTr("Whoever moves takes over; the others rest."), qsTr("Your friends watch."), qsTr("Every player is a player of their own: you 1, your friends 2, 3 and 4. For games with local multiplayer.")]
+    /** Each their own controller only for a game on this computer: a console takes one. */
+    readonly property int mixMode: !pcChosen && Chiaki.settings.coplayMixMode === 3 ? 0 : Chiaki.settings.coplayMixMode
+    readonly property string controlName: controlNames[mixMode] || controlNames[0]
+    /** What the game runs on, as the room list says it. */
+    readonly property string consoleName: pcChosen ? (pcTarget && pcTarget.xbox ? "Xbox" : qsTr("PC")) : chosen ? (chosen.ps5 ? "PS5" : "PS4") : ""
     readonly property string guestsText: Chiaki.settings.coplayMaxGuests === 1 ? qsTr("1 friend") : qsTr("Up to %1 friends").arg(Chiaki.settings.coplayMaxGuests)
 
     /** One line about what Start is about to start. */
     readonly property string summary: {
-        if (!chosen)
+        if (!chosen && !(pcChosen && pcTarget))
             return "";
         let parts = [];
         if (publicRoom) {
@@ -114,14 +165,20 @@ DialogView {
     }
 
     buttonText: resting ? qsTr("Wake up & start") : qsTr("Start")
-    buttonEnabled: !!chosen && !(publicRoom && !roomsOn)
+    buttonEnabled: (pcChosen ? !pcUnsupported && !!pcTarget : !!chosen) && !(publicRoom && !roomsOn)
     // Start is in the bar at the bottom of the page (it shows buttonText and buttonEnabled)
     buttonVisible: false
     onAccepted: {
-        if (!chosen)
+        if (!chosen && !(pcChosen && pcTarget))
             return;
         // Whatever was typed last counts, also without pressing Enter
         Chiaki.settings.coplayRoomTitle = titleField.text;
+        if (pcChosen) {
+            // A console's way to play that this computer does not have stays as it was
+            Chiaki.settings.coplayMixMode = mixMode;
+            Chiaki.hostThisComputer(pcTarget);
+            return;
+        }
         Chiaki.hostConsole(chosen.index, chosen.discovered ? chosen.name : "");
     }
 
@@ -471,13 +528,12 @@ DialogView {
                                 wrapMode: Text.WordWrap
                                 color: "#fbd98c"
                                 font.pixelSize: 14
-                                text: qsTr("No registered console yet. Add yours on the start page first (\"Add console\"), then come back here to host.")
+                                text: qsTr("No registered console yet. Add yours on the start page first (\"Add console\"), or share a game on this computer.")
                             }
 
                             GridLayout {
                                 Layout.fillWidth: true
-                                visible: dialog.consoles.length > 0
-                                columns: Math.max(1, Math.min(dialog.consoles.length, Math.floor((page.mainWidth + 10) / 270)))
+                                columns: Math.max(1, Math.min(dialog.consoles.length + 1, Math.floor((page.mainWidth + 10) / 270)))
                                 columnSpacing: 10
                                 rowSpacing: 10
 
@@ -490,7 +546,7 @@ DialogView {
                                         required property int index
                                         readonly property bool awake: modelData.discovered && modelData.state === "ready"
 
-                                        chosen: index === Math.min(dialog.consoleChoice, dialog.consoles.length - 1)
+                                        chosen: index === dialog.consoleChoice
                                         tick: true
                                         title: modelData.name
                                         subtitle: dialog.consoleLine(modelData)
@@ -503,6 +559,185 @@ DialogView {
                                             light: consoleCard.modelData.state === "standby" ? C.Theme.wait
                                                  : consoleCard.awake ? C.Theme.good : C.Theme.textDim
                                         }
+                                    }
+                                }
+
+                                // A game on this computer: a window or a whole screen of it
+                                ChoiceCard {
+                                    chosen: dialog.pcChosen
+                                    tick: true
+                                    title: qsTr("This computer")
+                                    subtitle: dialog.pcUnsupported || qsTr("Share a game running here: a window or a whole screen")
+                                    subtitleColor: dialog.pcUnsupported ? "#fbd98c" : C.Theme.textSoft
+                                    onClicked: dialog.consoleChoice = dialog.consoles.length
+
+                                    IconTile {
+                                        iconName: "monitor"
+                                    }
+                                }
+                            }
+
+                            // What of this computer friends see
+                            C.Card {
+                                Layout.fillWidth: true
+                                visible: dialog.pcChosen && !dialog.pcUnsupported
+                                radius: 18
+                                implicitHeight: pcColumn.implicitHeight + 28
+
+                                ColumnLayout {
+                                    id: pcColumn
+                                    anchors {
+                                        left: parent.left
+                                        right: parent.right
+                                        top: parent.top
+                                        margins: 14
+                                    }
+                                    spacing: 10
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: qsTr("What to share")
+                                            color: C.Theme.text
+                                            font.pixelSize: 14
+                                            font.weight: Font.ExtraBold
+                                        }
+
+                                        C.PillButton {
+                                            kind: "ghost"
+                                            text: qsTr("Refresh")
+                                            onClicked: dialog.refreshPc()
+                                        }
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        visible: dialog.pcTargets.length === 0
+                                        wrapMode: Text.WordWrap
+                                        color: C.Theme.textSoft
+                                        font.pixelSize: 13
+                                        text: qsTr("Nothing to share yet. Start your game, then press Refresh.")
+                                    }
+
+                                    // Games first, then the other windows, then the screens
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 6
+
+                                        Repeater {
+                                            model: dialog.pcTargets
+
+                                            ChoiceCard {
+                                                required property var modelData
+                                                compact: true
+                                                chosen: !!dialog.pcTarget && dialog.pcTarget.kind === modelData.kind
+                                                        && dialog.pcTarget.handle === modelData.handle
+                                                title: modelData.title
+                                                subtitle: dialog.pcLine(modelData)
+                                                onClicked: dialog.pcTarget = modelData
+
+                                                IconTile {
+                                                    iconName: modelData.kind === "screen" ? "monitor" : modelData.game ? "gamepad" : "layers"
+                                                    iconColor: modelData.game ? "#9ef7ff" : "#d9d5f2"
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // How sharp: the window's own shape, as high as chosen
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        visible: !!dialog.pcTarget
+                                        spacing: 6
+
+                                        readonly property var heights: [720, 1080, 1440, 2160]
+                                        readonly property var picture: dialog.pcTarget ? Chiaki.pcPicture(dialog.pcTarget, Chiaki.settings.coplayPcHeight) : null
+
+                                        Label {
+                                            text: qsTr("Picture")
+                                            color: C.Theme.text
+                                            font.pixelSize: 14
+                                            font.weight: Font.ExtraBold
+                                        }
+
+                                        C.Segmented {
+                                            Layout.fillWidth: true
+                                            model: ["720p", "1080p", "1440p", "4K"]
+                                            currentIndex: Math.max(0, parent.heights.indexOf(Chiaki.settings.coplayPcHeight))
+                                            onActivated: (index) => Chiaki.settings.coplayPcHeight = parent.heights[index]
+                                        }
+
+                                        Label {
+                                            Layout.fillWidth: true
+                                            visible: !!parent.picture
+                                            wrapMode: Text.WordWrap
+                                            color: C.Theme.textDim
+                                            font.pixelSize: 12
+                                            text: parent.picture
+                                                  ? qsTr("%1 × %2 in the window's own shape, wide screens too. Each friend gets their own copy: about %3 Mbit/s of your upload for each.")
+                                                    .arg(parent.picture.width).arg(parent.picture.height).arg(parent.picture.mbps)
+                                                  : ""
+                                        }
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        visible: !!dialog.pcGame
+                                        wrapMode: Text.WordWrap
+                                        color: "#9ff0cc"
+                                        font.pixelSize: 13
+                                        text: qsTr("Found: %1. The room says so, and changes when you start another game.").arg(dialog.pcGame)
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        visible: !!dialog.pcTarget && !!dialog.pcTarget.xbox
+                                        wrapMode: Text.WordWrap
+                                        color: C.Theme.textSoft
+                                        font.pixelSize: 13
+                                        text: qsTr("Start Remote Play to your Xbox, or a cloud game, in the Xbox app. Your friends' controllers become Xbox controllers on this computer, which the Xbox app takes.")
+                                    }
+
+                                    // Without the driver, friends can only watch
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        visible: !!dialog.pcPadsProblem
+                                        spacing: 8
+
+                                        Label {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                            color: "#fbd98c"
+                                            font.pixelSize: 13
+                                            text: dialog.pcPadsProblem
+                                        }
+
+                                        RowLayout {
+                                            spacing: 8
+
+                                            C.PillButton {
+                                                kind: "primary"
+                                                text: qsTr("Get ViGEmBus")
+                                                onClicked: Qt.openUrlExternally(Chiaki.pcDriverUrl())
+                                            }
+
+                                            C.PillButton {
+                                                kind: "ghost"
+                                                text: qsTr("Check again")
+                                                onClicked: dialog.pcPadsProblem = Chiaki.pcPadsProblem()
+                                            }
+                                        }
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                        color: C.Theme.textDim
+                                        font.pixelSize: 12
+                                        text: qsTr("Friends get the picture and only the game's sound, never your voice chat. You play on your own controller; theirs become controllers on this computer. A game in exclusive fullscreen, or protected video, can stay black: use borderless or windowed.")
                                     }
                                 }
                             }
@@ -897,8 +1132,9 @@ DialogView {
 
                                         C.Segmented {
                                             Layout.fillWidth: true
-                                            model: [qsTr("Together"), qsTr("One at a time"), qsTr("Only me")]
-                                            currentIndex: Chiaki.settings.coplayMixMode
+                                            model: dialog.pcChosen ? [qsTr("Together"), qsTr("One at a time"), qsTr("Only me"), qsTr("Each their own")]
+                                                                   : [qsTr("Together"), qsTr("One at a time"), qsTr("Only me")]
+                                            currentIndex: dialog.mixMode
                                             onActivated: (index) => Chiaki.settings.coplayMixMode = index
                                         }
 
@@ -907,7 +1143,7 @@ DialogView {
                                             wrapMode: Text.WordWrap
                                             color: C.Theme.textDim
                                             font.pixelSize: 12
-                                            text: dialog.controlHints[Chiaki.settings.coplayMixMode] || dialog.controlHints[0]
+                                            text: dialog.controlHints[dialog.mixMode] || dialog.controlHints[0]
                                         }
                                     }
                                 }
@@ -929,6 +1165,7 @@ DialogView {
                                 }
 
                                 C.ToggleRow {
+                                    visible: !dialog.pcChosen
                                     iconName: "moon"
                                     title: qsTr("Guests may sleep it")
                                     subtitle: qsTr("Console rests when they leave")
@@ -939,6 +1176,7 @@ DialogView {
                                 // The same setting as "On this computer" (Settings › General), where picture and
                                 // sound can also be switched off one by one
                                 C.ToggleRow {
+                                    visible: !dialog.pcChosen
                                     iconName: "tv"
                                     title: qsTr("I play on the TV")
                                     subtitle: qsTr("No picture or sound here")
@@ -1092,6 +1330,12 @@ DialogView {
                                             Layout.topMargin: 2
                                             spacing: 5
 
+                                            C.Badge {
+                                                small: true
+                                                tone: "system"
+                                                visible: text !== ""
+                                                text: dialog.consoleName
+                                            }
                                             C.Badge {
                                                 small: true
                                                 text: qsTr("%1 / %2 players").arg(1).arg(Chiaki.settings.coplayMaxGuests + 1)

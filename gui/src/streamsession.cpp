@@ -4,6 +4,8 @@
 #include <settings.h>
 #include <controllermanager.h>
 #include <livestream.h>
+#include <pcsource.h>
+#include <virtualpads.h>
 
 #include <chiaki/base64.h>
 #include <chiaki/streamconnection.h>
@@ -434,6 +436,16 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	mic_buf.buf = nullptr;
 	// A guest of a shared session never talks to a console: its session object stays unused
 	memset(&session, 0, sizeof(session));
+	// A game on this computer has no console either: picture, sound and controllers stay here
+	pc_source = connect_info.pc_source && !connect_info.coplay_client;
+	if(pc_source)
+	{
+		pc_target = connect_info.pc_target;
+		pc_video_kbps = connect_info.pc_video_kbps;
+		pc_width = static_cast<int>(connect_info.video_profile.width);
+		pc_height = static_cast<int>(connect_info.video_profile.height);
+		pc_fps = static_cast<int>(connect_info.video_profile.max_fps);
+	}
 	CoPlayInit(connect_info);
 	connected = false;
 	muted = true;
@@ -542,6 +554,9 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	}
 	else
 		chiaki_connect_info.audio_video_disabled = connect_info.audio_video_disabled;
+	// The host hears the game on this computer itself: its sound is for the guests only
+	if(pc_source)
+		local_audio_off = true;
 
 	dpad_touch_shortcut1 = connect_info.dpad_touch_shortcut1;
 	dpad_touch_shortcut2 = connect_info.dpad_touch_shortcut2;
@@ -555,7 +570,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 		chiaki_connect_info.video_profile.codec = CHIAKI_CODEC_H264;
 	}
 #endif
-	if(connect_info.duid.isEmpty() && !IsCoPlayGuest())
+	if(connect_info.duid.isEmpty() && HasConsole())
 	{
 		if(connect_info.regist_key.size() != sizeof(chiaki_connect_info.regist_key))
 			throw ChiakiException("RegistKey invalid");
@@ -602,7 +617,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	});
 	// If duid isn't empty connect with psn
 	chiaki_connect_info.holepunch_session = NULL;
-	if(!connect_info.duid.isEmpty() && !IsCoPlayGuest())
+	if(!connect_info.duid.isEmpty() && HasConsole())
 	{
 		err = InitiatePsnConnection(connect_info.psn_token);
 		if (err != CHIAKI_ERR_SUCCESS)
@@ -615,10 +630,11 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
         memcpy(chiaki_connect_info.psn_account_id, psn_account_id.constData(), CHIAKI_PSN_ACCOUNT_ID_SIZE);
 	}
 	chiaki_opus_decoder_set_cb(&opus_decoder, AudioSettingsCb, AudioFrameCb, this);
-	if(IsCoPlayGuest())
+	if(!HasConsole())
 	{
 		// Video, audio, haptics and events come from the host of the shared session
-		// instead of a console; see streamsession_coplay.cpp
+		// instead of a console (streamsession_coplay.cpp), or from this computer
+		// (streamsession_pc.cpp)
 		if(!ffmpeg_decoder)
 			throw ChiakiException("Joining a shared session needs the FFmpeg decoder");
 	}
@@ -768,7 +784,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	packet_loss_timer->setInterval(200);
 	packet_loss_timer->start();
 	connect(packet_loss_timer, &QTimer::timeout, this, [this]() {
-		if(IsCoPlayGuest())
+		if(!HasConsole())
 			return;
 		if(packet_loss_history.size() > 10)
 			packet_loss_history.takeFirst();
@@ -798,6 +814,8 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 
 StreamSession::~StreamSession()
 {
+	// The capture of a game on this computer feeds the sharing threads: it ends before them
+	PcStop();
 	// Ends the sharing threads first: they feed the audio output and decoders that go below
 	CoPlayStopThreads();
 	mic_active.storeRelaxed(false);
@@ -823,7 +841,7 @@ StreamSession::~StreamSession()
 	// This prevents crashes from log callbacks during shutdown
 	log.PrepareShutdown();
 
-	bool coplay_guest = IsCoPlayGuest();
+	const bool has_console = HasConsole();
 
 	if(session_started)
 	{
@@ -832,7 +850,7 @@ StreamSession::~StreamSession()
 		chiaki_session_stop(&session);
 		chiaki_session_join(&session);
 	}
-	if(!coplay_guest)
+	if(has_console)
 		chiaki_session_fini(&session);
 	// Only now: until the session's threads are gone they still pass video and audio through it
 	CoPlayFini();
@@ -919,6 +937,11 @@ void StreamSession::Start()
 		CoPlayStartGuest();
 		return;
 	}
+	if(pc_source)
+	{
+		PcStart();
+		return;
+	}
 	ChiakiErrorCode err = chiaki_session_start(&session);
 	if(err != CHIAKI_ERR_SUCCESS)
 	{
@@ -955,6 +978,11 @@ void StreamSession::Stop()
 		CoPlayStopGuest();
 		return;
 	}
+	if(pc_source)
+	{
+		PcFinish(CHIAKI_QUIT_REASON_STOPPED, QString());
+		return;
+	}
 	chiaki_session_stop(&session);
 }
 
@@ -989,13 +1017,19 @@ void StreamSession::GoToBed()
 		CoPlayStopGuest(true);
 		return;
 	}
+	// The computer does not go to sleep: sharing just ends
+	if(pc_source)
+	{
+		PcFinish(CHIAKI_QUIT_REASON_STOPPED, QString());
+		return;
+	}
 	chiaki_session_goto_bed(&session);
 }
 
 void StreamSession::ToggleMute()
 {
 	// Guests of a shared session have no microphone channel to the console
-	if(!allow_unmute || IsCoPlayGuest())
+	if(!allow_unmute || !HasConsole())
 		return;
 	if(!mic_connected)
 	{
@@ -1041,7 +1075,7 @@ void StreamSession::ToggleMute()
 
 void StreamSession::SetLoginPIN(const QString &pin)
 {
-	if(IsCoPlayGuest())
+	if(!HasConsole())
 		return;
 	QByteArray data = pin.toUtf8();
 	chiaki_session_set_login_pin(&session, (const uint8_t *)data.constData(), data.size());
@@ -1049,7 +1083,7 @@ void StreamSession::SetLoginPIN(const QString &pin)
 
 void StreamSession::GoHome()
 {
-	if(IsCoPlayGuest())
+	if(!HasConsole())
 		return;
 	chiaki_session_go_home(&session);
 }
@@ -2582,7 +2616,7 @@ void StreamSession::Event(ChiakiEvent *event)
 			// session back is repeated by whoever started it
 			// Not for what another try cannot change: the console speaks another version (the
 			// session has already asked again with that one), or does not know this account.
-			if(!connected && !reconnect_attempt && !holepunch_session && chiaki_quit_reason_is_error(event->quit.reason)
+			if(HasConsole() && !connected && !reconnect_attempt && !holepunch_session && chiaki_quit_reason_is_error(event->quit.reason)
 				&& event->quit.reason != CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_VERSION_MISMATCH
 				&& event->quit.reason != CHIAKI_QUIT_REASON_PSN_REGIST_FAILED
 				&& !stop_requested
@@ -3007,7 +3041,7 @@ void StreamSession::CancelPsnConnection(bool stop_thread)
 void StreamSession::TriggerFfmpegFrameAvailable()
 {
 	emit FfmpegFrameAvailable();
-	if(IsCoPlayGuest())
+	if(!HasConsole())
 		return;
 	if(measured_bitrate != session.stream_connection.measured_bitrate)
 	{
@@ -3020,6 +3054,13 @@ bool StreamSession::RequestIDR()
 {
 	if(IsCoPlayGuest())
 		return false; // the client asks the host on its own when it needs one
+	if(pc_source)
+	{
+		if(!pc_capture)
+			return false;
+		pc_capture->RequestKeyframe();
+		return true;
+	}
 	ChiakiErrorCode err = chiaki_session_request_idr(&session);
 	if(err == CHIAKI_ERR_SUCCESS)
 	{

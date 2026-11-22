@@ -47,6 +47,9 @@ void FindCover(const QString &title_id, QObject *context, std::function<void(con
 /** Whether an address is a picture on Sony's image server that a room may show. */
 bool IsCover(const QString &address);
 
+/** Whether a room's "console" is one the list knows: "ps5", "ps4", "pc" or "xbox". */
+bool IsConsole(const QString &console);
+
 } // namespace CoPlayRooms
 
 /** The list of public rooms, read when somebody looks at it. One for the whole app. */
@@ -99,6 +102,8 @@ class CoPlayRoomAnnouncer : public QObject
 			QString control = QStringLiteral("all");
 			/** The game's title id as the console reports it (CUSA12345, PPSA12345); may be empty. */
 			QString title_id;
+			/** What the game runs on: "ps5", "ps4", "pc" (this computer) or "xbox" (the Xbox app on it). */
+			QString console;
 			/** A picture of the game on Sony's image server; may be empty. */
 			QString cover;
 			/** psrpt://-/KEY[?meet=...]: no address. */
@@ -115,7 +120,7 @@ class CoPlayRoomAnnouncer : public QObject
 			bool operator==(const Room &o) const
 			{
 				return title == o.title && lang == o.lang && game == o.game && host == o.host && policy == o.policy
-					&& control == o.control && title_id == o.title_id && cover == o.cover
+					&& control == o.control && title_id == o.title_id && console == o.console && cover == o.cover
 					&& invite == o.invite && initials == o.initials && twitch == o.twitch && players == o.players && max == o.max
 					&& web == o.web && proto == o.proto;
 			}

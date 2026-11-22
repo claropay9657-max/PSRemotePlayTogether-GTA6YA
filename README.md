@@ -74,6 +74,21 @@ The builds are not signed with a paid developer certificate. On macOS the first 
 
 PSRemotePlayTogether does not add players to a game. The console sees exactly **one** controller, and everybody in the session controls it with their own: all at the same time if you like, one at a time, or only the host. Your friends do not become player 2, 3 and 4, so it does not turn a game into a 4-player game. It turns a single-player game into something a group plays.
 
+A game on the host's **Windows computer** is different: there your friends can each be a player of their own (**Each their own controller**, see below), so a couch co-op game becomes online co-op.
+
+---
+
+## 🖥️ A game on this computer, and Xbox
+
+On the Host page, **This computer** stands next to your consoles (Windows 10 2004 or newer). Pick a game's window, another window or a whole screen; your friends join it the way they join a console, in the app or in a browser.
+
+- **What runs:** PC games, Steam, Epic and the other stores, emulators, GeForce Now: anything in a window. The app finds which game it is and the room says so.
+- **Xbox:** open the Xbox app, start **Remote Play** to your own Xbox or a **cloud game** with Game Pass, and share the Xbox app's window. Your friends' controllers become Xbox controllers on this computer, which the Xbox app takes.
+- **Controllers:** you play on your own controller as always. Your friends' controllers become controllers on this computer through the free [ViGEmBus](https://github.com/nefarius/ViGEmBus/releases/latest) driver, installed once (the app asks when it is missing; without it, friends can watch).
+- **Who controls:** Together, One at a time and Only me as with a console, plus **Each their own controller**: you are player 1, your friends players 2, 3 and 4.
+- **Picture and sound:** the window's own shape, ultrawide too, at 720p, 1080p, 1440p or 4K, from the graphics card's encoder. Friends hear only the game, never your voice chat. Each friend gets their own copy, so mind your upload (the Host page says how much).
+- **Good to know:** a game in exclusive fullscreen or protected video can stay black (use borderless or windowed), and some anti-cheat systems refuse virtual controllers. Linux and macOS follow; the plan is in [docs/pc-source.md](docs/pc-source.md).
+
 ---
 
 ## 🔌 How it works

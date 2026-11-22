@@ -21,7 +21,7 @@
 //     ?v=1
 //   answer (application/json):
 //     {"v":1,"poll":15000,"rooms":[{"id","title","lang","game","host","players","max",
-//      "policy","control","web","invite","proto","title_id","cover","initials","twitch","preview","since"}, ...]}
+//      "policy","control","web","invite","proto","title_id","console","cover","initials","twitch","preview","since"}, ...]}
 //   "preview" is 0, or when the room's host last sent a picture of its game (Unix time).
 //   The picture itself (image/jpeg):
 //     ?v=1&preview=<id>&t=<that time>
@@ -31,13 +31,15 @@
 //
 // A host (POST, form fields):
 //     v=1 action=announce id=<16 hex> token=<32 hex> title= lang= game= host= players= max=
-//         policy=ask|watch|open control=all|turns|host web=0|1 invite=<psrpt://-/KEY[?meet=...]>
+//         policy=ask|watch|open control=all|turns|host|each web=0|1 invite=<psrpt://-/KEY[?meet=...]>
 //         proto=<protocol version>
 //         title_id=<CUSA12345|PPSA12345, optional> cover=<https://image.api.playstation.com/..., optional>
+//         console=<ps5|ps4|pc|xbox: what the game runs on, optional>
 //         initials=<one letter or digit (or "?") for each player, the host first, optional>
 //         twitch=<the Twitch logins of the players who stream there right now and want it shown,
 //                 the host first, comma-separated, at most 9, optional>
-//   (control: everybody plays at once, one at a time, or only the host. A cover can only be
+//   (control: everybody plays at once, one at a time, only the host, or each player on a controller of
+//   their own (a game on the host's computer). A cover can only be
 //   a picture on Sony's image server, so that the list never makes a viewer load anything else.)
 //     v=1 action=preview id=<16 hex> token=<32 hex> image=<JPEG, base64url without padding>
 //   (a small picture of the game, at most 640x360 and PSRPT_ROOMS_PREVIEW_MAX bytes; only for a
@@ -293,6 +295,7 @@ if ($method !== 'POST') {
             'invite' => $room['invite'],
             'proto' => $room['proto'],
             'title_id' => $room['title_id'] ?? '',
+            'console' => $room['console'] ?? '',
             'cover' => $room['cover'] ?? '',
             'initials' => $room['initials'] ?? '',
             // A channel name only, never an address: the pages build the link to twitch.tv themselves
@@ -441,6 +444,7 @@ $web = $_POST['web'] ?? '0';
 $invite = $_POST['invite'] ?? '';
 $proto = psrpt_rooms_int($_POST['proto'] ?? null, 1, 255);
 $title_id = $_POST['title_id'] ?? '';
+$console = $_POST['console'] ?? '';
 $cover = $_POST['cover'] ?? '';
 // Who plays, as initials only: never names
 $initials = $_POST['initials'] ?? '';
@@ -451,7 +455,8 @@ if ($title === null || $title === '' || $host === null || $host === '' || $game 
     || !is_string($lang) || !preg_match('/^([a-z]{2})?$/', $lang)
     || $players === null || $max === null || $players > $max || $proto === null
     || !in_array($policy, ['ask', 'watch', 'open'], true)
-    || !in_array($control, ['all', 'turns', 'host'], true)
+    || !in_array($control, ['all', 'turns', 'host', 'each'], true)
+    || !in_array($console, ['', 'ps5', 'ps4', 'pc', 'xbox'], true)
     || ($web !== '0' && $web !== '1')
     || !is_string($title_id) || !preg_match('/^([A-Z]{4}[0-9]{5})?$/', $title_id)
     || !is_string($cover) || !preg_match('/^(https:\/\/image\.api\.playstation\.com\/[A-Za-z0-9._~\/%-]{1,300})?$/', $cover)
@@ -491,6 +496,7 @@ $room = [
     'invite' => $invite,
     'proto' => $proto,
     'title_id' => $title_id,
+    'console' => $console,
     'cover' => $cover,
     'initials' => $initials,
     'twitch' => $twitch === '' ? [] : array_values(array_unique(explode(',', $twitch))),

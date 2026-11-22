@@ -223,8 +223,26 @@ class Host
 
 		/** The host's own (already combined) local controllers. */
 		void SetLocalInput(const PadState &state);
-		/** What to send to the console right now. */
+		/** What to send to the console right now (MixMode::EachOwn: player 1, the host). */
 		PadState MixedInput();
+		/**
+		 * MixMode::EachOwn: what a guest's own controller gets right now (idle for a guest that
+		 * may not play or went quiet). on_input_changed also fires when only this changes.
+		 */
+		PadState GuestInput(uint8_t slot);
+		/**
+		 * What the guests play on the one controller they share, without the host's own input:
+		 * for a game on the host's computer, which the host's own controller reaches directly.
+		 */
+		PadState GuestsInput();
+
+		/**
+		 * MixMode::EachOwn: rumble for one guest only, from the game's controller of that
+		 * player; the others keep what SetRumble() says.
+		 */
+		void SetGuestRumble(uint8_t slot, uint8_t left, uint8_t right);
+		/** MixMode::EachOwn: the player number a guest's controller shows (its lights). */
+		void SetGuestPlayerIndex(uint8_t slot, uint8_t index);
 
 		/** The kind of controller the host itself holds. */
 		void SetController(ControllerKind kind);
@@ -443,6 +461,18 @@ class Host
 		StreamInfo stream;
 		AudioHeader audio;
 		Feedback feedback;
+		/** What one guest gets instead of feedback's rumble and player number (MixMode::EachOwn). */
+		struct GuestFeedback
+		{
+			bool rumble = false;
+			uint16_t rumble_seq = 0;
+			uint8_t rumble_left = 0;
+			uint8_t rumble_right = 0;
+			bool player_index = false;
+			uint16_t player_index_seq = 0;
+			uint8_t index = 0;
+		};
+		std::map<uint8_t, GuestFeedback> guest_feedback; // by slot
 		uint32_t state_seq = 1;
 		uint64_t fast_state_until_ms = 0;
 

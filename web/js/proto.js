@@ -6,7 +6,7 @@
 
 import { Reader, Writer } from './bytes.js';
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 export const PT = {
   Hello: 0x01,
@@ -90,6 +90,13 @@ export const CODEC_H265_HDR = 2;
 export const MIX_TOGETHER = 0;
 export const MIX_LAST_ACTIVE = 1;
 export const MIX_HOST_ONLY = 2;
+/** Every player on a controller of their own: a game on the host's computer. */
+export const MIX_EACH_OWN = 3;
+
+/** Where the game runs (StreamInfo source). */
+export const SOURCE_CONSOLE = 0;
+export const SOURCE_COMPUTER = 1;
+export const SOURCE_XBOX_APP = 2;
 
 export const MAX_PAYLOAD = 1232 - 14 - 16;
 export const VIDEO_FRAGMENT_SIZE = 1160;
@@ -155,7 +162,7 @@ function readStreamInfo(r) {
   const height = r.u16();
   const fps = r.u8();
   const flags = r.u8();
-  return { codec, width, height, fps, ps5: (flags & 1) !== 0, dualsense: (flags & 2) !== 0 };
+  return { codec, width, height, fps, ps5: (flags & 1) !== 0, dualsense: (flags & 2) !== 0, source: (flags >> 2) & 3 };
 }
 
 function readAudioHeader(r) {

@@ -3,6 +3,18 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## Unreleased
+
+- **New: share a game on this computer (Windows).** On the Host page, **This computer** stands next to your consoles: pick a game's window, another window or a whole screen, and your friends join as they join a console, in the app or in a browser. PC games, Steam, emulators, GeForce Now: whatever runs in a window. The app finds which game runs (Steam, Epic, EA, Ubisoft, GOG, Battle.net, Riot and Xbox games, by the GamerNova client's detection) and the room says so.
+- **Xbox through the Xbox app.** Share the Xbox app's window with Remote Play to your own Xbox, or a cloud game with Game Pass: your friends' controllers become Xbox controllers on this computer, which the Xbox app takes, and the room says Xbox.
+- **Your friends' controllers become controllers on this computer.** They need the free ViGEmBus driver, installed once; the Host page says when it is missing and links it. Without it your friends can watch. Rumble from the game reaches them.
+- **New way to play: Each their own controller.** For a game on this computer: you are player 1, your friends players 2, 3 and 4, each on a controller of their own, and their controller's lights say which. Couch co-op games become online co-op.
+- **Only the game's sound.** Friends hear the shared program (a whole screen: everything but this app), never the voice chat, so nobody hears themselves twice. You hear the game as always.
+- **Sharp and wide.** The picture keeps the window's shape, ultrawide too, at 720p, 1080p, 1440p or 4K (Host page → Picture), never larger than the window. The page says how much upload each friend takes. The picture comes from the graphics card's own encoder (NVIDIA, AMD, Intel or Windows' own).
+- **Rooms say what the game runs on:** PS5, PS4, PC or Xbox, in the app and in the browser, and a **Console** filter narrows the list to one.
+- **The share command:** `PSRemotePlayTogether share "<part of a window's title>"` (or `screen`) hosts a game on this computer as set up on the Host page.
+- **Good to know:** this version speaks a new version of the session protocol: everybody in a session needs it, older apps see the room but cannot join. The list of public rooms needs its update for rooms of games on a computer (`server/rooms/psrpt_rooms.php`). A game in exclusive fullscreen or protected video can stay black: use borderless or windowed. Some anti-cheat systems refuse virtual controllers. Linux and macOS follow (docs/pc-source.md).
+
 ## 0.4.3
 
 - **The app starts again on Windows and Linux.** 0.4.0 to 0.4.2 closed right after starting, without a word: one line of the stream scenes used a word that the Qt version of those builds does not allow there, so the app's window could not be made. On a Mac it worked.

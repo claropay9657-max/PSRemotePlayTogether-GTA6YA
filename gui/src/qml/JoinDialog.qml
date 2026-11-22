@@ -138,6 +138,8 @@ FocusScope {
         searchField.text = "";
         languageCombo.currentIndex = 0;
         rooms.language = "";
+        consoleCombo.currentIndex = 0;
+        rooms.system = "";
         rooms.hideFull = false;
         rooms.openOnly = false;
         rooms.twitchOnly = false;
@@ -269,6 +271,8 @@ FocusScope {
         readonly property bool listed: state === 2 || (state === 1 && dialog.roomsUpdatedAt > 0)
         property string search: ""
         property string language: ""
+        /** Only rooms whose game runs on this ("ps5", "ps4", "pc", "xbox"); empty for all. */
+        property string system: ""
         property bool hideFull: false
         /** Only rooms one gets into without waiting for the host. */
         property bool openOnly: false
@@ -282,13 +286,15 @@ FocusScope {
             let list = all.filter((r) => {
                 if (language && r.lang && r.lang !== language)
                     return false;
+                if (system && r.console !== system)
+                    return false;
                 if (hideFull && r.full)
                     return false;
                 if (openOnly && r.policy === "ask")
                     return false;
                 if (twitchOnly && !(r.twitch && r.twitch.length))
                     return false;
-                const text = (r.title + " " + r.game + " " + r.host + " " + languageName(r.lang)).toLowerCase();
+                const text = (r.title + " " + r.game + " " + r.host + " " + languageName(r.lang) + " " + consoleName(r.console)).toLowerCase();
                 return words.every((w) => text.indexOf(w) >= 0);
             });
             const by = [
@@ -299,6 +305,11 @@ FocusScope {
             ][sort];
             // Full rooms last, whatever the order
             return list.sort((a, b) => (a.full === b.full ? by(a, b) : (a.full ? 1 : -1)));
+        }
+
+        /** What a room's game runs on, as its badge says; empty from an older host. */
+        function consoleName(kind) {
+            return ({ ps5: "PS5", ps4: "PS4", pc: qsTr("PC"), xbox: "Xbox" })[kind] || "";
         }
 
         function languageName(code) {
@@ -856,6 +867,61 @@ FocusScope {
 
                     ColumnLayout {
                         Layout.fillWidth: true
+                        spacing: 5
+
+                        Text {
+                            text: qsTr("Console")
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            color: C.Theme.textSoft
+                        }
+
+                        C.ComboBox {
+                            id: consoleCombo
+                            Layout.fillWidth: true
+                            implicitHeight: 40
+                            topInset: 0
+                            bottomInset: 0
+                            leftPadding: 12
+                            rightPadding: 36
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                            Material.background: C.Theme.popup
+                            Material.foreground: C.Theme.text
+                            Material.accent: "#a77bff"
+                            Accessible.name: qsTr("Console")
+                            // What the game runs on: a PlayStation, or a game on the host's computer
+                            readonly property var codes: ["", "ps5", "ps4", "pc", "xbox"]
+                            model: [qsTr("All consoles"), "PS5", "PS4", qsTr("PC"), "Xbox"]
+                            onActivated: (index) => rooms.system = codes[index]
+
+                            background: Rectangle {
+                                radius: C.Theme.radiusField
+                                color: C.Theme.field
+                                border.width: consoleCombo.visualFocus ? 2 : 1
+                                border.color: consoleCombo.visualFocus ? C.Theme.focus : C.Theme.lineStrong
+                            }
+
+                            contentItem: Text {
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                                text: consoleCombo.displayText
+                                font: consoleCombo.font
+                                color: C.Theme.text
+                            }
+
+                            indicator: C.Icon {
+                                x: consoleCombo.width - width - 12
+                                y: (consoleCombo.height - height) / 2
+                                iconName: "chevron-down"
+                                size: 16
+                                color: C.Theme.textSoft
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: 4
 
                         Text {
@@ -1380,6 +1446,12 @@ FocusScope {
                                         }
                                     }
 
+                                    C.Badge {
+                                        small: true
+                                        tone: "system"
+                                        visible: text !== ""
+                                        text: rooms.consoleName(roomCard.modelData.console)
+                                    }
                                     C.Badge {
                                         small: true
                                         text: rooms.languageName(roomCard.modelData.lang)

@@ -76,6 +76,19 @@ void QmlSettings::setCoplayName(const QString &name)
     emit coplayChanged();
 }
 
+int QmlSettings::coplayPcHeight() const
+{
+    return settings->GetCoPlayPcHeight();
+}
+
+void QmlSettings::setCoplayPcHeight(int height)
+{
+    if (height == settings->GetCoPlayPcHeight())
+        return;
+    settings->SetCoPlayPcHeight(height);
+    emit coplayChanged();
+}
+
 int QmlSettings::coplayMixMode() const
 {
     return settings->GetCoPlayMixMode();

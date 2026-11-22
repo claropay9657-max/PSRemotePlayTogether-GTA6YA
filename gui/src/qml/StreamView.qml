@@ -525,6 +525,33 @@ Item {
         }
     }
 
+    // A stream scene chosen in the stream menu (Starting soon, Be right back, ...) on this
+    // screen too, as the viewers see it, under the stream menu. Not the Technical difficulties
+    // the app puts up by itself while getting a lost connection back: that state shows here
+    // anyway. Needs the scene drawn over the game, so not with OpenGL (the note says it there).
+    readonly property bool localSceneUp: !useSeparateMenuWindow && !!Chiaki.scenes
+                 && Chiaki.scenes.current !== "" && Chiaki.scenes.current !== "game"
+    Loader {
+        anchors.fill: parent
+        active: view.localSceneUp
+        sourceComponent: Component {
+            Rectangle {
+                color: "#07060f"
+
+                StreamScene {
+                    // As large as 16:9 makes it, in the middle
+                    readonly property real fit: Math.min(parent.width / 1920, parent.height / 1080)
+                    x: (parent.width - 1920 * fit) / 2
+                    y: (parent.height - 1080 * fit) / 2
+                    scale: fit
+                    transformOrigin: Item.TopLeft
+                    scene: Chiaki.scenes ? Chiaki.scenes.current : ""
+                    enabled: false
+                }
+            }
+        }
+    }
+
     // The menu over the whole game picture: it slides its parts in and out by itself, and
     // says when it is gone (onHidden above)
     Item {
@@ -554,7 +581,7 @@ Item {
     // while the game is drawn comes out garbled, which is why the stream menu is a window
     // there too, and so the display stays a window with OpenGL on every system.
     readonly property bool hudInline: Chiaki.hudInline && !useSeparateMenuWindow
-    readonly property bool hudAllowed: !menuController.open && !menuController.closing
+    readonly property bool hudAllowed: !menuController.open && !menuController.closing && !view.localSceneUp
                  && !view.sessionLoading && !view.sessionError
                  && Chiaki.window.visibility !== Window.Hidden
                  && Chiaki.window.visibility !== Window.Minimized
@@ -673,10 +700,11 @@ Item {
         }
     }
 
-    // While a scene is on the stream, the streamer sees which one (the game goes on here)
+    // While a scene is up, the streamer sees which one and how to get back to the game
     Rectangle {
         // Not over the stream menu, whose Scenes button says it there
-        visible: liveOverlayLoader.active && liveOverlayLoader.sceneUp && !menuController.open && !menuController.closing
+        visible: ((liveOverlayLoader.active && liveOverlayLoader.sceneUp) || view.localSceneUp)
+                 && !menuController.open && !menuController.closing
         anchors.horizontalCenter: parent.horizontalCenter
         y: 16
         height: 40
@@ -696,6 +724,9 @@ Item {
                 const id = Chiaki.scenes ? Chiaki.scenes.shown : "";
                 const list = Chiaki.scenes ? Chiaki.scenes.scenes : [];
                 const found = list.find((s) => s.id === id);
+                // Shown here as well: only the way back is news
+                if (view.localSceneUp && id === Chiaki.scenes.current)
+                    return qsTr("Your viewers see this too · Back to the game: stream menu → Scenes → The game");
                 return qsTr("Viewers see: %1").arg(found ? found.name : id);
             }
         }

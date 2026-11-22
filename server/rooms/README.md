@@ -76,7 +76,8 @@ reads another one when `DEFAULT_ROOMS_URL` in `web/js/rooms.js` names it.
 | `initials`, `faces` | Who plays: one letter for each player, the host first (`?` for a player without a name), and for each the name of their picture on the list, or empty. Initials only, never the other players' names; a picture only where a player has chosen one in the app. The list serves the pictures itself, at `?v=1&face=<id>&h=<name>`, as JPEGs of at most 128×128. |
 | `players`, `max` | How many are in the session, the host included, and how many fit. |
 | `policy` | Who gets in: `ask` (the host lets each player in), `watch` (everybody, watching until the host lets them play), `open` (everybody, playing right away). |
-| `control` | Who controls: `all` at once, `turns` one at a time, or only the `host`. |
+| `control` | Who controls: `all` at once, `turns` one at a time, only the `host`, or `each` on a controller of their own (a game on the host's computer). |
+| `console` | What the game runs on: `ps5`, `ps4`, `pc` (the host's computer) or `xbox` (the Xbox app on the host's computer); empty from an app older than 0.5. |
 | `web` | Whether browsers can join. |
 | `invite` | `psrpt://-/KEY`, plus `?meet=` when the host uses another meeting point. |
 | `proto` | The version of the session protocol; a room of another version is shown, but cannot be joined. |
@@ -91,14 +92,14 @@ to newcomers or remove and block a player for the rest of the session.
 ```text
 GET  ?v=1
   → {"v":1,"ok":true,"poll":15000,"rooms":[{"id","title","lang","game","host","players","max",
-     "policy","control","web","invite","proto","title_id","cover","preview","since"}, ...]}
+     "policy","control","web","invite","proto","title_id","console","cover","preview","since"}, ...]}
 GET  ?v=1&preview=<id>&t=<time>
   → the room's picture (image/jpeg), 404 when it has none
 GET  ?v=1&face=<id>&h=<name>
   → a player's picture (image/jpeg)
 
 POST v=1 action=announce id=<16 hex> token=<32 hex> title= lang= game= host= players= max=
-     policy= control= web=0|1 invite= proto= [title_id=] [cover=]
+     policy= control= web=0|1 invite= proto= [title_id=] [console=] [cover=]
 POST v=1 action=preview id=<16 hex> token=<32 hex> image=<JPEG, base64url without padding>
 POST v=1 action=faces id=<16 hex> token=<32 hex> faces=<for each player: a JPEG or nothing, base64url, comma-separated>
 POST v=1 action=remove id=<16 hex> token=<32 hex>

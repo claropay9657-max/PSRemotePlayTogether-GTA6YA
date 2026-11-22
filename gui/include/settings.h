@@ -324,6 +324,14 @@ class Settings : public QObject
 		QString GetCoPlayName() const			{ return settings.value("coplay/name").toString(); }
 		void SetCoPlayName(const QString &n)	{ settings.setValue("coplay/name", n); }
 		int GetCoPlayMixMode() const			{ return settings.value("coplay/mix_mode", 0).toInt(); }
+		/** This computer as the game source: the window or screen shared last (PcSource::Target::ToMap()). */
+		QVariantMap GetCoPlayPcTarget() const	{ return settings.value("coplay/pc_target").toMap(); }
+		void SetCoPlayPcTarget(const QVariantMap &t)	{ settings.setValue("coplay/pc_target", t); }
+		/** Its picture's bit rate in kbit/s; 0: by the picture's size. */
+		int GetCoPlayPcBitrate() const			{ return settings.value("coplay/pc_bitrate", 0).toInt(); }
+		/** Its picture's height (720, 1080, 1440, 2160); the width follows the window's shape. */
+		int GetCoPlayPcHeight() const			{ return settings.value("coplay/pc_height", 1080).toInt(); }
+		void SetCoPlayPcHeight(int h)			{ settings.setValue("coplay/pc_height", h); }
 		void SetCoPlayMixMode(int mode)			{ settings.setValue("coplay/mix_mode", mode); }
 		QString GetCoPlayLastInvite() const		{ return settings.value("coplay/last_invite").toString(); }
 		void SetCoPlayLastInvite(const QString &i)	{ settings.setValue("coplay/last_invite", i); }

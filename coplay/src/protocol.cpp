@@ -130,7 +130,7 @@ static void WriteStreamInfo(ByteWriter &w, const StreamInfo &s)
 	w.U16(s.width);
 	w.U16(s.height);
 	w.U8(s.fps);
-	w.U8(static_cast<uint8_t>((s.ps5 ? 1 : 0) | (s.dualsense ? 2 : 0)));
+	w.U8(static_cast<uint8_t>((s.ps5 ? 1 : 0) | (s.dualsense ? 2 : 0) | ((static_cast<uint8_t>(s.source) & 3) << 2)));
 }
 
 static bool ReadStreamInfo(ByteReader &r, StreamInfo &s)
@@ -142,8 +142,10 @@ static bool ReadStreamInfo(ByteReader &r, StreamInfo &s)
 	uint8_t flags = r.U8();
 	s.ps5 = (flags & 1) != 0;
 	s.dualsense = (flags & 2) != 0;
-	if(!r.ok() || codec > static_cast<uint8_t>(VideoCodec::H265Hdr))
+	uint8_t source = (flags >> 2) & 3;
+	if(!r.ok() || codec > static_cast<uint8_t>(VideoCodec::H265Hdr) || source > static_cast<uint8_t>(GameSource::XboxApp))
 		return false;
+	s.source = static_cast<GameSource>(source);
 	s.codec = static_cast<VideoCodec>(codec);
 	return true;
 }
@@ -325,7 +327,7 @@ bool ReadSessionState(ByteReader &r, SessionState &s)
 	uint8_t mode = r.U8();
 	s.your_slot = r.U8();
 	size_t count = r.U8();
-	if(!r.ok() || mode > static_cast<uint8_t>(MixMode::HostOnly) || count > kMaxGuests + 1)
+	if(!r.ok() || mode > static_cast<uint8_t>(MixMode::EachOwn) || count > kMaxGuests + 1)
 		return false;
 	s.mix_mode = static_cast<MixMode>(mode);
 	for(size_t i = 0; i < count; i++)

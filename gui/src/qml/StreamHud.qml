@@ -40,7 +40,7 @@ Item {
     readonly property var session: Chiaki.session
     readonly property bool shared: !!session && session.coplayActive
     // "In control" only says something when not everybody is
-    readonly property bool exclusive: shared && session.coplayMixMode !== 0
+    readonly property bool exclusive: shared && (session.coplayMixMode === 1 || session.coplayMixMode === 2)
     readonly property var talking: shared ? session.coplayTalking : ({})
     readonly property int camSerial: shared ? session.coplayCamSerial : 0
 

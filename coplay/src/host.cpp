@@ -326,6 +326,7 @@ void Host::RemoveGuest(uint32_t conn_id, Deferred &d, const std::string &why)
 	if(was_confirmed)
 		d.logs.push_back(g.name + " " + why);
 	mixer.RemoveSource(g.slot);
+	guest_feedback.erase(g.slot);
 	BlobRef avatar = g.avatar;
 	if(g.web_peer)
 		web_closing.emplace_back(g.web_peer, NowMs() + kWebCloseDelayMs);
@@ -576,6 +577,9 @@ bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, 
 				break; // older than what we already have
 			g.have_input = true;
 			g.last_input_seq = seq;
+			// Each on a controller of their own: a guest's input changes no mix, but its controller
+			if(mixer.Mode() == MixMode::EachOwn && state != mixer.Raw(g.slot, now_ms))
+				d.input_changed = true;
 			mixer.SetSource(g.slot, state, now_ms);
 			break;
 		}
@@ -1029,6 +1033,23 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 	s.feedback = feedback;
 	s.mix_mode = mixer.Mode();
 	s.your_slot = g.slot;
+	// A controller of its own: its own rumble and player number. The numbers count on from
+	// the shared ones, so that a guest notices every change either way.
+	auto own = guest_feedback.find(g.slot);
+	if(s.mix_mode == MixMode::EachOwn && own != guest_feedback.end())
+	{
+		if(own->second.rumble)
+		{
+			s.feedback.rumble_seq = own->second.rumble_seq;
+			s.feedback.rumble_left = own->second.rumble_left;
+			s.feedback.rumble_right = own->second.rumble_right;
+		}
+		if(own->second.player_index)
+		{
+			s.feedback.player_index_seq = own->second.player_index_seq;
+			s.feedback.player_index = own->second.index;
+		}
+	}
 
 	Participant host;
 	host.slot = 0;
@@ -1326,6 +1347,40 @@ void Host::SetRumble(uint8_t left, uint8_t right)
 	BroadcastState(NowMs());
 }
 
+void Host::SetGuestRumble(uint8_t slot, uint8_t left, uint8_t right)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	GuestFeedback &f = guest_feedback[slot];
+	if(f.rumble && f.rumble_left == left && f.rumble_right == right)
+		return;
+	f.rumble = true;
+	f.rumble_left = left;
+	f.rumble_right = right;
+	// One counter for both, so that the guest sees a change whichever it got before
+	BumpSeq(feedback.rumble_seq);
+	f.rumble_seq = feedback.rumble_seq;
+	state_seq++;
+	Guest *g = FindBySlot(slot);
+	if(g && g->confirmed)
+		SendState(*g, NowMs());
+}
+
+void Host::SetGuestPlayerIndex(uint8_t slot, uint8_t index)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	GuestFeedback &f = guest_feedback[slot];
+	if(f.player_index && f.index == index)
+		return;
+	f.player_index = true;
+	f.index = index;
+	BumpSeq(feedback.player_index_seq);
+	f.player_index_seq = feedback.player_index_seq;
+	state_seq++;
+	Guest *g = FindBySlot(slot);
+	if(g && g->confirmed)
+		SendState(*g, NowMs());
+}
+
 void Host::SetTriggerEffects(uint8_t type_left, uint8_t type_right, const uint8_t left[10], const uint8_t right[10])
 {
 	std::lock_guard<std::mutex> lock(mutex);
@@ -1394,6 +1449,23 @@ PadState Host::MixedInput()
 	PadState mix = mixer.Mix(NowMs());
 	last_reported_mix = mix;
 	return mix;
+}
+
+PadState Host::GuestsInput()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	uint64_t now = NowMs();
+	mixer.Mix(now); // who is in control right now
+	return mixer.MixWithout(InputMixer::kHostSource, now);
+}
+
+PadState Host::GuestInput(uint8_t slot)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	Guest *g = FindBySlot(slot);
+	if(!g || !g->confirmed || !g->can_control)
+		return PadState();
+	return mixer.Player(slot, NowMs());
 }
 
 void Host::SetController(ControllerKind kind)

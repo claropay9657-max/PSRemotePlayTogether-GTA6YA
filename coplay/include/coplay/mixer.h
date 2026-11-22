@@ -75,7 +75,24 @@ class InputMixer
 		/** What this source itself is pressing, whether or not it reaches the console. */
 		PadState Raw(uint32_t id, uint64_t now_ms) const;
 
-		/** After Mix(): whether this source's input currently reaches the console. */
+		/**
+		 * What this source's own controller gets in MixMode::EachOwn: its input as far as it
+		 * may play (its mask), nothing once it went quiet. Works in every mode.
+		 */
+		PadState Player(uint32_t id, uint64_t now_ms) const;
+
+		/**
+		 * After Mix(): the mix as if source `id` pressed nothing, for a game whose own
+		 * controller that player holds (the host's, for a game on the host's computer).
+		 * Together: everybody else merged; LastActive: whoever else is in control; nothing in
+		 * HostOnly and EachOwn (there everybody has a controller of their own).
+		 */
+		PadState MixWithout(uint32_t id, uint64_t now_ms) const;
+
+		/**
+		 * After Mix(): whether this source's input currently reaches the console. In
+		 * MixMode::EachOwn every source does, on its own controller; Mix() is then the host's.
+		 */
 		bool InControl(uint32_t id) const;
 
 		/** Whether the state shows deliberate input (a button, a trigger, a stick outside the deadzone, a touch). */

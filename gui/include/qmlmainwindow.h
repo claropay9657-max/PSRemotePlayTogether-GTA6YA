@@ -179,6 +179,8 @@ public slots:
     void cancelAutoConnect();
     /** Joins a shared session right away (the "join" command line command). */
     void joinCoPlay(const QString &invite, const QString &name, bool controller_only);
+    /** The share command: hosts a window (part of its title), "screen", "test", or the first game. */
+    void shareThisComputer(const QString &what);
     void presentFrame(ChiakiFfmpegFrame frame, int32_t frames_lost, qint64 decoder_delivery_us = 0);
 
     AVBufferRef *vulkanHwDeviceCtx();

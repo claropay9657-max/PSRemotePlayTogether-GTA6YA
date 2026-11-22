@@ -57,6 +57,8 @@
 class QKeyEvent;
 class Settings;
 
+class PcCapture;
+class VirtualPads;
 namespace coplay { class Client; class Host; struct ClientConfig; enum class DisconnectReason; struct ChatMessage; struct ChatEmbed; struct BlobRef; }
 struct CoPlayState;
 struct CoPlayChatState;
@@ -186,6 +188,12 @@ class SdeckHapticsWorker;
 		std::shared_ptr<const coplay::ClientConfig> coplay_client_config;
 		/** Get a lost connection back without asking: the console's, or as a guest the host's. */
 		bool auto_reconnect = false;
+		// This computer as the game source instead of a console (pcsource.h, docs/pc-source.md):
+		// a window or a screen of it, shared with the guests, who play on virtual controllers
+		bool pc_source = false;
+		/** What is shared: PcSource::Target::ToMap(). */
+		QVariantMap pc_target;
+		int pc_video_kbps = 15000;
 
 	StreamSessionConnectInfo() {}
 	StreamSessionConnectInfo(
@@ -223,6 +231,9 @@ class StreamSession : public QObject
 	Q_PROPERTY(bool cantDisplay READ GetCantDisplay NOTIFY CantDisplayChanged)
 	Q_PROPERTY(int framesLost READ GetFramesLost NOTIFY FramesLostChanged)
 	Q_PROPERTY(bool coplayGuest READ IsCoPlayGuest CONSTANT)
+	Q_PROPERTY(bool pcSource READ IsPcSource CONSTANT)
+	Q_PROPERTY(QString pcSourceName READ GetPcSourceName CONSTANT)
+	Q_PROPERTY(QString pcPadsProblem READ GetPcPadsProblem NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayHosting READ IsCoPlayHosting NOTIFY CoPlayChanged)
 	/** Guest: the host lets guests put the console to sleep when they leave. */
 	Q_PROPERTY(bool coplayMaySleep READ CoPlayGuestMaySleep NOTIFY CoPlayChanged)
@@ -439,6 +450,31 @@ class StreamSession : public QObject
 		// Play Together, see streamsession_coplay.cpp
 		CoPlayState *coplay = nullptr;
 		CoPlayChatState *coplay_chat = nullptr;
+		// This computer as the game source (streamsession_pc.cpp)
+		bool pc_source = false;
+		QVariantMap pc_target;
+		int pc_video_kbps = 15000;
+		int pc_width = 1920;
+		int pc_height = 1080;
+		int pc_fps = 60;
+		std::unique_ptr<PcCapture> pc_capture;
+		std::unique_ptr<VirtualPads> pc_pads;
+		/** Why the guests cannot play (no driver); empty if they can. */
+		QString pc_pads_problem;
+		/** The game found in what is shared (PcSource::DetectGame()). */
+		QString pc_game;
+		bool pc_finished = false;
+		/** A console is at the other end: neither a guest's session nor a game on this computer. */
+		bool HasConsole() const;
+		void PcStart();
+		void PcStop();
+		void PcFinish(ChiakiQuitReason reason, const QString &why);
+		/** Plugs as many virtual controllers as the way to play needs. */
+		void PcPlugPads();
+		/** What every virtual controller presses now. */
+		void PcUpdatePads();
+		void PcOnRumble(int index, uint8_t left, uint8_t right);
+
 		void CoPlayInit(const StreamSessionConnectInfo &connect_info);
 		void CoPlayStopThreads();
 		void CoPlayFini();
@@ -538,6 +574,9 @@ class StreamSession : public QObject
 		void SetAudioVolume(int volume) { audio_volume = volume; }
 		bool GetCantDisplay()	{ return cant_display; }
 		bool IsCoPlayGuest() const;
+		bool IsPcSource() const { return pc_source; }
+		QString GetPcSourceName() const;
+		QString GetPcPadsProblem() const { return pc_pads_problem; }
 		/** A guest whose host lets guests put the console to sleep when they leave. */
 		bool CoPlayGuestMaySleep() const;
 		bool IsCoPlayHosting() const;
@@ -708,6 +747,8 @@ class StreamSession : public QObject
 		void CantDisplayChanged(bool cant_display);
 		void FecFailure();
 		void CoPlayChanged();
+		/** A game on this computer: the game found in what is shared changed (empty: none). */
+		void PcGameChanged(const QString &game);
 		void CoPlayMediaChanged();
 		void CoPlayTalkingChanged();
 		void CoPlayCamChanged();

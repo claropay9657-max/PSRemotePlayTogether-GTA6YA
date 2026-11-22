@@ -3,7 +3,8 @@ import QtQuick
 // A small label for what something is. `tone` keeps its meaning everywhere:
 // "good" (on), "wait" (rest, waiting), "brand" (registered), "neutral"
 // (language, counts), "play" (cyan: how a room is played), "door" (purple: how you
-// get in), "web" (green: browsers can come), "bad" (muted, closed).
+// get in), "web" (green: browsers can come), "system" (blue: what the game runs on),
+// "bad" (muted, closed).
 // With `dot` it has a coloured dot in front (states); `small` is for room cards.
 Rectangle {
     id: badge
@@ -22,6 +23,7 @@ Rectangle {
         play: ["#1c00f2ff", "#9ef7ff", "#00f2ff"],
         door: ["#338c52ff", "#d8c6ff", "#a77bff"],
         web: ["#2434d399", "#9ff0cc", "#34d399"],
+        system: ["#244f8cff", "#c4d8ff", "#4f8cff"],
         bad: ["#24f0466e", "#ffc2d1", "#f0466e"]
     })
     readonly property var colours: tones[tone] || tones.neutral

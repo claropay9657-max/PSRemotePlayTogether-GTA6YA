@@ -17,7 +17,7 @@ import { OverlayOptions } from './options.js';
 import { KEYBOARD_MAP, Pad, controllerName } from './pad.js';
 import { HUD_KEYS, HUD_PRESETS, PresetSettings } from './presets.js';
 import * as P from './proto.js';
-import { DEFAULT_ROOMS_URL, LANGUAGES, fetchRooms, filterRooms, languageName } from './rooms.js';
+import { DEFAULT_ROOMS_URL, LANGUAGES, consoleName, fetchRooms, filterRooms, languageName } from './rooms.js';
 import { JoinError, Session } from './session.js';
 import { TouchControls } from './touch.js';
 import { VideoPlayer } from './video.js';
@@ -191,7 +191,12 @@ function showRoomsUpdated() {
     : roomsLoading ? 'Loading…' : '';
 }
 
-const CONTROL = { all: 'Everybody plays together', turns: 'One plays at a time', host: 'Only the host plays' };
+const CONTROL = {
+  all: 'Everybody plays together',
+  turns: 'One plays at a time',
+  host: 'Only the host plays',
+  each: 'Each their own controller',
+};
 const POLICY = { ask: 'Ask to join', watch: 'Join as viewer', open: 'Join and play' };
 
 /** How long a room has been open, as the app says it. */
@@ -308,11 +313,12 @@ function livePicture(address) {
   return promise;
 }
 
-/** What kind of room it is: its language, how it is played, how one gets in, whether browsers can come. */
+/** What kind of room it is: what the game runs on, its language, how it is played, how one gets in, whether browsers can come. */
 function fillBadges(badges, room) {
   badges.replaceChildren(el('span', 'badge', languageName(room.lang)),
     el('span', 'badge play', CONTROL[room.control]),
     el('span', 'badge door', POLICY[room.policy]));
+  if (room.console) badges.prepend(el('span', 'badge system', consoleName(room.console)));
   if (room.web) badges.append(el('span', 'badge web', 'Browsers welcome'));
   // The host is live on Twitch: not the same as the "Live" picture of the game
   if (room.twitch.length) {
@@ -375,6 +381,7 @@ function roomCard(room) {
 function showAllRooms() {
   $('rooms-search').value = '';
   $('rooms-lang').value = '';
+  $('rooms-console').value = '';
   $('rooms-hide-full').checked = false;
   $('rooms-open-only').checked = false;
   $('rooms-twitch-only').checked = false;
@@ -387,6 +394,7 @@ function renderRooms() {
   const filters = {
     search: $('rooms-search').value,
     lang: $('rooms-lang').value,
+    system: $('rooms-console').value,
     hideFull: $('rooms-hide-full').checked,
     openOnly: $('rooms-open-only').checked,
     twitchOnly: $('rooms-twitch-only').checked,
@@ -1020,7 +1028,7 @@ function showPlayers() {
   if (!lastState) return;
   const players = playersNow();
   // "In control" only says something when not everybody is
-  const exclusive = lastState.mixMode !== P.MIX_TOGETHER;
+  const exclusive = lastState.mixMode === P.MIX_LAST_ACTIVE || lastState.mixMode === P.MIX_HOST_ONLY;
   // The host says who is here several times a second; only what has changed is drawn again
   const key = JSON.stringify([players, exclusive]);
   if (key === playersKey) return;
@@ -1672,7 +1680,7 @@ function start() {
       return option;
     }));
   $('rooms-lang').firstElementChild.value = '';
-  for (const id of ['rooms-search', 'rooms-lang', 'rooms-hide-full', 'rooms-open-only', 'rooms-twitch-only']) {
+  for (const id of ['rooms-search', 'rooms-lang', 'rooms-console', 'rooms-hide-full', 'rooms-open-only', 'rooms-twitch-only']) {
     $(id).addEventListener('input', renderRooms);
     $(id).addEventListener('change', renderRooms);
   }

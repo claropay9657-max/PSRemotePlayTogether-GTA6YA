@@ -219,6 +219,22 @@ public:
     Q_INVOKABLE void connectToHost(int index, QString nickname = QString());
     /** Host: a session friends join, as set up on the Host page. */
     Q_INVOKABLE void hostConsole(int index, QString nickname = QString());
+    // This computer as the game source (pcsource.h)
+    /** The windows and screens that can be shared, as PcSource::Target::ToMap(). */
+    Q_INVOKABLE QVariantList pcTargets() const;
+    /** Why this computer cannot share a game; empty if it can. */
+    Q_INVOKABLE QString pcUnsupported() const;
+    /** Why friends cannot play a game on this computer (no controller driver); empty if they can. */
+    Q_INVOKABLE QString pcPadsProblem() const;
+    Q_INVOKABLE QString pcDriverUrl() const;
+    /** What was shared last time, to choose it again. */
+    Q_INVOKABLE QVariantMap pcLastTarget() const;
+    /** The game in a window or on a screen, for the Host page; empty if none was found. */
+    Q_INVOKABLE QString pcGameIn(const QVariantMap &target) const;
+    /** The picture a window or screen would give at a height: {width, height, mbps} (each friend's upload). */
+    Q_INVOKABLE QVariantMap pcPicture(const QVariantMap &target, int height) const;
+    /** Host: share a window or a screen of this computer, as set up on the Host page. */
+    Q_INVOKABLE void hostThisComputer(const QVariantMap &target);
     Q_INVOKABLE void stopSession(bool sleep);
     /** Version of the chiaki-ng this app is built on; the app's own is the application version. */
     QString chiakiVersion() const { return QStringLiteral(CHIAKI_VERSION); }

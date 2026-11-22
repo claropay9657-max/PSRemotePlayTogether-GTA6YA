@@ -9,7 +9,8 @@
 #                 version for this machine, whose moc/rcc/qml tools the build runs
 #   msys2/        the other libraries, taken prebuilt from MSYS2's CLANG64 repository
 #   ffmpeg/       FFmpeg built here from source with only the decoders the app uses,
-#                 and the encoders, muxer and protocols for going live
+#                 the encoders, muxer and protocols for going live, and the filters
+#                 that capture a window or a screen of this computer
 #
 # scripts/ci/build-windows.sh then builds and packages the app against it.
 set -euo pipefail
@@ -117,7 +118,8 @@ if [ ! -f "$ROOT/msys2/packages.json" ]; then
 fi
 
 ### FFmpeg ###################################################################
-if [ ! -f "$ROOT/ffmpeg/lib/pkgconfig/libavcodec.pc" ]; then
+# (libavfilter: an older environment without the capture filters is built again)
+if [ ! -f "$ROOT/ffmpeg/lib/pkgconfig/libavfilter.pc" ]; then
 	echo "== FFmpeg $FFMPEG_TAG"
 	WORK="$(mktemp -d)"
 	git -c advice.detachedHead=false clone --quiet --depth 1 -b "$NV_CODEC_TAG" https://github.com/FFmpeg/nv-codec-headers.git "$WORK/nv-codec-headers"
@@ -128,7 +130,9 @@ if [ ! -f "$ROOT/ffmpeg/lib/pkgconfig/libavcodec.pc" ]; then
 		patch -p1 < "$SCRIPT_DIR/../flatpak/0001-vulkan-ignore-frames-without-hw-context.patch"
 		# The decoder and encoder lists are the ones of scripts/build-ffmpeg-windows.sh.
 		# Going live: H.264 from NVIDIA, AMD or Windows' own encoder (Media Foundation, which
-		# also uses Intel's), AAC, FLV over RTMP or RTMPS (TLS through Windows' Schannel)
+		# also uses Intel's), AAC, FLV over RTMP or RTMPS (TLS through Windows' Schannel).
+		# Sharing a game on this computer: a window or a screen through Windows Graphics
+		# Capture (gfxcapture) or Desktop Duplication (ddagrab), made NV12 on the graphics card
 		PKG_CONFIG_LIBDIR="$ROOT/ffmpeg/lib/pkgconfig:$ROOT/msys2/clang64/lib/pkgconfig:$ROOT/msys2/clang64/share/pkgconfig" \
 		./configure \
 			--prefix="$ROOT/ffmpeg" \
@@ -152,7 +156,10 @@ if [ ! -f "$ROOT/ffmpeg/lib/pkgconfig/libavcodec.pc" ]; then
 			--enable-protocol=rtmp --enable-protocol=rtmps --enable-protocol=tcp \
 			--enable-protocol=tls --enable-protocol=file \
 			--enable-decoder=flac,mp3float,mp3,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
-			--enable-demuxer=flac,mp3,ogg,wav --enable-parser=flac,mpegaudio,opus,vorbis
+			--enable-demuxer=flac,mp3,ogg,wav --enable-parser=flac,mpegaudio,opus,vorbis \
+			--enable-avfilter --enable-filter=buffer,buffersink,gfxcapture,ddagrab,scale_d3d11,hwdownload,format
+		grep -qE '^#define CONFIG_GFXCAPTURE_FILTER 1' config_components.h \
+			|| { echo "error: FFmpeg was configured without the gfxcapture filter" >&2; exit 1; }
 		make -j"$(nproc)" >/dev/null
 		make install >/dev/null
 	)
