@@ -123,3 +123,19 @@ function lerpColor(a, b, k) {
 function alpha(c, a) {
     return Qt.rgba(c.r, c.g, c.b, a);
 }
+
+/**
+ * `text` in two lines, broken after the comma or the full stop nearest to its middle: for a
+ * line too long for where it stands. As it is where it has neither near its middle.
+ */
+function halved(text) {
+    const middle = text.length / 2;
+    let at = -1;
+    for (let i = 1; i < text.length - 1; ++i) {
+        if ((text[i - 1] === "," || text[i - 1] === ".") && text[i] === " " && (at < 0 || Math.abs(i - middle) < Math.abs(at - middle)))
+            at = i;
+    }
+    if (at < text.length * 0.25 || at > text.length * 0.75)
+        return text;
+    return text.slice(0, at) + "\n" + text.slice(at + 1);
+}

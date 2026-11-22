@@ -5,15 +5,28 @@ import QtQuick.Shapes
 import "../controls" as C
 import "Film.js" as F
 
-// The intro film: what the app is for and how it works, in under a minute. A stage of
-// 1920 x 1080 that whoever shows it scales to fit (IntroPlayer.qml). Nothing here runs by
-// itself: everything is drawn from the time `t`, so the film can be paused, jumped through
-// and looked at one moment at a time.
+// The intro film: what the app is for and how it works, in under a minute. A stage that
+// whoever shows it scales to fit (IntroPlayer.qml): 1920 x 1080, or 1080 x 1920 where it
+// stands upright (`tall`: a window higher than wide, a video for a phone). Both show the same
+// film at the same times; only where things are differs, and every place says both. Nothing
+// here runs by itself: everything is drawn from the time `t`, so the film can be paused,
+// jumped through and looked at one moment at a time.
 Item {
     id: film
 
     /** Where the film is, in seconds. */
     property real t: 0
+    /**
+     * The stage stands upright, 1080 x 1920: the name and what is said at the top, and under
+     * them (from 630 down) what the chapter shows. The apps that play upright videos lay their
+     * own buttons over them, so nothing that matters is higher than 250 or lower than 1500,
+     * and in the lower half (from 1000 down) nothing is further right than 910, where their
+     * column of buttons stands. A game picture may reach under that column; words may not.
+     */
+    property bool tall: false
+    /** A video about the app, not the app: the end has nothing to press, so it does not offer to play again. */
+    property bool promo: false
+    readonly property real midX: width / 2
     /** Where the last chapter has arrived and the film rests. */
     readonly property real duration: chapters[chapters.length - 1].start + 2.6
 
@@ -45,8 +58,8 @@ Item {
     readonly property real tSource2: tShare + 2.4
     readonly property real tSource3: tShare + 4.8
 
-    width: 1920
-    height: 1080
+    width: tall ? 1080 : 1920
+    height: tall ? 1920 : 1080
 
     FontLoader {
         id: jakarta
@@ -186,48 +199,64 @@ Item {
         readonly property real k2: F.enter(film.t, from + 0.18, 0.6)
         readonly property real gone: 1 - F.leave(film.t, to - 0.42, 0.42)
 
+        // Wide: below the picture, the heading in one line. Tall: at the top, larger, the
+        // heading's two parts one under the other
+        readonly property real size: film.tall ? 74 : 66
+        readonly property real headTop: (film.tall ? 322 : headY) + (1 - k) * 30 - gone * 16
+        readonly property real lineTop: (film.tall ? 322 + 2 * size * 1.135 + 14 : headY + 96) + (1 - k2) * 22 - gone * 10
+        /** Between the heading's two parts where they stand in one line. */
+        readonly property real gap: head.length > 0 ? 18 : 0
+
         visible: film.t > from && film.t < to
-        width: 1920
+        width: film.width
+
+        T {
+            id: headText
+            x: film.tall ? film.midX - width / 2 : film.midX - (width + caption.gap + accentRow.width) / 2
+            y: caption.headTop
+            text: caption.head
+            font.pixelSize: caption.size
+            font.weight: Font.ExtraBold
+            opacity: caption.k * (1 - caption.gone)
+        }
 
         Row {
-            id: headRow
-            x: 960 - width / 2
-            y: caption.headY + (1 - caption.k) * 30 - caption.gone * 16
-            opacity: caption.k * (1 - caption.gone)
-            spacing: 18
+            id: accentRow
+            x: film.tall ? film.midX - width / 2 : headText.x + headText.width + caption.gap
+            y: caption.headTop + (film.tall ? caption.size * 1.135 : 0)
+            opacity: (film.tall ? caption.k2 : caption.k) * (1 - caption.gone)
 
-            T {
-                visible: caption.head.length > 0
-                text: caption.head
-                font.pixelSize: 66
-                font.weight: Font.ExtraBold
-            }
+            Repeater {
+                model: caption.accent.length
 
-            Row {
-                Repeater {
-                    model: caption.accent.length
-
-                    T {
-                        required property int index
-                        text: caption.accent.charAt(index)
-                        font.pixelSize: 66
-                        font.weight: Font.ExtraBold
-                        color: F.lerpColor(Qt.rgba(167 / 255, 123 / 255, 1, 1), film.pink, caption.accent.length > 1 ? index / (caption.accent.length - 1) : 0)
-                    }
+                T {
+                    required property int index
+                    text: caption.accent.charAt(index)
+                    font.pixelSize: caption.size
+                    font.weight: Font.ExtraBold
+                    color: F.lerpColor(Qt.rgba(167 / 255, 123 / 255, 1, 1), film.pink, caption.accent.length > 1 ? index / (caption.accent.length - 1) : 0)
                 }
             }
         }
 
+        // Tall, a line too long for the stage breaks where its sentence does, not where it runs out
+        TextMetrics {
+            id: lineSize
+            font: lineText.font
+            text: caption.line
+        }
+
         T {
-            x: 960 - width / 2
-            y: caption.headY + 96 + (1 - caption.k2) * 22 - caption.gone * 10
-            width: Math.min(implicitWidth, 1280)
+            id: lineText
+            x: film.midX - width / 2
+            y: caption.lineTop
+            width: Math.min(implicitWidth, film.tall ? 900 : 1280)
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             lineHeight: 1.18
-            text: caption.line
+            text: film.tall && lineSize.advanceWidth > 900 ? F.halved(caption.line) : caption.line
             color: film.soft
-            font.pixelSize: 33
+            font.pixelSize: film.tall ? 37 : 33
             font.weight: Font.Medium
             opacity: caption.k2 * (1 - caption.gone)
         }
@@ -330,24 +359,29 @@ Item {
         /** When they arrive and when they leave. */
         property real at: 0
         property real until: 999
-        property real padFactor: 0.27
+        property real padFactor: film.tall ? 0.205 : 0.27
         readonly property var person: film.cast[who]
         readonly property color tint: film.castColors[who]
         readonly property bool fromLeft: cx < toX
+        /** Tall: the players sit in a row under the screen, and their lights go up to it. */
+        readonly property bool up: film.tall
         readonly property real k: F.pop(film.t, at, 10, 6.5)
         readonly property real there: F.seg(film.t, at, at + 0.3) * F.leave(film.t, until - 0.4, 0.4)
         readonly property real slide: (1 - F.enter(film.t, at, 0.7)) * (fromLeft ? -110 : 110)
             + (1 - F.leave(film.t, until - 0.4, 0.4)) * (fromLeft ? -90 : 90)
+        /** They come in from their side, or from below. */
+        readonly property real slideX: up ? 0 : slide
+        readonly property real slideY: up ? Math.abs(slide) : 0
         /** The jump they are pressing for, and how far its light has run. */
         readonly property real press: film.pressOf(who)
         readonly property real run: F.seg(film.t, press - film.pressLead + 0.04, press - film.pressLead + 0.04 + film.lightTime)
         readonly property real padW: 807 * padFactor
         readonly property real padH: 651 * padFactor
         // The line of light: from the controller's side towards the screen, in a soft bow
-        readonly property real fromX: cx + (fromLeft ? padW / 2 + 6 : -padW / 2 - 6)
-        readonly property real fromY: cy + 6
-        readonly property real bowX: (fromX + toX) / 2
-        readonly property real bowY: Math.min(fromY, toY) - 46
+        readonly property real fromX: up ? cx : cx + (fromLeft ? padW / 2 + 6 : -padW / 2 - 6)
+        readonly property real fromY: up ? cy - padH / 2 - 10 : cy + 6
+        readonly property real bowX: up ? fromX : (fromX + toX) / 2
+        readonly property real bowY: up ? toY + 64 : Math.min(fromY, toY) - 46
 
         visible: film.t > at && film.t < until
         opacity: there
@@ -362,12 +396,12 @@ Item {
                 strokeWidth: 3
                 fillColor: "transparent"
                 capStyle: ShapePath.RoundCap
-                startX: player.fromX + player.slide
-                startY: player.fromY
+                startX: player.fromX + player.slideX
+                startY: player.fromY + player.slideY
                 PathQuad {
                     x: player.toX
                     y: player.toY
-                    controlX: player.bowX + player.slide / 2
+                    controlX: player.bowX + player.slideX / 2
                     controlY: player.bowY
                 }
             }
@@ -406,8 +440,8 @@ Item {
         }
 
         Item {
-            x: player.cx + player.slide
-            y: player.cy
+            x: player.cx + player.slideX
+            y: player.cy + player.slideY
             scale: 0.7 + 0.3 * player.k
 
             // The controller in their colour's light, brighter when they press
@@ -427,10 +461,10 @@ Item {
                 pad: film.padOf(player.who)
             }
 
-            // Who it is
+            // Who it is: over the controller, or under it where the light leaves upwards
             Row {
-                x: -player.padW / 2 + 4
-                y: -player.padH / 2 - 78
+                x: player.up ? -width / 2 : -player.padW / 2 + 4
+                y: player.up ? player.padH / 2 + 12 : -player.padH / 2 - 78
                 spacing: 14
 
                 Rectangle {
@@ -655,6 +689,8 @@ Item {
         property real until: 999
         /** Where its name goes: under it, or to its right. */
         property bool labelRight: false
+        /** How far under the picture's top the name stands, for devices in a row whose names stand in one line; as its kind wants it if negative. */
+        property real labelTop: -1
         readonly property real h: w * 9 / 16
         readonly property real rim: kind === "laptop" ? 13 : kind === "phone" ? 11 : 17
         readonly property var person: film.cast[who]
@@ -747,7 +783,8 @@ Item {
         // Who it is and how they came in
         Row {
             x: device.labelRight ? device.w + device.rim + 26 : device.w / 2 - width / 2
-            y: device.labelRight ? device.h / 2 - height / 2 : device.h + device.rim + (device.kind === "laptop" ? 36 : 20)
+            y: device.labelRight ? device.h / 2 - height / 2
+               : device.labelTop >= 0 ? device.labelTop : device.h + device.rim + (device.kind === "laptop" ? 36 : 20)
             spacing: 14
             opacity: F.enter(film.t, device.joined + 0.1, 0.5)
 
@@ -837,7 +874,7 @@ Item {
         width: 520
         height: 400
         opacity: k * (1 - gone) * (0.62 + 0.38 * on)
-        scale: 1 + 0.03 * on
+        scale: (film.tall ? 1.6 : 1) * (1 + 0.03 * on)
         transform: Translate { y: (1 - mode.k) * 60 + mode.gone * 30 }
 
         Halo {
@@ -1059,11 +1096,14 @@ Item {
         readonly property color skin: F.lerpColor(Qt.rgba(1, 1, 1, 1), tint, 0.22)
         readonly property color dark: F.lerpColor(tint, Qt.rgba(0.05, 0.04, 0.12, 1), 0.55)
 
+        /** Smaller or larger than its 280 x 158, around its middle. */
+        property real zoom: 1
+
         width: 280
         height: 158
         visible: film.t > at && film.t < until
         opacity: F.seg(film.t, at, at + 0.25) * F.leave(film.t, until - 0.4, 0.4)
-        scale: 0.8 + 0.2 * k
+        scale: (0.8 + 0.2 * k) * zoom
 
         // Talking: light around the picture
         Halo {
@@ -1302,13 +1342,15 @@ Item {
         property real at: 0
         property real until: 999
         readonly property real k: F.pop(film.t, at, 10, 6.5)
+        /** Larger than its 300 x 62, around its middle. */
+        property real zoom: 1
 
         width: 300
         height: 62
         visible: film.t > at && film.t < until
         opacity: F.seg(film.t, at, at + 0.25) * F.leave(film.t, until - 0.4, 0.4)
         transform: Translate { x: (1 - F.enter(film.t, chip.at, 0.6)) * 60 }
-        scale: 0.9 + 0.1 * k
+        scale: (0.9 + 0.1 * k) * zoom
 
         Glass {
             anchors.fill: parent
@@ -1396,12 +1438,21 @@ Item {
     }
 
     // The screen the film follows: where it is and how wide, chapter by chapter
-    readonly property real screenW: F.track(t, [[tShare - 0.2, 880], [tShare + 0.7, 800], [tInvite - 0.1, 800], [tInvite + 0.8, 640],
-                                               [tModes + 0.15, 640], [tModes + 0.2, 960], [tStream - 0.2, 960], [tStream + 0.7, 1040]])
-    readonly property real screenX: F.track(t, [[tShare - 0.2, 520], [tShare + 0.7, 930], [tInvite - 0.1, 930], [tInvite + 0.8, 150],
-                                               [tModes + 0.15, 150], [tModes + 0.2, 180], [tStream - 0.2, 180], [tStream + 0.7, 440]])
-    readonly property real screenY: F.track(t, [[tShare - 0.2, 178], [tShare + 0.7, 215], [tInvite - 0.1, 215], [tInvite + 0.8, 232],
-                                               [tModes + 0.15, 232], [tModes + 0.2, 168], [tStream - 0.2, 168], [tStream + 0.7, 150]])
+    /** Where the screen is in each chapter, as [x, y, width]. */
+    readonly property var screenAt: tall
+        ? ({ play: [90, 630, 900], share: [190, 1090, 700], invite: [220, 630, 640], couch: [90, 769, 900], stream: [90, 630, 900] })
+        : ({ play: [520, 178, 880], share: [930, 215, 800], invite: [150, 232, 640], couch: [180, 168, 960], stream: [440, 150, 1040] })
+
+    /** One of the three ([x, y, width]) along the film. */
+    function screenTrack(i) {
+        const at = screenAt;
+        return F.track(t, [[tShare - 0.2, at.play[i]], [tShare + 0.7, at.share[i]], [tInvite - 0.1, at.share[i]], [tInvite + 0.8, at.invite[i]],
+                           [tModes + 0.15, at.invite[i]], [tModes + 0.2, at.couch[i]], [tStream - 0.2, at.couch[i]], [tStream + 0.7, at.stream[i]]]);
+    }
+
+    readonly property real screenX: screenTrack(0)
+    readonly property real screenY: screenTrack(1)
+    readonly property real screenW: screenTrack(2)
     /** It steps aside while the film talks about who plays, and at the end. */
     readonly property real screenThere: F.seg(t, tPlay + 0.05, tPlay + 0.4) * (1 - F.seg(t, tModes - 0.35, tModes + 0.1))
                                         + F.seg(t, tCouch - 0.05, tCouch + 0.45) * (1 - F.seg(t, tEnd - 0.45, tEnd))
@@ -1422,45 +1473,47 @@ Item {
     Item {
         id: playScene
         visible: film.t > film.tPlay && film.t < film.tShare + 0.4
+        /** Tall, the screen comes down to where the players are: they have left by then. */
+        readonly property real until: film.tShare + (film.tall ? -0.1 : 0.15)
 
         Player {
             who: 0
-            cx: 240
-            cy: 322
-            toX: 520
-            toY: 350
+            cx: film.tall ? 255 : 240
+            cy: film.tall ? 1330 : 322
+            toX: film.tall ? 300 : 520
+            toY: film.tall ? 1136 : 350
             at: film.tPlay + 0.4
-            until: film.tShare + 0.15
+            until: playScene.until
         }
 
         Player {
             who: 1
-            cx: 1680
-            cy: 322
-            toX: 1400
-            toY: 350
+            cx: film.tall ? 445 : 1680
+            cy: film.tall ? 1330 : 322
+            toX: film.tall ? 460 : 1400
+            toY: film.tall ? 1136 : 350
             at: film.tPlay + 2.1
-            until: film.tShare + 0.2
+            until: playScene.until + 0.05
         }
 
         Player {
             who: 2
-            cx: 240
-            cy: 590
-            toX: 520
-            toY: 540
+            cx: film.tall ? 635 : 240
+            cy: film.tall ? 1330 : 590
+            toX: film.tall ? 620 : 520
+            toY: film.tall ? 1136 : 540
             at: film.tPlay + 2.4
-            until: film.tShare + 0.25
+            until: playScene.until + 0.1
         }
 
         Player {
             who: 3
-            cx: 1680
-            cy: 590
-            toX: 1400
-            toY: 540
+            cx: film.tall ? 825 : 1680
+            cy: film.tall ? 1330 : 590
+            toX: film.tall ? 780 : 1400
+            toY: film.tall ? 1136 : 540
             at: film.tPlay + 2.7
-            until: film.tShare + 0.3
+            until: playScene.until + 0.15
         }
 
         Caption {
@@ -1477,12 +1530,19 @@ Item {
     Item {
         id: shareScene
         visible: film.t > film.tShare && film.t < film.tInvite + 0.5
-        readonly property real until: film.tInvite + 0.25
+        /** Tall, the screen goes up through where the places stand: they have left by then. */
+        readonly property real until: film.tInvite + (film.tall ? -0.05 : 0.25)
         /** Which place has the word, 0 to 2, and anything between while it passes on. */
         readonly property real turn: F.track(film.t, [[film.tSource2 - 0.25, 0], [film.tSource2 + 0.25, 1], [film.tSource3 - 0.25, 1], [film.tSource3 + 0.25, 2]])
         readonly property color turnTint: turn <= 1 ? F.lerpColor(film.cYou, film.cyan, turn) : F.lerpColor(film.cyan, Qt.rgba(0.56, 0.89, 0.42, 1), turn - 1)
-        /** From the card that has the word to the screen. */
-        readonly property real fromY: 283 + turn * 158
+        /** From the card that has the word to the screen: beside the cards, or under them. */
+        readonly property real fromY: film.tall ? 698 + turn * 146 : 283 + turn * 158
+        readonly property real fromX: 800
+        readonly property real toX: film.tall ? 830 : 930
+        readonly property real toY: film.tall ? 1090 : 440
+        readonly property real bow1X: film.tall ? 905 : 880
+        readonly property real bow2X: film.tall ? 905 : 850
+        readonly property real bow2Y: film.tall ? 1020 : 440
         readonly property real there: F.during(film.t, film.tShare + 0.7, film.tInvite - 0.1, 0.5, 0.4)
 
         // The way the picture takes: a line from the place to the screen, with light running along it
@@ -1495,15 +1555,15 @@ Item {
                 strokeWidth: 3.5
                 fillColor: "transparent"
                 capStyle: ShapePath.RoundCap
-                startX: 800
+                startX: shareScene.fromX
                 startY: shareScene.fromY
                 PathCubic {
-                    x: 930
-                    y: 440
-                    control1X: 880
+                    x: shareScene.toX
+                    y: shareScene.toY
+                    control1X: shareScene.bow1X
                     control1Y: shareScene.fromY
-                    control2X: 850
-                    control2Y: 440
+                    control2X: shareScene.bow2X
+                    control2Y: shareScene.bow2Y
                 }
             }
         }
@@ -1516,8 +1576,8 @@ Item {
                 readonly property real u: (film.t * 0.9 + index / 3) % 1
                 readonly property real v: 1 - u
                 // The same curve as the line
-                x: v * v * v * 800 + 3 * v * v * u * 880 + 3 * v * u * u * 850 + u * u * u * 930
-                y: v * v * v * shareScene.fromY + 3 * v * v * u * shareScene.fromY + 3 * v * u * u * 440 + u * u * u * 440
+                x: v * v * v * shareScene.fromX + 3 * v * v * u * shareScene.bow1X + 3 * v * u * u * shareScene.bow2X + u * u * u * shareScene.toX
+                y: v * v * v * shareScene.fromY + 3 * v * v * u * shareScene.fromY + 3 * v * u * u * shareScene.bow2Y + u * u * u * shareScene.toY
                 tint: shareScene.turnTint
                 size: 11
                 opacity: shareScene.there * Math.sin(Math.PI * u)
@@ -1525,8 +1585,8 @@ Item {
         }
 
         Source {
-            x: 190
-            y: 215
+            x: film.tall ? 180 : 190
+            y: film.tall ? 630 : 215
             iconName: "console"
             title: qsTr("Your PlayStation")
             line: qsTr("A PS5 or PS4, over Remote Play")
@@ -1538,8 +1598,8 @@ Item {
         }
 
         Source {
-            x: 190
-            y: 373
+            x: film.tall ? 180 : 190
+            y: film.tall ? 776 : 373
             iconName: "monitor"
             title: qsTr("This computer")
             line: qsTr("A game on Windows, Linux or macOS")
@@ -1551,8 +1611,8 @@ Item {
         }
 
         Source {
-            x: 190
-            y: 531
+            x: film.tall ? 180 : 190
+            y: film.tall ? 922 : 531
             iconName: "gamepad"
             title: qsTr("Your Xbox")
             line: qsTr("Through the Xbox app on this computer")
@@ -1583,10 +1643,15 @@ Item {
         readonly property var tSent: [0, film.tInvite + 1.8, film.tInvite + 2.1, film.tInvite + 2.4]
         readonly property var tIn: [0, film.tInvite + 2.7, film.tInvite + 3.0, film.tInvite + 3.3]
         /** Where each friend's device is: the middle of its picture. */
-        readonly property var spot: [Qt.point(0, 0), Qt.point(1130, 302), Qt.point(1440, 589), Qt.point(1620, 282)]
+        readonly property var spot: film.tall
+            ? [Qt.point(0, 0), Qt.point(305, 1175), Qt.point(590, 1175), Qt.point(825, 1175)]
+            : [Qt.point(0, 0), Qt.point(1130, 302), Qt.point(1440, 589), Qt.point(1620, 282)]
+        /** Where the link sets off: the Copy button. */
+        readonly property point sentFrom: film.tall ? Qt.point(732, 1430) : Qt.point(660, 686)
 
-        // Whose game it is
+        // Whose game it is (wide; tall, the heading stands right over the screen)
         Row {
+            visible: !film.tall
             x: 154
             y: 164
             spacing: 14
@@ -1628,15 +1693,44 @@ Item {
         }
 
         // Straight to the host: each friend's line, and their lights when they play
-        Wire { who: 1; fromX: 913; fromY: 320; toX: 790; toY: 320; bow: 44; at: inviteScene.tIn[1] + 0.2; until: inviteScene.until }
-        Wire { who: 2; fromX: 1269; fromY: 600; toX: 790; toY: 500; bow: -46; at: inviteScene.tIn[2] + 0.2; until: inviteScene.until }
-        Wire { who: 3; fromX: 1485; fromY: 262; toX: 790; toY: 262; bow: 176; at: inviteScene.tIn[3] + 0.2; until: inviteScene.until }
+        Wire {
+            who: 1
+            fromX: film.tall ? 305 : 913
+            fromY: film.tall ? 1080 : 320
+            toX: film.tall ? 380 : 790
+            toY: film.tall ? 990 : 320
+            bow: film.tall ? -40 : 44
+            at: inviteScene.tIn[1] + 0.2
+            until: inviteScene.until
+        }
+
+        Wire {
+            who: 2
+            fromX: film.tall ? 590 : 1269
+            fromY: film.tall ? 1096 : 600
+            toX: film.tall ? 540 : 790
+            toY: film.tall ? 990 : 500
+            bow: film.tall ? -48 : -46
+            at: inviteScene.tIn[2] + 0.2
+            until: inviteScene.until
+        }
+
+        Wire {
+            who: 3
+            fromX: film.tall ? 825 : 1485
+            fromY: film.tall ? 1110 : 262
+            toX: film.tall ? 700 : 790
+            toY: film.tall ? 990 : 262
+            bow: film.tall ? -54 : 176
+            at: inviteScene.tIn[3] + 0.2
+            until: inviteScene.until
+        }
 
         Device {
             kind: "laptop"
-            x: 930
-            y: 190
-            w: 400
+            x: film.tall ? 170 : 930
+            y: film.tall ? 1099 : 190
+            w: film.tall ? 270 : 400
             who: 1
             how: qsTr("in the app")
             at: film.tInvite + 0.75
@@ -1646,12 +1740,13 @@ Item {
 
         Device {
             kind: "tablet"
-            x: 1290
-            y: 505
-            w: 300
+            x: film.tall ? 490 : 1290
+            y: film.tall ? 1119 : 505
+            w: film.tall ? 200 : 300
+            labelTop: film.tall ? 181 : -1
             who: 2
             how: qsTr("in a browser")
-            labelRight: true
+            labelRight: !film.tall
             at: film.tInvite + 0.9
             joined: inviteScene.tIn[2]
             until: inviteScene.until + 0.05
@@ -1659,9 +1754,10 @@ Item {
 
         Device {
             kind: "phone"
-            x: 1500
-            y: 215
-            w: 240
+            x: film.tall ? 740 : 1500
+            y: film.tall ? 1127 : 215
+            w: film.tall ? 170 : 240
+            labelTop: film.tall ? 173 : -1
             who: 3
             how: qsTr("on a phone")
             at: film.tInvite + 1.05
@@ -1674,11 +1770,13 @@ Item {
             id: invite
             readonly property real k: F.pop(film.t, film.tInvite + 0.7, 10, 6.5)
             readonly property real copied: F.seg(film.t, inviteScene.tCopy, inviteScene.tCopy + 0.2)
-            x: 190
-            y: 640
+            x: film.tall ? 260 : 190
+            y: film.tall ? 1384 : 640
             width: 560
             height: 92
-            opacity: F.seg(film.t, film.tInvite + 0.7, film.tInvite + 0.95) * F.leave(film.t, inviteScene.until - 0.4, 0.4)
+            // Tall, it gives its place to what is said about the way the friends are joined
+            opacity: F.seg(film.t, film.tInvite + 0.7, film.tInvite + 0.95)
+                     * F.leave(film.t, film.tall ? film.tInvite + 3.5 : inviteScene.until - 0.4, film.tall ? 0.35 : 0.4)
             scale: 0.85 + 0.15 * k
 
             Glass {
@@ -1766,8 +1864,8 @@ Item {
                 readonly property real e: F.inOutCubic(u)
                 readonly property point to: inviteScene.spot[who]
                 visible: u > 0 && u < 1
-                x: F.quadX(660, (660 + to.x) / 2, to.x, e)
-                y: F.quadX(686, Math.min(686, to.y) - 190 + index * 40, to.y, e)
+                x: F.quadX(inviteScene.sentFrom.x, (inviteScene.sentFrom.x + to.x) / 2, to.x, e)
+                y: F.quadX(inviteScene.sentFrom.y, film.tall ? to.y + 120 - index * 30 : Math.min(686, to.y) - 190 + index * 40, to.y, e)
 
                 Halo {
                     x: -60
@@ -1801,12 +1899,15 @@ Item {
         // No server in between
         Item {
             readonly property real k: F.pop(film.t, film.tInvite + 3.9, 10, 6.5)
-            x: 792
-            y: 664
+            x: film.tall ? film.midX - width / 2 : 792
+            y: film.tall ? 1401 : 664
+            width: direct.width
+            height: direct.height
             opacity: F.seg(film.t, film.tInvite + 3.9, film.tInvite + 4.15) * F.leave(film.t, inviteScene.until - 0.4, 0.4)
-            scale: 0.85 + 0.15 * k
+            scale: (0.85 + 0.15 * k) * (film.tall ? 1.12 : 1)
 
             Rectangle {
+                id: direct
                 width: directRow.width + 44
                 height: 58
                 radius: 29
@@ -1851,11 +1952,17 @@ Item {
     Item {
         id: modesScene
         visible: film.t > film.tModes - 0.1 && film.t < film.tCouch + 0.5
-        readonly property real until: film.tCouch + 0.15
+        /** Tall, the screen comes back right where the cards stand: they have left by then. */
+        readonly property real until: film.tCouch + (film.tall ? -0.1 : 0.15)
+        /**
+         * Tall: one card at a time, large, in the middle; the next one comes in from the right
+         * when the word passes on. Which card is in the middle, 0 to 2.
+         */
+        readonly property real turn: F.track(film.t, [[film.tModes + 2.15, 0], [film.tModes + 2.65, 1], [film.tModes + 4.55, 1], [film.tModes + 5.05, 2]])
 
         Mode {
-            x: 150
-            y: 236
+            x: film.tall ? 280 - modesScene.turn * 920 : 150
+            y: film.tall ? 780 : 236
             kind: 0
             title: qsTr("Together")
             line: qsTr("Everybody's buttons count at the same time.")
@@ -1866,8 +1973,8 @@ Item {
         }
 
         Mode {
-            x: 700
-            y: 236
+            x: film.tall ? 280 + (1 - modesScene.turn) * 920 : 700
+            y: film.tall ? 780 : 236
             kind: 1
             title: qsTr("One at a time")
             line: qsTr("Whoever moves takes over, the others rest.")
@@ -1878,8 +1985,8 @@ Item {
         }
 
         Mode {
-            x: 1250
-            y: 236
+            x: film.tall ? 280 + (2 - modesScene.turn) * 920 : 1250
+            y: film.tall ? 780 : 236
             kind: 2
             title: qsTr("Each their own")
             line: qsTr("Player 1, 2, 3 and 4, for a game on this computer.")
@@ -1887,6 +1994,28 @@ Item {
             onFrom: film.tModes + 4.65
             onTo: film.tCouch - 0.25
             until: modesScene.until + 0.12
+        }
+
+        // Tall: which of the three is in the middle
+        Row {
+            visible: film.tall
+            x: film.midX - width / 2
+            y: 1346
+            spacing: 14
+            opacity: F.during(film.t, film.tModes + 0.9, modesScene.until, 0.5, 0.4)
+
+            Repeater {
+                model: 3
+
+                Rectangle {
+                    required property int index
+                    readonly property real here: Math.max(0, 1 - Math.abs(modesScene.turn - index))
+                    width: 14 + 30 * here
+                    height: 14
+                    radius: 7
+                    color: F.lerpColor(Qt.rgba(1, 1, 1, 0.22), film.cYou, here)
+                }
+            }
         }
 
         Caption {
@@ -1903,20 +2032,28 @@ Item {
     Item {
         id: couchScene
         visible: film.t > film.tCouch && film.t < film.tStream + 0.5
-        readonly property real until: film.tStream + 0.2
+        /** Tall, the screen goes up to where the faces are: they have left by then. */
+        readonly property real until: film.tStream + (film.tall ? -0.05 : 0.2)
+        /** Tall: how large the faces are, and where the first one's corner is so that the row of four is as wide as the screen. */
+        readonly property real camZoom: film.tall ? 0.78 : 1
+        readonly property real camX: 90 - 280 * (1 - camZoom) / 2
+        readonly property real camY: 630 - 158 * (1 - camZoom) / 2
+        readonly property real camStep: (900 - 280 * camZoom) / 3
 
-        Cam { who: 1; x: 1190; y: 168; at: film.tCouch + 0.45; until: couchScene.until }
-        Cam { who: 3; x: 1490; y: 168; at: film.tCouch + 0.6; until: couchScene.until + 0.04 }
-        Cam { who: 0; x: 1190; y: 346; at: film.tCouch + 0.75; until: couchScene.until + 0.08 }
-        Cam { who: 2; x: 1490; y: 346; at: film.tCouch + 0.9; until: couchScene.until + 0.12 }
+        // Wide: two by two beside the screen. Tall: in a row over it, as wide as it is
+        Cam { who: 1; x: film.tall ? couchScene.camX : 1190; y: film.tall ? couchScene.camY : 168; zoom: couchScene.camZoom; at: film.tCouch + 0.45; until: couchScene.until }
+        Cam { who: 3; x: film.tall ? couchScene.camX + couchScene.camStep : 1490; y: film.tall ? couchScene.camY : 168; zoom: couchScene.camZoom; at: film.tCouch + 0.6; until: couchScene.until + 0.04 }
+        Cam { who: 0; x: film.tall ? couchScene.camX + 2 * couchScene.camStep : 1190; y: film.tall ? couchScene.camY : 346; zoom: couchScene.camZoom; at: film.tCouch + 0.75; until: couchScene.until + 0.08 }
+        Cam { who: 2; x: film.tall ? couchScene.camX + 3 * couchScene.camStep : 1490; y: film.tall ? couchScene.camY : 346; zoom: couchScene.camZoom; at: film.tCouch + 0.9; until: couchScene.until + 0.12 }
 
         // The chat: what they write while they play
         Item {
             id: chat
-            x: 1190
-            y: 528
+            x: film.tall ? 250 : 1190
+            y: film.tall ? 1311 : 528
             width: 580
             height: 180
+            scale: film.tall ? 1.2 : 1
             opacity: F.during(film.t, film.tCouch + 1.0, couchScene.until, 0.5, 0.4)
 
             Glass {
@@ -2005,6 +2142,10 @@ Item {
         Item {
             x: film.screenX
             y: film.screenY
+            width: 1040
+            height: 585
+            // Tall, the heading stands right over the screen: what drops into the picture comes out of its edge
+            clip: film.tall
             scale: streamScene.s
             transformOrigin: Item.TopLeft
             opacity: film.screenThere
@@ -2183,12 +2324,12 @@ Item {
         Item {
             id: goLive
             readonly property real k: F.pop(film.t, film.tStream + 0.6, 10, 6.5)
-            x: 100
-            y: 300
+            x: film.tall ? 192 : 100
+            y: film.tall ? 1208 : 300
             width: 300
             height: 230
             opacity: F.seg(film.t, film.tStream + 0.6, film.tStream + 0.85) * streamScene.gone
-            scale: 0.85 + 0.15 * k
+            scale: (0.85 + 0.15 * k) * (film.tall ? 1.15 : 1)
 
             Glass {
                 anchors.fill: parent
@@ -2260,10 +2401,10 @@ Item {
         }
 
         // What comes with it
-        Chip { x: 1520; y: 262; iconName: "layers"; text: qsTr("Overlay for OBS"); tint: film.cMika; at: film.tStream + 3.6; until: streamScene.until }
-        Chip { x: 1520; y: 338; iconName: "heart"; text: qsTr("Twitch alerts"); tint: film.cAva; at: film.tStream + 3.9; until: streamScene.until + 0.04 }
-        Chip { x: 1520; y: 414; iconName: "monitor"; text: qsTr("Stream scenes"); tint: film.cLeo; at: film.tStream + 4.2; until: streamScene.until + 0.08 }
-        Chip { x: 1520; y: 490; iconName: "gamepad"; text: qsTr("Viewer actions"); tint: film.cYou; at: film.tStream + 4.5; until: streamScene.until + 0.12 }
+        Chip { x: film.tall ? 595 : 1520; y: film.tall ? 1175 : 262; zoom: film.tall ? 1.1 : 1; iconName: "layers"; text: qsTr("Overlay for OBS"); tint: film.cMika; at: film.tStream + 3.6; until: streamScene.until }
+        Chip { x: film.tall ? 595 : 1520; y: film.tall ? 1253 : 338; zoom: film.tall ? 1.1 : 1; iconName: "heart"; text: qsTr("Twitch alerts"); tint: film.cAva; at: film.tStream + 3.9; until: streamScene.until + 0.04 }
+        Chip { x: film.tall ? 595 : 1520; y: film.tall ? 1331 : 414; zoom: film.tall ? 1.1 : 1; iconName: "monitor"; text: qsTr("Stream scenes"); tint: film.cLeo; at: film.tStream + 4.2; until: streamScene.until + 0.08 }
+        Chip { x: film.tall ? 595 : 1520; y: film.tall ? 1409 : 490; zoom: film.tall ? 1.1 : 1; iconName: "gamepad"; text: qsTr("Viewer actions"); tint: film.cYou; at: film.tStream + 4.5; until: streamScene.until + 0.12 }
 
         Caption {
             head: qsTr("Made for")
@@ -2290,8 +2431,8 @@ Item {
         visible: film.t > film.tEnd + 0.3
 
         Letters {
-            x: 960 - implicitWidth / 2
-            y: 428
+            x: film.midX - implicitWidth / 2
+            y: film.tall ? 540 : 428
             text: qsTr("Ready when you are.")
             size: 84
             from: "#ffffff"
@@ -2304,12 +2445,13 @@ Item {
         Item {
             id: hostDoor
             readonly property real k: F.pop(film.t, film.tEnd + 1.25, 9, 6)
-            x: 470
-            y: 584
+            // Wide: the two doors side by side. Tall: one under the other, larger
+            x: film.tall ? 305 : 470
+            y: film.tall ? 732 : 584
             width: 470
             height: 212
             opacity: F.seg(film.t, film.tEnd + 1.25, film.tEnd + 1.5)
-            scale: (0.86 + 0.14 * k) * (hostArea.pressed ? 0.98 : 1)
+            scale: (0.86 + 0.14 * k) * (hostArea.pressed ? 0.98 : 1) * (film.tall ? 1.3 : 1)
 
             Rectangle {
                 anchors.fill: parent
@@ -2390,12 +2532,12 @@ Item {
         Item {
             id: joinDoor
             readonly property real k: F.pop(film.t, film.tEnd + 1.4, 9, 6)
-            x: 980
-            y: 584
+            x: film.tall ? 305 : 980
+            y: film.tall ? 1032 : 584
             width: 470
             height: 212
             opacity: F.seg(film.t, film.tEnd + 1.4, film.tEnd + 1.65)
-            scale: (0.86 + 0.14 * k) * (joinArea.pressed ? 0.98 : 1)
+            scale: (0.86 + 0.14 * k) * (joinArea.pressed ? 0.98 : 1) * (film.tall ? 1.3 : 1)
 
             Rectangle {
                 anchors.fill: parent
@@ -2464,8 +2606,9 @@ Item {
         // Once more from the start
         Item {
             id: again
-            x: 960 - width / 2
-            y: 844
+            visible: !film.promo
+            x: film.midX - width / 2
+            y: film.tall ? 1330 : 844
             width: againRow.width + 44
             height: 56
             opacity: F.enter(film.t, film.tEnd + 1.9, 0.6)
@@ -2523,9 +2666,20 @@ Item {
     // ------------------------------------------------------------ the title
 
     // The icon: put together in the middle, then it waits in the corner for the end
-    readonly property real iconX: F.track(t, [[2.0, 960], [2.7, 960], [4.25, 960], [5.15, 112], [tEnd - 0.2, 112], [tEnd + 0.9, 960]])
-    readonly property real iconY: F.track(t, [[2.0, 470], [2.7, 372], [4.25, 372], [5.15, 92], [tEnd - 0.2, 92], [tEnd + 0.9, 286]])
-    readonly property real iconSize: F.track(t, [[2.0, 400], [2.7, 300], [4.25, 300], [5.15, 68], [tEnd - 0.2, 68], [tEnd + 0.9, 200]])
+    /**
+     * Where the icon waits with the name while the film runs: the stage's top left corner.
+     * Tall: the middle of its top, over what is said, the two together in the middle.
+     */
+    readonly property real cornerSize: tall ? 52 : 68
+    readonly property real cornerX: tall ? midX - (cornerSize + 14 + markName.width) / 2 + cornerSize / 2 : 112
+    readonly property real cornerY: tall ? 280 : 92
+    readonly property real iconX: F.track(t, [[2.0, midX], [2.7, midX], [4.25, midX], [5.15, cornerX], [tEnd - 0.2, cornerX], [tEnd + 0.9, midX]])
+    readonly property real iconY: tall
+        ? F.track(t, [[2.0, 730], [2.7, 650], [4.25, 650], [5.15, cornerY], [tEnd - 0.2, cornerY], [tEnd + 0.9, 400]])
+        : F.track(t, [[2.0, 470], [2.7, 372], [4.25, 372], [5.15, cornerY], [tEnd - 0.2, cornerY], [tEnd + 0.9, 286]])
+    readonly property real iconSize: tall
+        ? F.track(t, [[2.0, 400], [2.7, 320], [4.25, 320], [5.15, cornerSize], [tEnd - 0.2, cornerSize], [tEnd + 0.9, 200]])
+        : F.track(t, [[2.0, 400], [2.7, 300], [4.25, 300], [5.15, cornerSize], [tEnd - 0.2, cornerSize], [tEnd + 0.9, 200]])
     /** When the two rings meet. */
     readonly property real tLink: 1.2
 
@@ -2596,28 +2750,29 @@ Item {
 
     // The name next to the icon once it sits in the corner
     T {
-        x: 160
-        y: 92 - height / 2
+        id: markName
+        x: film.cornerX + film.cornerSize / 2 + 14
+        y: film.cornerY - height / 2
         text: "PSRemotePlayTogether"
         color: "#cdb6ff"
-        font.pixelSize: 27
+        font.pixelSize: film.tall ? 25 : 27
         font.weight: Font.ExtraBold
         opacity: F.during(film.t, 5.0, film.tEnd - 0.1, 0.6, 0.4) * 0.9
     }
 
     Letters {
-        x: 960 - implicitWidth / 2
-        y: 572
+        x: film.midX - implicitWidth / 2
+        y: film.tall ? 850 : 572
         text: "PSRemotePlayTogether"
-        size: 112
+        size: film.tall ? 76 : 112
         at: 2.4
         until: 4.2
     }
 
     T {
         readonly property real k: F.enter(film.t, 3.3, 0.7)
-        x: 960 - width / 2
-        y: 730 + (1 - k) * 22 - (1 - F.leave(film.t, 4.2, 0.4)) * 16
+        x: film.midX - width / 2
+        y: (film.tall ? 960 : 730) + (1 - k) * 22 - (1 - F.leave(film.t, 4.2, 0.4)) * 16
         text: qsTr("Play your games together, from anywhere.")
         color: film.soft
         font.pixelSize: 42

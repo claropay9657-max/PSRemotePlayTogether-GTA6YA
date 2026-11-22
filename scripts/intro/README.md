@@ -18,6 +18,8 @@ Use the `rcc` of the Qt that `filmshot` was built with: an older Qt cannot read 
 resource files. Building against the Qt version of the Windows and Linux builds (see
 `scripts/ci`) shows the film as it looks there.
 
+    # the colours of a video, said in its stream (FFmpeg takes them from the pictures, not from options)
+    TAGS=setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv
     # one moment, 1920 x 1080
     build/filmshot/filmshot scripts/intro/stage.qml 960 540 shot frame.png 9.6
     # sixteen moments on one sheet
@@ -25,7 +27,50 @@ resource files. Building against the Qt version of the Windows and Linux builds 
     # the whole film with its sound, 1280 x 720
     build/filmshot/filmshot scripts/intro/stage.qml 640 360 raw 30 0 54.3 \
       | ffmpeg -f rawvideo -pix_fmt rgba -s 1280x720 -r 30 -i - -i gui/res/sounds/intro.flac \
-               -c:v libx264 -crf 19 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest intro.mp4
+               -vf "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,$TAGS" \
+               -c:v libx264 -crf 19 -c:a aac -b:a 192k -shortest intro.mp4
+
+The numbers after the file are the picture's size in points; every point is two pixels
+(`FILMSHOT_DPR` says otherwise). `name=value` anywhere after them sets a property of
+`stage.qml`: `still=1` (the sky stands still), `tall=1` (the upright film) and `promo=1`
+(a video to post, see below). The `scale` options and `$TAGS` matter: without them FFmpeg
+writes the colours the way small pictures have them, players read a large picture the other
+way, and the film's purple and pink come out a little wrong.
+
+## The upright film
+
+`tall=1` shows the film on its upright stage, 1080 x 1920: the same film at the same times,
+laid out for a picture higher than wide. The app's player shows it in a window higher than
+wide; the frame for it is 9 to 16:
+
+    build/filmshot/filmshot scripts/intro/stage.qml 540 960 shot frame.png 9.6 tall=1
+
+What matters in it keeps away from where the apps for upright videos (TikTok, Instagram
+Reels, YouTube Shorts) lay their own buttons over a video: nothing above 250 or below 1500,
+and in the lower half nothing right of 910 but the game picture. `IntroFilm.qml` says so
+where `tall` is declared; keep to it when something moves.
+
+## A video to post
+
+`promo=1` makes the film a video about the app: the end does not offer to play again and
+says where the app is to be had instead, and the upright one opens with a line of its own
+over the icon coming together (the lines are in `stage.qml`). For posting, the sound is
+raised to the loudness those apps play at (-14 LUFS, peaks held under -1 dB) without
+changing the film's own file:
+
+    ffmpeg -i gui/res/sounds/intro.flac -c:a pcm_s24le reel-sound.wav \
+           -af aresample=192000,volume=4dB,alimiter=limit=0.87:attack=3:release=60:level=false,aresample=48000
+
+    # upright, rendered once at 60 pictures a second and written at 30 (every app) and at 60
+    build/filmshot/filmshot scripts/intro/stage.qml 540 960 raw 60 0 54.34 tall=1 promo=1 \
+      | ffmpeg -f rawvideo -pix_fmt rgba -s 1080x1920 -r 60 -i - -i reel-sound.wav -filter_complex \
+          "[0:v]scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,format=yuv420p,$TAGS,split=2[v60][vh];[vh]fps=30[v30];[1:a]asplit=2[a60][a30]" \
+          -map "[v30]" -map "[a30]" -c:v libx264 -preset slow -crf 16 -x264-params aq-mode=3 \
+          -c:a aac -b:a 256k -movflags +faststart intro-reel.mp4 \
+          -map "[v60]" -map "[a60]" -c:v libx264 -preset slow -crf 16 -x264-params aq-mode=3 \
+          -c:a aac -b:a 256k -movflags +faststart intro-reel-60fps.mp4
+
+The wide one is the same without `tall=1`, at `960 540` and `1920x1080`.
 
 ## The film at the top of the README
 
