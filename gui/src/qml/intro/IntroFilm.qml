@@ -5,23 +5,26 @@ import QtQuick.Shapes
 import "../controls" as C
 import "Film.js" as F
 
-// The intro film: what the app is for and how it works, in under a minute. A stage that
-// whoever shows it scales to fit (IntroPlayer.qml): 1920 x 1080, or 1080 x 1920 where it
-// stands upright (`tall`: a window higher than wide, a video for a phone). Both show the same
-// film at the same times; only where things are differs, and every place says both. Nothing
-// here runs by itself: everything is drawn from the time `t`, so the film can be paused,
-// jumped through and looked at one moment at a time.
+// The intro film: what the app is for and how it works, in under a minute. A stage of
+// 1920 x 1080 that whoever shows it scales to fit (IntroPlayer.qml). Nothing here runs by
+// itself: everything is drawn from the time `t`, so the film can be paused, jumped through
+// and looked at one moment at a time.
+//
+// For videos about the app, and only for those (scripts/intro renders them; the app never
+// sets it), the film has a second stage, upright: `tall`. It shows the same film at the same
+// times; only where things are differs, and every place says both.
 Item {
     id: film
 
     /** Where the film is, in seconds. */
     property real t: 0
     /**
-     * The stage stands upright, 1080 x 1920: the name and what is said at the top, and under
-     * them (from 630 down) what the chapter shows. The apps that play upright videos lay their
-     * own buttons over them, so nothing that matters is higher than 250 or lower than 1500,
-     * and in the lower half (from 1000 down) nothing is further right than 910, where their
-     * column of buttons stands. A game picture may reach under that column; words may not.
+     * For a video for a phone, not for the app: the stage stands upright, 1080 x 1920, the name
+     * and what is said at the top, and under them (from 630 down) what the chapter shows. The
+     * apps that play upright videos lay their own buttons over them, so nothing that matters
+     * is higher than 250 or lower than 1500, and in the lower half (from 1000 down) nothing is
+     * further right than 910, where their column of buttons stands. A game picture may reach
+     * under that column; words may not.
      */
     property bool tall: false
     /** A video about the app, not the app: the end has nothing to press, so it does not offer to play again. */

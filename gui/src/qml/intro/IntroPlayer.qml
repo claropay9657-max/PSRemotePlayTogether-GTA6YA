@@ -5,12 +5,10 @@ import "../controls" as C
 import "Film.js" as F
 
 // Plays the intro film (IntroFilm.qml) in whatever space it gets: the film's stage scaled to
-// fit (its upright one in a space higher than wide), its backdrop out to the edges, and around
-// it what a film needs: chapters to jump to, pause, sound on and off, and a way out. Mouse,
-// keys and controller (whose buttons arrive as keys):
+// fit, its backdrop out to the edges, and around it what a film needs: chapters to jump to,
+// pause, sound on and off, and a way out. Mouse, keys and controller (whose buttons arrive as keys):
 //   Space or Return   pause and play; at the end, Return takes what has the ring
 //   Left and Right    the chapter before and after; at the end, from one choice to the next
-//                     (Up and Down too where the choices stand one under the other)
 //   M                 sound off and on
 //   Escape            leaves
 FocusScope {
@@ -167,14 +165,11 @@ FocusScope {
                 step(true);
             break;
         case Qt.Key_Down:
-            // Upright, the three choices stand one under the other
             if (atEnd)
-                film.endFocus = film.tall ? Math.min(2, Math.max(0, film.endFocus) + 1) : 2;
+                film.endFocus = 2;
             break;
         case Qt.Key_Up:
-            if (atEnd && film.tall)
-                film.endFocus = Math.max(0, film.endFocus - 1);
-            else if (atEnd && film.endFocus === 2)
+            if (atEnd && film.endFocus === 2)
                 film.endFocus = 0;
             break;
         default:
@@ -223,12 +218,10 @@ FocusScope {
 
     IntroFilm {
         id: film
-        // Upright where that shows it larger: in a space clearly higher than wide
-        tall: player.height > player.width * 1.1
-        scale: Math.min(player.width / width, player.height / height)
+        scale: Math.min(player.width / 1920, player.height / 1080)
         transformOrigin: Item.TopLeft
-        x: (player.width - width * scale) / 2
-        y: (player.height - height * scale) / 2
+        x: (player.width - 1920 * scale) / 2
+        y: (player.height - 1080 * scale) / 2
         onHostChosen: player.leave("host")
         onJoinChosen: player.leave("join")
         onAgainChosen: player.again()

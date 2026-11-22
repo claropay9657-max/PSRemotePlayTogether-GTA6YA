@@ -3,10 +3,6 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
-## Unreleased
-
-- **The intro film stands upright in a tall window.** Where the app's window is higher than wide, the film shows its own upright picture, laid out for it and with everything larger, instead of a small wide one in the middle.
-
 ## 0.5.0
 
 - **New: the intro film.** What the app is for and how it works, in under a minute: friends' controllers playing one game, what you can share, inviting with a link, who plays, voice chat and webcams, streaming. With its own music and sounds, made for it. It plays once by itself on a new installation, and **How it works** on the start page shows it again any time. Space pauses, the arrows jump from chapter to chapter, M switches the sound off, Esc leaves; a controller works too. At its end, **Host a game** and **Join a friend** lead straight on.

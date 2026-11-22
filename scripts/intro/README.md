@@ -40,8 +40,8 @@ way, and the film's purple and pink come out a little wrong.
 ## The upright film
 
 `tall=1` shows the film on its upright stage, 1080 x 1920: the same film at the same times,
-laid out for a picture higher than wide. The app's player shows it in a window higher than
-wide; the frame for it is 9 to 16:
+laid out for a picture higher than wide. It is for videos for phones only: the app always
+shows the wide film, whatever the shape of its window. The frame for it is 9 to 16:
 
     build/filmshot/filmshot scripts/intro/stage.qml 540 960 shot frame.png 9.6 tall=1
 
