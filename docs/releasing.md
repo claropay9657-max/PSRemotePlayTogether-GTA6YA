@@ -84,10 +84,50 @@ GamerNova.net". Run it locally to see what a release will say.
 
 A moment after it starts, the app asks GitHub for the latest release
 (`gui/src/qmlbackend_update.cpp`). If that is newer than the running version,
-the start page shows "Update available" and offers to open the release page.
+the start page shows "Update available" and asks whether to look at what is new.
 Nothing is downloaded by itself, and **Settings → Updates & logs → Check for updates**
 switches the check off. So a new release reaches existing users as soon as its
 "Publish the release" job is done.
+
+### The app updating itself
+
+From 0.5.1 on, **Update and restart** on that page installs the release
+(`gui/src/appupdater.cpp`; what can be tried without a network or another
+system is in `gui/src/appupdate.cpp` and `test/appupdate.cpp`). For that a
+release has to be what the build jobs make it:
+
+- its files named as in the table above, each with its `.sha256` next to it.
+  The app takes the file for its system, downloads it and the `.sha256`, and
+  installs nothing whose SHA-256 is not the published one (GitHub's own
+  `digest` of the file has to agree too, where the release's list has one);
+- the Windows zip holding one folder with `PSRemotePlayTogether.exe` in it,
+  the dmg holding `PSRemotePlayTogether.app`.
+
+The app only follows addresses under
+`https://github.com/Crypto90/PSRemotePlayTogether/releases/download/`. The sum
+comes from the same release as the file: it catches a download that is broken
+or cut short, not a release that was replaced by someone with access to the
+repository. Signing releases with a key of the project's own would be the step
+after this one.
+
+How a version takes the old one's place:
+
+| System | What happens |
+| --- | --- |
+| macOS | The app is copied out of the dmg next to the running bundle, the two are swapped by renaming, and the new one is opened once the old one has closed. Not possible while macOS runs the app from a protected copy (never moved since the download) or where the bundle cannot be changed. |
+| Windows | The zip is unpacked next to the app's folder with Windows' own `tar.exe`. A script for `cmd` in the temp folder waits for the app to close, swaps the two folders, starts the app and removes the old folder; if the swap fails, the old folder comes back and is started. |
+| Linux | The new AppImage replaces the one the app was started from (`$APPIMAGE`), under the new version's name if the old file's name said its version, and is started once the old one has closed. Builds that are no AppImage are not updated this way. |
+
+Where the app cannot replace itself, the page says why and offers the download
+page instead.
+
+**Trying it without a release.** `PSRPT_UPDATE_CHECK_URL` makes the app ask
+another address than GitHub's for the latest release. If that address is on
+this computer (`127.0.0.1` or `localhost`), files it names there are followed
+too. Serve a JSON file like GitHub's answer (`tag_name`, `body`, and `assets`
+with `name` and `browser_download_url` for the file and its `.sha256`) from a
+local web server, and start a copy of the app with the variable set: a copy,
+because the update replaces the app it runs from.
 
 ## macOS
 

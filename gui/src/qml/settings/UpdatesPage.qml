@@ -6,8 +6,9 @@ import org.streetpea.chiaking
 
 import "../controls" as C
 
-// Updates & logs: which version this is and whether a newer one is out, the update
-// check, logs for bug reports, and the credits and licenses.
+// Updates & logs: which version this is and whether a newer one is out, updating to it
+// from here (Chiaki.updater, appupdater.h), what is new in each version, the update check,
+// logs for bug reports, and the credits and licenses.
 C.SettingsPage {
     id: page
     title: qsTr("Updates & logs")
@@ -15,6 +16,23 @@ C.SettingsPage {
 
     /** A newer release than this build, found by the update check; "" when none is known. */
     readonly property string newer: Chiaki.updateVersion || ""
+    /** The app updating itself, and the changelog. */
+    readonly property var up: Chiaki.updater
+    /** The versions whose changes are open on this page; this one's from the start. */
+    property var opened: ({})
+    /** The newest versions are listed from the start, the ones before them once asked for: the page stays short. */
+    readonly property int firstVersions: 4
+    property bool allVersions: false
+
+    function isOpen(version) {
+        return opened[version] !== undefined ? opened[version] : version === Qt.application.version;
+    }
+
+    function setOpen(version, open) {
+        const next = Object.assign({}, opened);
+        next[version] = open;
+        opened = next;
+    }
     /** "Check now" was pressed and the answer may still come. */
     property bool checking: false
     property bool checkedNow: false
@@ -36,6 +54,95 @@ C.SettingsPage {
         onTriggered: {
             page.checking = false;
             page.checkedNow = true;
+        }
+    }
+
+    /**
+     * What changed, as a list: each entry with what it is in bold and the rest after it. What
+     * is new has a mark that says so, the note at the end an "i".
+     */
+    component ChangeList: ColumnLayout {
+        id: changeList
+        /** [{ html, isNew, isNote }, …] as Chiaki.updater has them. */
+        property var changes: []
+
+        spacing: 10
+
+        Repeater {
+            model: changeList.changes
+
+            RowLayout {
+                id: change
+                required property var modelData
+
+                Layout.fillWidth: true
+                spacing: 12
+
+                // What kind of entry it is, in a column of its own so that the texts line up
+                Item {
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 20
+
+                    Rectangle {
+                        visible: change.modelData.isNew
+                        anchors.right: parent.right
+                        y: 1
+                        width: newWord.implicitWidth + 12
+                        height: 18
+                        radius: 9
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: C.Theme.buttonFrom }
+                            GradientStop { position: 1.0; color: C.Theme.buttonTo }
+                        }
+
+                        Text {
+                            id: newWord
+                            anchors.centerIn: parent
+                            text: qsTr("NEW")
+                            color: "#ffffff"
+                            font.pixelSize: 10
+                            font.weight: Font.ExtraBold
+                            font.letterSpacing: 0.6
+                        }
+                    }
+
+                    C.Icon {
+                        visible: change.modelData.isNote
+                        anchors.right: parent.right
+                        anchors.rightMargin: 2
+                        y: 1
+                        iconName: "info"
+                        size: 18
+                        color: C.Theme.wait
+                    }
+
+                    Rectangle {
+                        visible: !change.modelData.isNew && !change.modelData.isNote
+                        anchors.right: parent.right
+                        anchors.rightMargin: 7
+                        y: 7
+                        width: 7
+                        height: 7
+                        radius: 3.5
+                        color: "#a77bff"
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    textFormat: Text.RichText
+                    wrapMode: Text.WordWrap
+                    lineHeight: 1.2
+                    color: change.modelData.isNote ? C.Theme.textDim : C.Theme.textSoft
+                    font.pixelSize: 14
+                    // What it is stands out; names of commands look like what is typed
+                    text: change.modelData.html
+                          .replace(/<b>/g, "<span style=\"color:#f3f1ff; font-weight:800\">").replace(/<\/b>/g, "</span>")
+                          .replace(/<code>/g, "<span style=\"font-family:Menlo,Consolas,'DejaVu Sans Mono',monospace; color:#cdb6ff\">").replace(/<\/code>/g, "</span>")
+                }
+            }
         }
     }
 
@@ -206,11 +313,95 @@ C.SettingsPage {
                     text: qsTr("%1 is out").arg(page.newer)
                 }
 
+                // The app puts the new version in place itself, where it can
                 C.PillButton {
-                    visible: page.newer.length > 0
+                    visible: page.newer.length > 0 && page.up.possible && !page.up.busy
                     Layout.alignment: about.narrow ? Qt.AlignLeft : Qt.AlignRight
                     implicitHeight: 40
                     kind: "primary"
+                    iconName: "download"
+                    // Not in the middle of a game
+                    enabled: !Chiaki.session
+                    text: page.up.state === "failed" ? qsTr("Try again") : qsTr("Update and restart")
+                    Accessible.description: qsTr("Downloads version %1, checks it, puts it in place and starts the app again.").arg(page.newer)
+                    onClicked: page.up.start()
+                }
+
+                // At work: how far, and a way to stop while it still only downloads
+                ColumnLayout {
+                    visible: page.newer.length > 0 && page.up.busy
+                    Layout.alignment: about.narrow ? Qt.AlignLeft : Qt.AlignRight
+                    // As wide as this, or as the card has room for
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 260
+                    Layout.maximumWidth: 260
+                    spacing: 6
+
+                    Text {
+                        Layout.fillWidth: true
+                        horizontalAlignment: about.narrow ? Text.AlignLeft : Text.AlignRight
+                        wrapMode: Text.WordWrap
+                        color: C.Theme.text
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                        text: page.up.state === "download" ? qsTr("Downloading version %1… %2 %").arg(page.newer).arg(Math.round(page.up.progress * 100))
+                              : page.up.state === "check" ? qsTr("Checking the download…")
+                              : page.up.state === "install" ? qsTr("Putting version %1 in place…").arg(page.newer)
+                              : qsTr("Starting version %1…").arg(page.newer)
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 6
+                        radius: 3
+                        color: Qt.rgba(1, 1, 1, 0.14)
+
+                        Rectangle {
+                            width: parent.width * (page.up.state === "download" ? page.up.progress : 1)
+                            height: parent.height
+                            radius: 3
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: C.Theme.brandFrom }
+                                GradientStop { position: 1.0; color: C.Theme.brandTo }
+                            }
+                        }
+                    }
+
+                    C.PillButton {
+                        visible: page.up.state === "download"
+                        Layout.alignment: about.narrow ? Qt.AlignLeft : Qt.AlignRight
+                        small: true
+                        text: qsTr("Stop")
+                        onClicked: page.up.cancel()
+                    }
+                }
+
+                // What went wrong, or why the app cannot replace itself
+                Text {
+                    visible: page.newer.length > 0 && !page.up.busy && text.length > 0
+                    Layout.alignment: about.narrow ? Qt.AlignLeft : Qt.AlignRight
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 300
+                    Layout.maximumWidth: 300
+                    horizontalAlignment: about.narrow ? Text.AlignLeft : Text.AlignRight
+                    wrapMode: Text.WordWrap
+                    lineHeight: 1.15
+                    color: page.up.state === "failed" ? "#ffc2d1" : C.Theme.textDim
+                    font.pixelSize: 12
+                    text: page.up.state === "failed" ? page.up.error
+                          : !page.up.possible ? page.up.reason
+                          : Chiaki.session ? qsTr("After the game: an update closes the app.") : ""
+                }
+
+                // The download page: the way where the app cannot do it, and always there
+                C.PillButton {
+                    visible: page.newer.length > 0 && !page.up.busy
+                    Layout.alignment: about.narrow ? Qt.AlignLeft : Qt.AlignRight
+                    implicitHeight: page.up.possible ? 34 : 40
+                    small: page.up.possible
+                    kind: page.up.possible ? "ghost" : "primary"
+                    iconName: "external"
                     text: qsTr("Open the download page")
                     onClicked: Chiaki.openUpdatePage()
                 }
@@ -231,6 +422,269 @@ C.SettingsPage {
                     text: qsTr("No newer version found")
                     color: C.Theme.textDim
                     font.pixelSize: 12
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------ what is new
+
+    // In the version that is out, before it is installed
+    Rectangle {
+        id: comingCard
+        readonly property bool isSettingRow: true
+        readonly property string title: qsTr("New in version %1").arg(page.newer)
+        readonly property string subtitle: qsTr("What the update brings.")
+        readonly property string keywords: qsTr("changelog changes release notes what is new whats new")
+
+        visible: page.newer.length > 0 && page.up.news.length > 0
+        Layout.fillWidth: true
+        implicitHeight: comingColumn.implicitHeight + 36
+        radius: 20
+        color: C.Theme.card
+        border.width: 1
+        border.color: Qt.rgba(140 / 255, 82 / 255, 1, 0.45)
+
+        ColumnLayout {
+            id: comingColumn
+            x: 20
+            y: 18
+            width: parent.width - 40
+            spacing: 14
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                C.GradientText {
+                    text: comingCard.title
+                    font.pixelSize: 17
+                    font.weight: Font.ExtraBold
+                    from: "#a77bff"
+                    to: C.Theme.brandTo
+                }
+
+                C.Badge {
+                    tone: "play"
+                    dot: true
+                    text: qsTr("out now")
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+            }
+
+            ChangeList {
+                Layout.fillWidth: true
+                changes: page.up.news
+            }
+        }
+    }
+
+    // In this version and the ones before it: the app carries its changelog
+    Rectangle {
+        id: historyCard
+        readonly property bool isSettingRow: true
+        readonly property string title: qsTr("What's new")
+        readonly property string subtitle: qsTr("What changed in this version and in the ones before it.")
+        readonly property string keywords: qsTr("changelog changes release notes history versions whats new")
+
+        visible: page.up.history.length > 0
+        Layout.fillWidth: true
+        implicitHeight: historyColumn.implicitHeight + 32
+        radius: 20
+        color: C.Theme.card
+        border.width: 1
+        border.color: C.Theme.line
+
+        ColumnLayout {
+            id: historyColumn
+            x: 20
+            y: 16
+            width: parent.width - 40
+            spacing: 4
+
+            C.SectionLabel {
+                Layout.bottomMargin: 6
+                text: historyCard.title
+            }
+
+            Repeater {
+                model: page.up.history
+
+                ColumnLayout {
+                    id: entry
+                    required property var modelData
+                    required property int index
+                    readonly property bool open: page.isOpen(modelData.version)
+                    readonly property bool mine: modelData.version === Qt.application.version
+
+                    visible: page.allVersions || index < page.firstVersions
+                    Layout.fillWidth: true
+                    spacing: 0
+
+                    Rectangle {
+                        visible: entry.index > 0
+                        Layout.fillWidth: true
+                        implicitHeight: 1
+                        color: Qt.rgba(1, 1, 1, 0.06)
+                    }
+
+                    // The version: a click opens and closes what changed in it
+                    QQC.AbstractButton {
+                        id: versionButton
+                        property bool firstInFocusChain: false
+                        property bool lastInFocusChain: false
+
+                        Layout.fillWidth: true
+                        implicitHeight: 44
+                        hoverEnabled: true
+                        focusPolicy: Qt.StrongFocus
+                        Accessible.name: entry.open ? qsTr("Version %1, close").arg(entry.modelData.version)
+                                                    : qsTr("Version %1, show what changed").arg(entry.modelData.version)
+                        onClicked: page.setOpen(entry.modelData.version, !entry.open)
+                        Keys.onPressed: (event) => C.FocusChain.handle(versionButton, event)
+
+                        background: Rectangle {
+                            radius: 10
+                            color: Qt.rgba(1, 1, 1, versionButton.down ? 0.07 : versionButton.hovered ? 0.04 : 0)
+
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: -2
+                                radius: 12
+                                color: "transparent"
+                                border.width: 2
+                                border.color: C.Theme.focus
+                                visible: versionButton.visualFocus
+                            }
+                        }
+
+                        contentItem: RowLayout {
+                            spacing: 10
+
+                            C.Icon {
+                                Layout.leftMargin: 6
+                                iconName: "chevron-right"
+                                size: 16
+                                color: C.Theme.textSoft
+                                rotation: entry.open ? 90 : 0
+
+                                Behavior on rotation {
+                                    NumberAnimation { duration: 120 }
+                                }
+                            }
+
+                            Text {
+                                text: qsTr("Version %1").arg(entry.modelData.version)
+                                color: C.Theme.text
+                                font.pixelSize: 15
+                                font.weight: Font.ExtraBold
+                            }
+
+                            C.Badge {
+                                visible: entry.mine
+                                small: true
+                                tone: "good"
+                                text: qsTr("this one")
+                            }
+
+                            Item {
+                                Layout.fillWidth: true
+                            }
+
+                            Text {
+                                Layout.rightMargin: 8
+                                visible: !entry.open
+                                text: entry.modelData.changes.length === 1 ? qsTr("1 change") : qsTr("%1 changes").arg(entry.modelData.changes.length)
+                                color: C.Theme.textDim
+                                font.pixelSize: 12
+                            }
+                        }
+                    }
+
+                    ChangeList {
+                        visible: entry.open
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        Layout.bottomMargin: 14
+                        changes: entry.open ? entry.modelData.changes : []
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: earlierButton.visible
+                Layout.fillWidth: true
+                implicitHeight: 1
+                color: Qt.rgba(1, 1, 1, 0.06)
+            }
+
+            // The versions before the newest few: listed once asked for
+            QQC.AbstractButton {
+                id: earlierButton
+                property bool firstInFocusChain: false
+                property bool lastInFocusChain: false
+                readonly property int more: page.up.history.length - page.firstVersions
+
+                visible: more > 0
+                Layout.fillWidth: true
+                implicitHeight: 44
+                hoverEnabled: true
+                focusPolicy: Qt.StrongFocus
+                Accessible.name: page.allVersions ? qsTr("Earlier versions, hide") : qsTr("Earlier versions, show")
+                onClicked: page.allVersions = !page.allVersions
+                Keys.onPressed: (event) => C.FocusChain.handle(earlierButton, event)
+
+                background: Rectangle {
+                    radius: 10
+                    color: Qt.rgba(1, 1, 1, earlierButton.down ? 0.07 : earlierButton.hovered ? 0.04 : 0)
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: -2
+                        radius: 12
+                        color: "transparent"
+                        border.width: 2
+                        border.color: C.Theme.focus
+                        visible: earlierButton.visualFocus
+                    }
+                }
+
+                contentItem: RowLayout {
+                    spacing: 10
+
+                    C.Icon {
+                        Layout.leftMargin: 6
+                        iconName: "chevron-down"
+                        size: 16
+                        color: C.Theme.textSoft
+                        rotation: page.allVersions ? 180 : 0
+
+                        Behavior on rotation {
+                            NumberAnimation { duration: 120 }
+                        }
+                    }
+
+                    Text {
+                        text: page.allVersions ? qsTr("Only the newest versions") : qsTr("Earlier versions")
+                        color: C.Theme.textSoft
+                        font.pixelSize: 14
+                        font.weight: Font.Bold
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        Layout.rightMargin: 8
+                        visible: !page.allVersions
+                        text: earlierButton.more === 1 ? qsTr("1 more") : qsTr("%1 more").arg(earlierButton.more)
+                        color: C.Theme.textDim
+                        font.pixelSize: 12
+                    }
                 }
             }
         }

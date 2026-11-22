@@ -4,6 +4,7 @@
 #include "livealerts.h"
 #include "devicecheck.h"
 #include "keymouse.h"
+#include "appupdater.h"
 #include "macpermissions.h"
 #include "introsound.h"
 #include "twitch.h"
@@ -451,6 +452,11 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     connect(this, &QmlBackend::sessionChanged, device_check, [this]() {
         if (session)
             device_check->stopAll();
+    });
+    app_updater = new AppUpdater(this);
+    // The new version is in place and starts once this app has gone
+    connect(app_updater, &AppUpdater::restarting, this, []() {
+        QTimer::singleShot(600, qApp, &QCoreApplication::quit);
     });
     key_mouse = new KeyMouse(settings, this);
     // A game has the keyboard and the mouse now: trying them in the settings is over, and nothing is still held

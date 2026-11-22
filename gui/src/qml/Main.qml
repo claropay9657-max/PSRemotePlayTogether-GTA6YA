@@ -528,6 +528,16 @@ Item {
         function onUpdateFound(version) {
             if (Chiaki.session)
                 return;
+            // Where the app can put the new version in place itself, the page that does it and
+            // says what is new; otherwise the download page, as before
+            if (Chiaki.updater.possible) {
+                root.showConfirmDialog(qsTr("Update available"),
+                    qsTr("Version %1 of PSRemotePlayTogether is available; you have %2.\n\nEverybody in a session needs the same version, so tell your friends too.\n\nSee what is new and update?")
+                        .arg(version).arg(Qt.application.version),
+                    () => root.showSettingsDialog("updates"),
+                    () => Chiaki.skipUpdate());
+                return;
+            }
             root.showConfirmDialog(qsTr("Update available"),
                 qsTr("Version %1 of PSRemotePlayTogether is available; you have %2.\n\nEverybody in a session needs the same version, so tell your friends too.\n\nOpen the download page?")
                     .arg(version).arg(Qt.application.version),

@@ -2,15 +2,19 @@
 
 // Tells the user of an older build that a newer release exists. Once per start
 // the app asks GitHub for the project's latest release and compares version
-// numbers; it never downloads or installs anything, it only offers to open the
-// release page in the browser. Settings > Updates & logs has the switch for it.
+// numbers. It downloads and installs nothing by itself: it says so, and hands
+// the release to AppUpdater (appupdater.h), which updates the app when the user
+// says so, or offers the release page in the browser where the app cannot
+// replace itself. Settings > Updates & logs has the switch for the check.
 
 #include "qmlbackend.h"
+#include "appupdater.h"
 #include "qmlmainwindow.h"
 #include "settings.h"
 
 #include <QCoreApplication>
 #include <QDesktopServices>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -37,7 +41,7 @@ void QmlBackend::checkForUpdate()
 
     auto network = new QNetworkAccessManager(this);
     QNetworkReply *reply = network->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, network]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, network, address]() {
         reply->deleteLater();
         network->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
@@ -66,6 +70,17 @@ void QmlBackend::checkForUpdate()
         // Only ever a page of the project's own releases: the answer is not trusted with more
         const QString page = release.value("html_url").toString();
         update_url = page.startsWith(kReleasesPage + '/') ? page : kReleasesPage;
+        // Its files and its notes, for updating from inside the app. Asked of a server on this
+        // computer for trying it out, files from that server are followed too, and from no other:
+        // the variable cannot point the app at files somewhere else
+        QString also;
+        if (qEnvironmentVariableIsSet("PSRPT_UPDATE_CHECK_URL")) {
+            const QUrl asked(address);
+            const QString host = asked.host();
+            if (host == QLatin1String("127.0.0.1") || host == QLatin1String("localhost") || host == QLatin1String("::1"))
+                also = asked.scheme() + QStringLiteral("://") + asked.authority() + QLatin1Char('/');
+        }
+        app_updater->SetRelease(update_version, release.value("assets").toArray(), release.value("body").toString(), also);
         qCInfo(chiakiGui) << "Update check: version" << update_version << "is available, this is" << mine.toString();
         emit updateChanged();
         // "Later" was said to this version already: the start page still shows it, nothing asks again

@@ -101,6 +101,8 @@ class QmlBackend : public QObject
     Q_PROPERTY(QObject* permissions READ permissionsObject CONSTANT)
     // Mouse and keyboard as a controller: the bindings, how the mouse aims, and trying it (Settings → Keyboard & mouse)
     Q_PROPERTY(QObject* keyMouse READ keyMouseObject CONSTANT)
+    // The app updating itself, and the changelog for showing (Settings → Updates & logs)
+    Q_PROPERTY(QObject* updater READ updaterObject CONSTANT)
     // The sound of the intro film, kept in step with it by the film itself
     Q_PROPERTY(QObject* introSound READ introSoundObject CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
@@ -280,6 +282,7 @@ public:
     QObject *deviceCheckObject() const;
     QObject *permissionsObject() const;
     QObject *keyMouseObject() const;
+    QObject *updaterObject() const;
     class KeyMouse *keyMouse() const { return key_mouse; }
     QObject *introSoundObject() const;
     QObject *overlayLayoutSettings() const;
@@ -507,6 +510,7 @@ private:
     class DeviceCheck *device_check = {};
     class MacPermissions *permissions = {};
     class KeyMouse *key_mouse = {};
+    class AppUpdater *app_updater = {};
     class IntroSound *intro_sound = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;

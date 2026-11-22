@@ -1,4 +1,7 @@
 <RCC>
+  <qresource prefix="/">
+    <file alias="changelog.md">../../CHANGELOG.md</file>
+  </qresource>
   <qresource prefix="/sounds">
     <file alias="follow.flac">sounds/follow.flac</file>
     <file alias="subscribe.flac">sounds/subscribe.flac</file>

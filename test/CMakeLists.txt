@@ -42,6 +42,13 @@ target_include_directories(keymouse-unit PRIVATE "${CMAKE_SOURCE_DIR}/gui/includ
 set_target_properties(keymouse-unit PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 add_test(NAME keymouse COMMAND keymouse-unit)
 
+# The app updating itself: which file, which addresses, the sum, the script for Windows, and
+# the changelog taken apart (plain C++ as well)
+add_executable(appupdate-unit appupdate.cpp "${CMAKE_SOURCE_DIR}/gui/src/appupdate.cpp")
+target_include_directories(appupdate-unit PRIVATE "${CMAKE_SOURCE_DIR}/gui/include")
+set_target_properties(appupdate-unit PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_test(NAME appupdate COMMAND appupdate-unit)
+
 target_link_libraries(chiaki-unit chiaki-lib munit)
 
 if(CHIAKI_ENABLE_FFMPEG_DECODER)

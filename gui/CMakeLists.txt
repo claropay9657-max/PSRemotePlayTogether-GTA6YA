@@ -67,6 +67,10 @@ set(SOURCE_FILES
 	src/voicechat.cpp
 	include/devicecheck.h
 	src/devicecheck.cpp
+	include/appupdate.h
+	src/appupdate.cpp
+	include/appupdater.h
+	src/appupdater.cpp
 	include/keymousepad.h
 	src/keymousepad.cpp
 	include/keymouse.h
