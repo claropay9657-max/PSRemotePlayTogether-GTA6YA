@@ -31,6 +31,14 @@ if command -v apt-get >/dev/null; then
 		|| echo "note: libopenh264-dev is not available, going live will need a hardware encoder"
 fi
 
+# Sharing a game on this computer: PipeWire's headers (the library itself is the system's,
+# opened when needed, so the AppImage does not bundle it)
+if command -v apt-get >/dev/null; then
+	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libpipewire-0.3-dev >/dev/null 2>&1 \
+		|| { apt-get update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libpipewire-0.3-dev >/dev/null 2>&1; } \
+		|| echo "note: libpipewire-0.3-dev is not available, sharing a game on this computer will be off"
+fi
+
 # No FUSE in a CI container: let linuxdeploy and its plugins unpack themselves instead
 export APPIMAGE_EXTRACT_AND_RUN=1
 # build-appimage.sh expects this file name whatever the desktop file calls the app

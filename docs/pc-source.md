@@ -126,8 +126,8 @@ after the controllers:
 1. **Windows:** This computer on the Host page, window and screen capture, hardware encoding,
    the game's sound, virtual controllers with ViGEmBus, Each their own controller, the Xbox recipe.
    Large: several working sessions, and a tester with a Windows PC.
-2. **Linux:** PipeWire capture and sound, uinput controllers.
-3. **macOS:** picture and sound only.
+2. **Linux:** PipeWire capture and sound, uinput controllers. Built 2026-11-22.
+3. **macOS:** picture and sound only. Built 2026-11-22.
 4. **Mouse and keyboard together** (section 7).
 5. **Xbox built in** (section 8).
 
@@ -163,3 +163,47 @@ Tested on a Mac with the test picture: the app shares it, a guest (`coplay-sim g
 pictures a second that decode and the sound; the library tests cover the new mode. The Windows
 build is cross-compiled in Docker. **Not tested yet:** capture, encoders, sound and virtual
 controllers on a real Windows PC, the Xbox app, ultrawide windows on the guests' screens.
+
+### Linux (built 2026-11-22)
+
+- `gui/src/pcsource_linux.cpp`: the system's screen sharing (xdg-desktop-portal ScreenCast over
+  D-Bus: CreateSession, SelectSources with the mouse pointer in the picture and `persist_mode` 2,
+  Start, OpenPipeWireRemote). The Host page lists "A window or a screen" (the system asks) and,
+  once shared, "The window/screen you chose" with the portal's restore token (shared again without
+  asking). The picture comes through PipeWire in memory (BGRx and friends, the crop of a window),
+  scaled into the picture size keeping its shape with libswscale (BT.709, video range), and
+  encoded with NVENC, VAAPI (uploaded to the card), or OpenH264. libpipewire is opened with
+  `dlopen`, so the AppImage neither bundles it nor needs it to start.
+- The sound: an unlinked PipeWire capture stream that the app links itself (link-factory) to the
+  game's output streams, matched by process (the node's `application.process.id`, else its
+  client's `pipewire.sec.pid`) or program name; without a game, to every program's streams but
+  this app's and voice chats' (Discord, TeamSpeak, Mumble, WebRTC calls, …). Checked again every 3 s.
+- The game: the newest process installed where stores put games (`/steamapps/common/`, `~/Games`,
+  Lutris), Wine and Proton programs by their Windows path, the name from Steam's manifest for its
+  `SteamAppId`. The portal does not say which window it shared, so the newest game counts.
+- Controllers: uinput devices that look like the kernel's xpad driver's Xbox 360 controller
+  (045e:028e, the same buttons and axes, rumble through force feedback). The app's own controller
+  list leaves them out by their name. Without access to `/dev/uinput` the Host page shows a
+  udev rule (`TAG+="uaccess"`, as Steam's) to copy.
+- Build: `libpipewire-0.3-dev` headers in CI, FFmpeg with `--enable-swscale`.
+
+Tested in a Debian container: the portal handshake up to Start (the headless compositor there
+cannot capture), the picture from a PipeWire video source at 30 fps, decoded on the Mac with the
+right colours and shape, the game's sound alone (a "game" in a Steam folder at 440 Hz heard, another
+program at 1500 Hz left out), without a game every program but a "discord", the controllers
+(buttons, sticks, triggers, d-pad, rumble with its length). **Not tested yet:** a real desktop's
+portal (GNOME, KDE), VAAPI and NVENC, real games, the full AppImage (built by CI).
+
+### macOS (built 2026-11-22)
+
+- `gui/src/pcsource_mac.mm` (ARC): windows from `CGWindowListCopyWindowInfo` (titles need the
+  Screen Recording permission, else the program's name), screens in pixels; ScreenCaptureKit
+  scales into the picture size keeping the shape and gives NV12 (BT.709). A screen leaves out this
+  app's windows. The sound is a second stream: a window's program alone, or a screen without this
+  app and voice chats. Games: an app whose `LSApplicationCategoryType` is a games category, or one
+  in a Steam folder (Steam's name). No controllers for friends: they watch.
+- The Host page says when the Screen Recording permission is missing and asks for it (the system's
+  question, else its settings page).
+
+Tested on a Mac without the permission: the list of windows and screens, the texts, the game
+check. **Not tested yet:** the capture itself, which needs the permission.

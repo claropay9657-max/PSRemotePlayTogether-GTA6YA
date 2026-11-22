@@ -1,6 +1,7 @@
 #pragma once
 
 #include "streamsession.h"
+#include "pcsource.h"
 #include "discoverymanager.h"
 #include "qmlmainwindow.h"
 #include "qmlcontroller.h"
@@ -21,6 +22,7 @@
 #endif
 
 class SystemdInhibit;
+class PcPortal;
 #ifdef Q_OS_MACOS
     class MacWakeSleep;
 #elif defined(Q_OS_WINDOWS)
@@ -227,6 +229,14 @@ public:
     /** Why friends cannot play a game on this computer (no controller driver); empty if they can. */
     Q_INVOKABLE QString pcPadsProblem() const;
     Q_INVOKABLE QString pcDriverUrl() const;
+    /** Linux: the command that lets the app add controllers; empty elsewhere. */
+    Q_INVOKABLE QString pcFixCommand() const;
+    Q_INVOKABLE void pcCopyFixCommand() const;
+    /** A permission the system wants first (macOS: Screen Recording); empty if none. */
+    Q_INVOKABLE QString pcPermission() const;
+    Q_INVOKABLE void pcAskPermission() const;
+    /** What the Host page says about sharing on this system. */
+    Q_INVOKABLE QString pcNote() const;
     /** What was shared last time, to choose it again. */
     Q_INVOKABLE QVariantMap pcLastTarget() const;
     /** The game in a window or on a screen, for the Host page; empty if none was found. */
@@ -353,6 +363,10 @@ signals:
 private:
     /** Starts a session with this console; shared if the last start was Host (coplay/host_enabled). */
     void startConsole(int index, QString nickname = QString());
+    /** Host: shares what was found (and, on Linux, what the system's screen sharing gave). */
+    void startThisComputer(const PcSource::Target &target, std::shared_ptr<PcPortal> portal, int portal_fd, quint32 portal_node);
+    /** Linux: the system is asking which window or screen. */
+    std::shared_ptr<PcPortal> pc_portal_asking;
     struct DisplayServer {
         bool valid = false;
 

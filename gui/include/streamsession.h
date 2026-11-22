@@ -58,6 +58,7 @@ class QKeyEvent;
 class Settings;
 
 class PcCapture;
+class PcPortal;
 class VirtualPads;
 namespace coplay { class Client; class Host; struct ClientConfig; enum class DisconnectReason; struct ChatMessage; struct ChatEmbed; struct BlobRef; }
 struct CoPlayState;
@@ -193,6 +194,10 @@ class SdeckHapticsWorker;
 		bool pc_source = false;
 		/** What is shared: PcSource::Target::ToMap(). */
 		QVariantMap pc_target;
+		/** Linux: the system's screen sharing the session keeps, and its PipeWire stream (fd taken over). */
+		std::shared_ptr<PcPortal> pc_portal;
+		int pc_portal_fd = -1;
+		quint32 pc_portal_node = 0;
 		int pc_video_kbps = 15000;
 
 	StreamSessionConnectInfo() {}
@@ -453,6 +458,9 @@ class StreamSession : public QObject
 		// This computer as the game source (streamsession_pc.cpp)
 		bool pc_source = false;
 		QVariantMap pc_target;
+		std::shared_ptr<PcPortal> pc_portal;
+		int pc_portal_fd = -1;
+		quint32 pc_portal_node = 0;
 		int pc_video_kbps = 15000;
 		int pc_width = 1920;
 		int pc_height = 1080;

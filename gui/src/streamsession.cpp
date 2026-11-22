@@ -441,6 +441,9 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	if(pc_source)
 	{
 		pc_target = connect_info.pc_target;
+		pc_portal = connect_info.pc_portal;
+		pc_portal_fd = connect_info.pc_portal_fd;
+		pc_portal_node = connect_info.pc_portal_node;
 		pc_video_kbps = connect_info.pc_video_kbps;
 		pc_width = static_cast<int>(connect_info.video_profile.width);
 		pc_height = static_cast<int>(connect_info.video_profile.height);

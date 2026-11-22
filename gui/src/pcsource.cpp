@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
-#include "pcsource.h"
+#include "pcsource_p.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -84,6 +84,8 @@ QVariantMap PcSource::Target::ToMap() const
 	m[QStringLiteral("height")] = height;
 	m[QStringLiteral("xbox")] = xbox;
 	m[QStringLiteral("game")] = game;
+	if(!token.isEmpty())
+		m[QStringLiteral("token")] = token;
 	return m;
 }
 
@@ -91,7 +93,8 @@ PcSource::Target PcSource::Target::FromMap(const QVariantMap &m)
 {
 	Target t;
 	t.kind = m.value(QStringLiteral("kind")).toString();
-	if(t.kind != QLatin1String("window") && t.kind != QLatin1String("screen") && t.kind != QLatin1String("test"))
+	if(t.kind != QLatin1String("window") && t.kind != QLatin1String("screen") && t.kind != QLatin1String("portal")
+		&& t.kind != QLatin1String("test"))
 		return Target();
 	t.handle = m.value(QStringLiteral("handle")).toString().toULongLong();
 	t.title = m.value(QStringLiteral("title")).toString();
@@ -101,6 +104,7 @@ PcSource::Target PcSource::Target::FromMap(const QVariantMap &m)
 	t.height = m.value(QStringLiteral("height")).toInt();
 	t.xbox = m.value(QStringLiteral("xbox")).toBool();
 	t.game = m.value(QStringLiteral("game")).toBool();
+	t.token = m.value(QStringLiteral("token")).toString();
 	return t;
 }
 
@@ -121,11 +125,15 @@ static PcSource::Target TestTarget()
 
 // ------------------------------------------------------------------ which game (GamerNova client's rules)
 
-// Where game stores install games (matched in the lower-case path)
+// Where game stores install games (matched in the lower-case path, with forward slashes)
 static const char *const kGameFolders[] = {
-	"\\steamapps\\common\\", "\\epic games\\", "\\origin games\\", "\\ea games\\", "\\xboxgames\\",
-	"\\riot games\\", "\\ubisoft game launcher\\games\\", "\\gog games\\", "\\battle.net\\",
-	"\\world of warcraft\\", "\\diablo", "\\overwatch", "\\starcraft", "\\hearthstone", "\\call of duty", "\\blizzard",
+	"/steamapps/common/", "/epic games/", "/origin games/", "/ea games/", "/xboxgames/",
+	"/riot games/", "/ubisoft game launcher/games/", "/gog games/", "/battle.net/",
+	"/world of warcraft/", "/diablo", "/overwatch", "/starcraft", "/hearthstone", "/call of duty", "/blizzard",
+#if defined(__linux__)
+	// Heroic and Lutris install into ~/Games by default, Lutris also into its own folder
+	"/games/", "/lutris/",
+#endif
 };
 // Programs that run beside games: launchers, browsers, chat, tools (the name without .exe)
 static const char *const kNotGames[] = {
@@ -138,6 +146,12 @@ static const char *const kNotGames[] = {
 	"wallpaper32", "wallpaper_engine", "eosoverlayrenderer-win64-shipping", "eosoverlayrenderer-win32-shipping",
 	"eosoverlayrenderer", "epiconlineservicesuserhelper", "epicwebhelper", "steamoverlayui", "steamoverlayrenderer",
 	"gameoverlayui", "crashreportclient",
+	// What runs beside a game on Linux: Steam's container and Wine's own programs
+	"reaper", "pressure-vessel-wrap", "pv-bwrap", "srt-bwrap", "steam-runtime-launcher-service", "wineserver",
+	"wine", "wine64", "wine-preloader", "wine64-preloader", "winedevice", "plugplay", "rpcss", "tabtip", "start",
+	"proton", "umu-run", "gamescope", "gamemoded", "mangohud", "heroic", "lutris", "legendary", "gogdl", "nile",
+	"python", "python3", "bash", "sh", "steamerrorreporter", "crashpad_handler", "unitycrashhandler64",
+	"unitycrashhandler32", "easyanticheat", "easyanticheat_eos", "start_protected_game",
 	// and this app
 	"psremoteplaytogether",
 };
@@ -145,16 +159,19 @@ static const char *const kNotGameParts[] = {
 	"windowsterminal", "widget", "overlay", "webhelper", "userhelper", "wallpaper", "crashreport", "errorreporter",
 };
 
-/** Whether a program is a game, by where it is installed. */
-[[maybe_unused]] static bool LooksLikeGame(const QString &program)
+bool PcSource::LooksLikeGame(const QString &program)
 {
 	if(program.isEmpty())
 		return false;
-	const QString path = QDir::toNativeSeparators(program).toLower();
-	if(path.startsWith(QLatin1String("c:\\windows\\")) || path.contains(QLatin1String("\\windows\\system32\\"))
-		|| path.contains(QLatin1String("\\windows\\syswow64\\")))
+	// Backslashes too where this is no Windows: Wine's programs have Windows paths
+	QString path = QDir::fromNativeSeparators(program).toLower();
+	path.replace(QLatin1Char('\\'), QLatin1Char('/'));
+	if(path.startsWith(QLatin1String("c:/windows/")) || path.contains(QLatin1String("/windows/system32/"))
+		|| path.contains(QLatin1String("/windows/syswow64/")))
 		return false;
-	const QString name = QFileInfo(program).completeBaseName().toLower();
+	QString name = path.section(QLatin1Char('/'), -1);
+	if(name.endsWith(QLatin1String(".exe")))
+		name.chop(4);
 	for(const char *n : kNotGames)
 	{
 		if(name == QLatin1String(n))
@@ -171,22 +188,56 @@ static const char *const kNotGameParts[] = {
 			return true;
 	}
 	// Xbox and Game Pass games live among the store apps: the ones that look like a game
-	if(path.contains(QLatin1String("\\program files\\windowsapps\\")))
+	if(path.contains(QLatin1String("/program files/windowsapps/")))
 	{
-		if(path.contains(QLatin1String("\\microsoft.windows")) || path.contains(QLatin1String("\\microsoft.zune"))
-			|| path.contains(QLatin1String("\\microsoft.yourphone")))
+		if(path.contains(QLatin1String("/microsoft.windows")) || path.contains(QLatin1String("/microsoft.zune"))
+			|| path.contains(QLatin1String("/microsoft.yourphone")))
 			return false;
 		const QFileInfo exe(program);
 		const QDir dir = exe.dir();
 		return dir.exists(QStringLiteral("MicrosoftGame.config")) // Xbox GDK
 			|| dir.exists(exe.completeBaseName() + QStringLiteral("_Data")) // Unity
-			|| path.contains(QLatin1String("\\binaries\\win64\\")) || path.contains(QLatin1String("\\binaries\\win32\\")); // Unreal
+			|| path.contains(QLatin1String("/binaries/win64/")) || path.contains(QLatin1String("/binaries/win32/")); // Unreal
 	}
 	return false;
 }
 
-/** Steam's name for a game it installed: from the manifest of its install folder. Empty if it is none of Steam's. */
-[[maybe_unused]] static QString SteamName(const QString &program)
+static QString ManifestName(const QString &file_name)
+{
+	QFile file(file_name);
+	if(!file.open(QIODevice::ReadOnly))
+		return QString();
+	static const QRegularExpression name(QStringLiteral("\"name\"\\s*\"([^\"]+)\""));
+	const QRegularExpressionMatch found = name.match(QString::fromUtf8(file.read(256 * 1024)));
+	return found.hasMatch() ? found.captured(1).trimmed() : QString();
+}
+
+QString PcSource::SteamNameById(const QString &steam_root, const QString &app_id)
+{
+	if(steam_root.isEmpty() || app_id.isEmpty())
+		return QString();
+	const QString manifest = QStringLiteral("/steamapps/appmanifest_%1.acf").arg(app_id);
+	QString name = ManifestName(steam_root + manifest);
+	if(!name.isEmpty())
+		return name;
+	// The other libraries, on other drives
+	QFile folders(steam_root + QStringLiteral("/steamapps/libraryfolders.vdf"));
+	if(!folders.open(QIODevice::ReadOnly))
+		return QString();
+	static const QRegularExpression path(QStringLiteral("\"path\"\\s*\"([^\"]+)\""));
+	auto it = path.globalMatch(QString::fromUtf8(folders.read(256 * 1024)));
+	while(it.hasNext())
+	{
+		QString library = it.next().captured(1);
+		library.replace(QStringLiteral("\\\\"), QStringLiteral("\\"));
+		name = ManifestName(QDir::fromNativeSeparators(library) + manifest);
+		if(!name.isEmpty())
+			return name;
+	}
+	return QString();
+}
+
+QString PcSource::SteamName(const QString &program)
 {
 	const QString path = QDir::fromNativeSeparators(program);
 	static const QLatin1String common("/steamapps/common/");
@@ -215,8 +266,7 @@ static const char *const kNotGameParts[] = {
 	return folder;
 }
 
-/** A game's window title as a name: without what games add in brackets ("(DX12)", "(64-bit)"). */
-[[maybe_unused]] static QString TitleAsName(const QString &title)
+QString PcSource::TitleAsName(const QString &title)
 {
 	static const QRegularExpression brackets(QStringLiteral("\\s*\\(.*?\\)"));
 	static const QRegularExpression control(QStringLiteral("[\\x00-\\x1f\\x7f]"));
@@ -225,6 +275,10 @@ static const char *const kNotGameParts[] = {
 	t.remove(brackets);
 	return t.simplified().left(80);
 }
+
+using PcSource::LooksLikeGame;
+using PcSource::SteamName;
+using PcSource::TitleAsName;
 
 #ifdef _WIN32
 static QString PathOf(DWORD pid)
@@ -397,15 +451,46 @@ static bool ProcessLoopbackSupported()
 
 QString PcSource::Unsupported()
 {
+	if(TestSourceWanted())
+		return QString();
 #if defined(_WIN32) && PSRPT_PC_CAPTURE_FILTERS
 	// Windows Graphics Capture with a window or a screen of choice: Windows 10 2004 and later
 	if(!ProcessLoopbackSupported())
 		return QCoreApplication::translate("PcSource", "Sharing a game on this computer needs Windows 10 version 2004 or newer.");
 	return QString();
+#elif defined(__linux__) && PSRPT_PC_PIPEWIRE
+	return PcLinux::Unsupported();
+#elif defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT
+	return PcMac::Unsupported();
 #else
-	if(TestSourceWanted())
-		return QString();
-	return QCoreApplication::translate("PcSource", "Sharing a game on this computer works on Windows for now; Linux and macOS follow.");
+	return QCoreApplication::translate("PcSource", "This build of the app cannot share a game on this computer.");
+#endif
+}
+
+QString PcSource::Permission()
+{
+#if defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT
+	return PcMac::Permission();
+#else
+	return QString();
+#endif
+}
+
+void PcSource::AskPermission()
+{
+#if defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT
+	PcMac::AskPermission();
+#endif
+}
+
+QString PcSource::Note()
+{
+#if defined(__APPLE__)
+	return QCoreApplication::translate("PcSource", "Friends get the picture and only the game's sound, never your voice chat. You play on your own controller or keyboard; on a Mac your friends watch.");
+#elif defined(__linux__)
+	return QCoreApplication::translate("PcSource", "Friends get the picture and the game's sound (without a game found: every program's but this app's and voice chats'). You play on your own controller; theirs become controllers on this computer.");
+#else
+	return QCoreApplication::translate("PcSource", "Friends get the picture and only the game's sound, never your voice chat. You play on your own controller; theirs become controllers on this computer. A game in exclusive fullscreen, or protected video, can stay black: use borderless or windowed.");
 #endif
 }
 
@@ -421,6 +506,10 @@ QList<PcSource::Target> PcSource::Targets()
 	std::stable_sort(windows.begin(), windows.end(), [](const Target &a, const Target &b) { return a.game && !b.game; });
 	list.append(windows);
 	EnumDisplayMonitors(nullptr, nullptr, CollectScreen, reinterpret_cast<LPARAM>(&list));
+#elif defined(__linux__) && PSRPT_PC_PIPEWIRE
+	list.append(PcLinux::Targets());
+#elif defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT
+	list.append(PcMac::Targets());
 #endif
 	return list;
 }
@@ -433,7 +522,11 @@ PcSource::Game PcSource::DetectGame(const Target &target)
 		game.title = QCoreApplication::translate("PcSource", "Test picture");
 		return game;
 	}
-#ifdef _WIN32
+#if defined(__linux__) && PSRPT_PC_PIPEWIRE
+	return PcLinux::DetectGame(target);
+#elif defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT
+	return PcMac::DetectGame(target);
+#elif defined(_WIN32)
 	// The Xbox app streams a console: which game runs there, this computer cannot tell
 	if(target.xbox)
 		return game;
@@ -511,6 +604,9 @@ PcSource::Target PcSource::Find(const Target &chosen)
 {
 	if(chosen.kind == QLatin1String("test"))
 		return TestSourceWanted() ? TestTarget() : Target();
+	// The system asks, or shares what it was told last time: nothing to look for here
+	if(chosen.kind == QLatin1String("portal"))
+		return chosen;
 	const QList<Target> all = Targets();
 	for(const Target &t : all)
 	{
@@ -552,19 +648,7 @@ static std::string AvError(int err)
 
 namespace {
 
-/** Where the pictures come from. Next() runs on the capture thread only. */
-class FrameSource
-{
-	public:
-		virtual ~FrameSource() = default;
-		/**
-		 * The next picture, or null if none came for a while (the picture did not change).
-		 * Sets *ended (and *error) once no picture will ever come again.
-		 */
-		virtual AVFrame *Next(bool *ended, std::string *error) = 0;
-		/** The graphics card's frames the pictures are in, or null for pictures in memory. */
-		virtual AVBufferRef *HwFrames() const { return nullptr; }
-};
+using FrameSource = PcFrameSource;
 
 /** A picture that moves and says which frame it is, for trying everything out without a game. */
 class TestSource : public FrameSource
@@ -768,6 +852,8 @@ struct EncoderChoice
 	AVPixelFormat input;
 	/** For play: as little delay as the encoder can do, a steady bit rate. */
 	const char *options;
+	/** Takes the card's frames, which the pictures in memory are copied into (VAAPI). */
+	AVHWDeviceType upload = AV_HWDEVICE_TYPE_NONE;
 };
 
 // Hardware first, then what the system or FFmpeg has in software
@@ -784,6 +870,8 @@ const EncoderChoice kEncoders[] = {
 	{ "h264_videotoolbox", false, AV_PIX_FMT_NV12, "realtime=1:allow_sw=1:prio_speed=1" },
 #else
 	{ "h264_nvenc", false, AV_PIX_FMT_NV12, "preset=p1:tune=ull:rc=cbr:zerolatency=1:delay=0:forced-idr=1" },
+	// Intel and AMD on Linux
+	{ "h264_vaapi", false, AV_PIX_FMT_NV12, "rc_mode=CBR:async_depth=1", AV_HWDEVICE_TYPE_VAAPI },
 #endif
 	{ "libx264", false, AV_PIX_FMT_YUV420P, "preset=ultrafast:tune=zerolatency:forced-idr=1" },
 	{ "libopenh264", false, AV_PIX_FMT_YUV420P, "rc_mode=bitrate:allow_skip_frames=0" },
@@ -1024,6 +1112,8 @@ struct PcCapture::Private
 
 	std::unique_ptr<FrameSource> source;
 	AVCodecContext *encoder = nullptr;
+	/** The pictures go to the card before the encoder (EncoderChoice::upload). */
+	bool upload = false;
 	const EncoderChoice *choice = nullptr;
 	std::vector<uint8_t> parameter_sets;
 
@@ -1087,6 +1177,18 @@ struct PcCapture::Private
 			return false;
 		source = std::move(filter);
 		return true;
+#elif (defined(__linux__) && PSRPT_PC_PIPEWIRE) || (defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT)
+		if(on_card)
+		{
+			*error = "the capture gives pictures in memory";
+			return false;
+		}
+#if defined(__linux__)
+		source = PcLinux::OpenVideo(config, input, error);
+#else
+		source = PcMac::OpenVideo(config, input, error);
+#endif
+		return source != nullptr;
 #else
 		*error = "this build cannot capture windows or screens";
 		return false;
@@ -1127,7 +1229,34 @@ struct PcCapture::Private
 		ctx->color_trc = AVCOL_TRC_BT709;
 		ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
 		ctx->pix_fmt = c.input;
-		if(c.on_card)
+		if(c.upload != AV_HWDEVICE_TYPE_NONE)
+		{
+			AVBufferRef *device = nullptr;
+			int err = av_hwdevice_ctx_create(&device, c.upload, nullptr, nullptr, 0);
+			AVBufferRef *frames = err >= 0 ? av_hwframe_ctx_alloc(device) : nullptr;
+			if(frames)
+			{
+				auto fc = reinterpret_cast<AVHWFramesContext *>(frames->data);
+				fc->format = c.upload == AV_HWDEVICE_TYPE_VAAPI ? AV_PIX_FMT_VAAPI : AV_PIX_FMT_NONE;
+				fc->sw_format = c.input;
+				fc->width = config.width;
+				fc->height = config.height;
+				fc->initial_pool_size = 8;
+				err = fc->format == AV_PIX_FMT_NONE ? AVERROR(ENOSYS) : av_hwframe_ctx_init(frames);
+			}
+			av_buffer_unref(&device);
+			if(!frames || err < 0)
+			{
+				av_buffer_unref(&frames);
+				avcodec_free_context(&ctx);
+				*error = "no graphics card to encode on" + (err < 0 ? " (" + AvError(err) + ")" : std::string());
+				return false;
+			}
+			ctx->pix_fmt = reinterpret_cast<AVHWFramesContext *>(frames->data)->format;
+			ctx->sw_pix_fmt = c.input;
+			ctx->hw_frames_ctx = frames;
+		}
+		else if(c.on_card)
 		{
 			AVBufferRef *frames = source ? source->HwFrames() : nullptr;
 			if(!frames)
@@ -1152,6 +1281,7 @@ struct PcCapture::Private
 		}
 		encoder = ctx;
 		choice = &c;
+		upload = c.upload != AV_HWDEVICE_TYPE_NONE;
 		parameter_sets = ParameterSetsFrom(ctx->extradata, static_cast<size_t>(ctx->extradata_size));
 		return true;
 	}
@@ -1265,6 +1395,20 @@ struct PcCapture::Private
 			{
 				send->pict_type = AV_PICTURE_TYPE_I;
 				send->flags |= AV_FRAME_FLAG_KEY;
+			}
+			if(upload)
+			{
+				// Into the card's memory, for an encoder that reads only that
+				AVFrame *on_card = av_frame_alloc();
+				if(!on_card || av_hwframe_get_buffer(encoder->hw_frames_ctx, on_card, 0) < 0
+					|| av_hwframe_transfer_data(on_card, send, 0) < 0 || av_frame_copy_props(on_card, send) < 0)
+				{
+					av_frame_free(&on_card);
+					av_frame_free(&send);
+					continue;
+				}
+				av_frame_free(&send);
+				send = on_card;
 			}
 			int err = avcodec_send_frame(encoder, send);
 			av_frame_free(&send);
@@ -1435,8 +1579,32 @@ struct PcCapture::Private
 		client->Release();
 		CloseHandle(ready);
 		CoUninitialize();
+#elif (defined(__linux__) && PSRPT_PC_PIPEWIRE) || (defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT)
+		// The system's own thread hands the samples over; this one only waits for the end
+		std::string why;
+		PcSoundInfo info;
+		auto push = [&packer](const int16_t *samples, size_t frames) { packer.Push(samples, frames); };
+#if defined(__linux__)
+		std::unique_ptr<PcSoundSource> source_sound = PcLinux::OpenSound(config, push, &info, &why);
 #else
-		Log("no sound: capturing a program's sound works on Windows for now");
+		std::unique_ptr<PcSoundSource> source_sound = PcMac::OpenSound(config, push, &info, &why);
+#endif
+		if(!source_sound)
+		{
+			Log("no sound: " + why);
+			return;
+		}
+		{
+			std::lock_guard<std::mutex> lock(info_mutex);
+			sound_source = info.what;
+		}
+		Log("sound: " + info.what);
+		while(running)
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		// Stops the system's thread before the packer goes
+		source_sound.reset();
+#else
+		Log("no sound: this build cannot capture sound");
 #endif
 	}
 };
@@ -1518,3 +1686,22 @@ std::string PcCapture::SoundSource() const
 	std::lock_guard<std::mutex> lock(d->info_mutex);
 	return d->sound_source;
 }
+
+#if !defined(__linux__) || !PSRPT_PC_PIPEWIRE
+// Only Linux asks the system which window or screen (pcsource_linux.cpp)
+struct PcPortal::Private
+{
+};
+
+PcPortal::PcPortal() : d(std::make_unique<Private>())
+{
+}
+
+PcPortal::~PcPortal() = default;
+
+void PcPortal::Open(const QString &token, std::function<void(const Stream &stream, const QString &error)> done)
+{
+	(void)token;
+	done(Stream(), QCoreApplication::translate("PcSource", "This system has no screen sharing to ask."));
+}
+#endif

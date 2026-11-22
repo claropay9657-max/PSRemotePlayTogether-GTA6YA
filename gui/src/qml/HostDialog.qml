@@ -46,6 +46,8 @@ DialogView {
     property var pcTarget: null
     /** Why friends could only watch (no controller driver); empty if they can play. */
     property string pcPadsProblem: ""
+    /** A permission the system wants first (macOS: Screen Recording); empty if none. */
+    property string pcPermission: ""
     /** The game found in what is chosen, for the room. */
     property string pcGame: ""
 
@@ -64,6 +66,7 @@ DialogView {
         pcTargets = list;
         pcTarget = found || (list.length > 0 ? list[0] : null);
         pcPadsProblem = Chiaki.pcPadsProblem();
+        pcPermission = Chiaki.pcPermission();
     }
     onPcTargetChanged: pcGame = pcTarget ? Chiaki.pcGameIn(pcTarget) : ""
     onPcChosenChanged: if (pcChosen) refreshPc()
@@ -77,6 +80,9 @@ DialogView {
             return qsTr("Whole screen · %1 × %2").arg(t.width).arg(t.height);
         if (t.kind === "test")
             return qsTr("Moving test picture and a beep, for trying it out");
+        if (t.kind === "portal")
+            return t.handle === "1" ? qsTr("Shared again without asking · %1 × %2").arg(t.width).arg(t.height)
+                                    : qsTr("Your system asks which one when you start");
         if (t.xbox)
             return qsTr("Xbox app · Remote Play or cloud gaming");
         return t.app || "";
@@ -165,7 +171,7 @@ DialogView {
     }
 
     buttonText: resting ? qsTr("Wake up & start") : qsTr("Start")
-    buttonEnabled: (pcChosen ? !pcUnsupported && !!pcTarget : !!chosen) && !(publicRoom && !roomsOn)
+    buttonEnabled: (pcChosen ? !pcUnsupported && !pcPermission && !!pcTarget : !!chosen) && !(publicRoom && !roomsOn)
     // Start is in the bar at the bottom of the page (it shows buttonText and buttonEnabled)
     buttonVisible: false
     onAccepted: {
@@ -640,7 +646,8 @@ DialogView {
                                                 onClicked: dialog.pcTarget = modelData
 
                                                 IconTile {
-                                                    iconName: modelData.kind === "screen" ? "monitor" : modelData.game ? "gamepad" : "layers"
+                                                    iconName: modelData.kind === "screen" || modelData.kind === "portal" ? "monitor"
+                                                              : modelData.game ? "gamepad" : "layers"
                                                     iconColor: modelData.game ? "#9ef7ff" : "#d9d5f2"
                                                 }
                                             }
@@ -701,6 +708,37 @@ DialogView {
                                         text: qsTr("Start Remote Play to your Xbox, or a cloud game, in the Xbox app. Your friends' controllers become Xbox controllers on this computer, which the Xbox app takes.")
                                     }
 
+                                    // macOS: nothing can be shared before Screen Recording is allowed
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        visible: !!dialog.pcPermission
+                                        spacing: 8
+
+                                        Label {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                            color: "#fbd98c"
+                                            font.pixelSize: 13
+                                            text: dialog.pcPermission
+                                        }
+
+                                        RowLayout {
+                                            spacing: 8
+
+                                            C.PillButton {
+                                                kind: "primary"
+                                                text: qsTr("Allow")
+                                                onClicked: Chiaki.pcAskPermission()
+                                            }
+
+                                            C.PillButton {
+                                                kind: "ghost"
+                                                text: qsTr("Check again")
+                                                onClicked: dialog.refreshPc()
+                                            }
+                                        }
+                                    }
+
                                     // Without the driver, friends can only watch
                                     ColumnLayout {
                                         Layout.fillWidth: true
@@ -715,13 +753,33 @@ DialogView {
                                             text: dialog.pcPadsProblem
                                         }
 
+                                        // Linux: the one command that lets the app add controllers
+                                        Label {
+                                            Layout.fillWidth: true
+                                            visible: text !== ""
+                                            text: Chiaki.pcFixCommand()
+                                            wrapMode: Text.WrapAnywhere
+                                            color: C.Theme.textSoft
+                                            font.family: "monospace"
+                                            font.pixelSize: 11
+                                        }
+
                                         RowLayout {
                                             spacing: 8
+                                            visible: Chiaki.pcDriverUrl() !== "" || Chiaki.pcFixCommand() !== ""
 
                                             C.PillButton {
                                                 kind: "primary"
+                                                visible: Chiaki.pcDriverUrl() !== ""
                                                 text: qsTr("Get ViGEmBus")
                                                 onClicked: Qt.openUrlExternally(Chiaki.pcDriverUrl())
+                                            }
+
+                                            C.PillButton {
+                                                kind: "primary"
+                                                visible: Chiaki.pcFixCommand() !== ""
+                                                text: qsTr("Copy the command")
+                                                onClicked: Chiaki.pcCopyFixCommand()
                                             }
 
                                             C.PillButton {
@@ -737,7 +795,7 @@ DialogView {
                                         wrapMode: Text.WordWrap
                                         color: C.Theme.textDim
                                         font.pixelSize: 12
-                                        text: qsTr("Friends get the picture and only the game's sound, never your voice chat. You play on your own controller; theirs become controllers on this computer. A game in exclusive fullscreen, or protected video, can stay black: use borderless or windowed.")
+                                        text: Chiaki.pcNote()
                                     }
                                 }
                             }

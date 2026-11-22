@@ -41,7 +41,5 @@ See [pc-source.md](pc-source.md).
   Proposed on 2026-11-22, waiting for a go.
 - **A built-in Xbox client**: connecting to the Xbox console directly, like the app does with a
   PlayStation, instead of through the Xbox app. Decided for later on 2026-11-22.
-- **Linux and macOS** as the game source: PipeWire and uinput on Linux, ScreenCaptureKit (picture
-  and sound only) on a Mac.
 - **Player numbers next to the names** in Each their own controller (today the controller's
   lights say it).

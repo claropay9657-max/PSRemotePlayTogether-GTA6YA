@@ -14,6 +14,10 @@
 
 #include <QTimer>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 /** How often the game in the shared window or on the shared screen is looked for again. */
 static const int kGameCheckMs = 15000;
 
@@ -66,6 +70,8 @@ void StreamSession::PcStart()
 	config.height = pc_height;
 	config.fps = pc_fps;
 	config.video_kbps = pc_video_kbps;
+	config.portal_fd = pc_portal_fd;
+	config.portal_node = pc_portal_node;
 	PcCapture::Callbacks callbacks;
 	// On the capture's threads
 	callbacks.on_video = [this](const uint8_t *data, size_t size) {
@@ -129,6 +135,15 @@ void StreamSession::PcStop()
 		pc_pads->Close();
 		pc_pads.reset();
 	}
+	// Linux: the system's screen sharing ends with the session
+#ifndef _WIN32
+	if(pc_portal_fd >= 0)
+	{
+		close(pc_portal_fd);
+		pc_portal_fd = -1;
+	}
+#endif
+	pc_portal.reset();
 }
 
 void StreamSession::PcFinish(ChiakiQuitReason reason, const QString &why)

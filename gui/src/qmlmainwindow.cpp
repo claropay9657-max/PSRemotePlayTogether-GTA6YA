@@ -2572,6 +2572,18 @@ void QmlMainWindow::shareThisComputer(const QString &what)
             break;
         }
     }
+    // Linux: the system asks which window or screen, or shares the one it shared last time
+    PcSource::Target portal;
+    if (!found && what.compare(QLatin1String("test"), Qt::CaseInsensitive) != 0) {
+        for (const PcSource::Target &t : targets) {
+            if (t.kind == QLatin1String("portal")) {
+                const PcSource::Target last = PcSource::Target::FromMap(settings->GetCoPlayPcTarget());
+                portal = last.kind == t.kind && !last.token.isEmpty() ? last : t;
+                found = &portal;
+                break;
+            }
+        }
+    }
     if (!found) {
         const QString text = what.isEmpty() ? tr("No game is running on this computer.")
                                             : tr("Nothing on this computer is called \"%1\".").arg(what);

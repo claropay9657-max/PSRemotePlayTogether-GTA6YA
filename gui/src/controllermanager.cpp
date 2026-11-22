@@ -6,6 +6,8 @@
 #include <QByteArray>
 #include <QTimer>
 
+#include <cstring>
+
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
 #include <SDL.h>
 #endif
@@ -205,6 +207,12 @@ void ControllerManager::UpdateAvailableControllers()
 	for(int i=0; i<SDL_NumJoysticks(); i++)
 	{
 		if(!SDL_IsGameController(i))
+			continue;
+
+		// The friends' controllers this app adds for a game on this computer (virtualpads.cpp)
+		// are theirs, not the host's
+		const char *joystick_name = SDL_JoystickNameForIndex(i);
+		if(joystick_name && strstr(joystick_name, "PSRemotePlayTogether"))
 			continue;
 
 		// We'll try to identify pads with Motion Control

@@ -22,7 +22,10 @@ namespace PcSource {
 /** Something on this computer whose picture can be shared. */
 struct Target
 {
-	/** "window", "screen", or "test" (a moving test picture and a tone, for trying it out). */
+	/**
+	 * "window", "screen", "portal" (Linux: the system asks which window or screen, see
+	 * PcPortal), or "test" (a moving test picture and a tone, for trying it out).
+	 */
 	QString kind;
 	/** The window (HWND) or the screen (HMONITOR) on Windows; 0 otherwise. */
 	quint64 handle = 0;
@@ -38,6 +41,8 @@ struct Target
 	bool xbox = false;
 	/** The window belongs to a game (see DetectGame()); games come first in the list. */
 	bool game = false;
+	/** "portal": what lets the system share the same window or screen again without asking. */
+	QString token;
 
 	bool Valid() const { return !kind.isEmpty(); }
 	QVariantMap ToMap() const;
@@ -46,9 +51,20 @@ struct Target
 
 /**
  * Why this computer cannot share a game, in words for the Host page; empty if it can.
- * Only Windows can, for now (Linux and macOS follow, see docs/pc-source.md).
+ * Windows, Linux (xdg-desktop-portal and PipeWire) and macOS (ScreenCaptureKit).
  */
 QString Unsupported();
+
+/**
+ * A permission the system wants before anything can be shared (macOS: Screen Recording), in
+ * words for the Host page; empty if there is none to give.
+ */
+QString Permission();
+/** Asks for that permission: the system's question, else its settings page. */
+void AskPermission();
+
+/** What the Host page says about sharing on this system, under the list. */
+QString Note();
 
 /**
  * The windows and screens that can be shared, the screens last. Leaves out this app's own
@@ -110,6 +126,9 @@ class PcCapture
 			int fps = 60;
 			int video_kbps = 15000;
 			bool sound = true;
+			/** Linux: the stream the system's screen sharing gave (PcPortal::Stream); the fd stays the caller's. */
+			int portal_fd = -1;
+			quint32 portal_node = 0;
 		};
 
 		/** Called from the capture's own threads. */
@@ -143,6 +162,42 @@ class PcCapture
 		std::string Encoder() const;
 		/** Whether the sound is the program's alone, or everything but this app's. */
 		std::string SoundSource() const;
+
+	private:
+		struct Private;
+		std::unique_ptr<Private> d;
+};
+
+/**
+ * Linux: asks the system which window or screen to share (xdg-desktop-portal's ScreenCast),
+ * in the background. The sharing lasts as long as this object. Elsewhere it does nothing.
+ */
+class PcPortal
+{
+	public:
+		struct Stream
+		{
+			/** PipeWire's connection for the stream, for PcCapture::Config::portal_fd. */
+			int fd = -1;
+			quint32 node = 0;
+			int width = 0;
+			int height = 0;
+			/** A window, not a whole screen. */
+			bool window = false;
+			/** For sharing the same again next time without asking (PcSource::Target::token). */
+			QString token;
+		};
+
+		PcPortal();
+		~PcPortal();
+		PcPortal(const PcPortal &) = delete;
+		PcPortal &operator=(const PcPortal &) = delete;
+
+		/**
+		 * Asks (or shares what `token` names again) and calls `done` on the main thread, with
+		 * the stream or with why there is none (empty if the person cancelled).
+		 */
+		void Open(const QString &token, std::function<void(const Stream &stream, const QString &error)> done);
 
 	private:
 		struct Private;

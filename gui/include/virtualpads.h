@@ -4,13 +4,15 @@
 #define PSRPT_VIRTUALPADS_H
 
 // Game controllers on this computer that the players' controllers drive, for a game on
-// the host's computer (docs/pc-source.md). On Windows these are Xbox 360 controllers of the
-// ViGEmBus driver, which games, Steam and the Xbox app all take; elsewhere there are none yet.
+// the host's computer (docs/pc-source.md): Xbox 360 controllers, which games, Steam and the
+// Xbox app all take. On Windows through the ViGEmBus driver, on Linux through the kernel's
+// uinput; macOS has none for apps (friends watch there).
 
 #include <coplay/protocol.h>
 
 #include <QString>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -25,8 +27,10 @@ class VirtualPads
 
 		/** Whether this build has virtual controllers on this system at all. */
 		static bool Built();
-		/** Where the driver comes from, for the Host page. */
+		/** Where the driver comes from, for the Host page; empty where there is none to get. */
 		static QString DriverUrl();
+		/** Linux: the command that lets this app add controllers (a udev rule); empty elsewhere. */
+		static QString FixCommand();
 		/**
 		 * Why there are no virtual controllers right now, in words for the Host page; empty if
 		 * there are. Asks the driver, so not every frame.

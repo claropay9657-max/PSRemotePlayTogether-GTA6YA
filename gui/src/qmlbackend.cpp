@@ -34,6 +34,7 @@
 #include <QMetaObject>
 #include <QtGlobal>
 #include <QGuiApplication>
+#include <QClipboard>
 #include <QPixmap>
 #include <QImageReader>
 #include <QProcessEnvironment>
@@ -45,6 +46,10 @@
 #include <QThreadPool>
 #include "pcsource.h"
 #include "virtualpads.h"
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 extern "C" {
 #include <chiaki/time.h>
@@ -1940,8 +1945,13 @@ void QmlBackend::hostConsole(int index, QString nickname)
 QVariantList QmlBackend::pcTargets() const
 {
     QVariantList list;
-    for (const PcSource::Target &t : PcSource::Targets())
+    // Linux: what the system shared last time comes first, shared again without asking
+    const PcSource::Target last = PcSource::Target::FromMap(settings->GetCoPlayPcTarget());
+    for (const PcSource::Target &t : PcSource::Targets()) {
+        if (t.kind == QLatin1String("portal") && last.kind == t.kind && !last.token.isEmpty())
+            list.append(last.ToMap());
         list.append(t.ToMap());
+    }
     return list;
 }
 
@@ -1958,6 +1968,31 @@ QString QmlBackend::pcPadsProblem() const
 QString QmlBackend::pcDriverUrl() const
 {
     return VirtualPads::DriverUrl();
+}
+
+QString QmlBackend::pcFixCommand() const
+{
+    return VirtualPads::FixCommand();
+}
+
+void QmlBackend::pcCopyFixCommand() const
+{
+    QGuiApplication::clipboard()->setText(VirtualPads::FixCommand());
+}
+
+QString QmlBackend::pcPermission() const
+{
+    return PcSource::Permission();
+}
+
+void QmlBackend::pcAskPermission() const
+{
+    PcSource::AskPermission();
+}
+
+QString QmlBackend::pcNote() const
+{
+    return PcSource::Note();
 }
 
 QVariantMap QmlBackend::pcPicture(const QVariantMap &target, int height) const
@@ -1993,11 +2028,51 @@ void QmlBackend::hostThisComputer(const QVariantMap &target_map)
         emit error(tr("This computer"), unsupported);
         return;
     }
+    const QString permission = PcSource::Permission();
+    if (!permission.isEmpty()) {
+        emit error(tr("This computer"), permission);
+        return;
+    }
     PcSource::Target target = PcSource::Find(PcSource::Target::FromMap(target_map));
     if (!target.Valid()) {
         emit error(tr("This computer"), tr("That window is not open any more. Choose again."));
         return;
     }
+    if (target.kind == QLatin1String("portal")) {
+        // Linux: the system asks which window or screen (or shares the one it shared last time)
+        if (pc_portal_asking)
+            return;
+        auto portal = std::make_shared<PcPortal>();
+        pc_portal_asking = portal;
+        portal->Open(target.token, [this, portal, target](const PcPortal::Stream &stream, const QString &why) {
+            pc_portal_asking.reset();
+            if (stream.fd < 0) {
+                // Cancelled in the system's dialog needs no words
+                if (!why.isEmpty())
+                    emit error(tr("This computer"), why);
+                return;
+            }
+            if (session) {
+#ifndef _WIN32
+                ::close(stream.fd);
+#endif
+                return;
+            }
+            PcSource::Target chosen = target;
+            chosen.handle = 1;
+            chosen.token = stream.token;
+            chosen.width = stream.width;
+            chosen.height = stream.height;
+            chosen.title = stream.window ? tr("The window you chose") : tr("The screen you chose");
+            startThisComputer(chosen, portal, stream.fd, stream.node);
+        });
+        return;
+    }
+    startThisComputer(target, nullptr, -1, 0);
+}
+
+void QmlBackend::startThisComputer(const PcSource::Target &target, std::shared_ptr<PcPortal> portal, int portal_fd, quint32 portal_node)
+{
     settings->SetCoPlayHostEnabled(true);
     settings->SetCoPlayPcTarget(target.ToMap());
     if (settings->GetCoPlayPublic()) {
@@ -2024,6 +2099,9 @@ void QmlBackend::hostThisComputer(const QVariantMap &target_map)
             false);
     info.pc_source = true;
     info.pc_target = target.ToMap();
+    info.pc_portal = std::move(portal);
+    info.pc_portal_fd = portal_fd;
+    info.pc_portal_node = portal_node;
     // The window's own shape, ultrawide too, as high as chosen on the Host page
     int width = 1920, height = 1080;
     PcSource::PictureSize(target, settings->GetCoPlayPcHeight(), &width, &height);
