@@ -726,6 +726,21 @@ C.SettingsPage {
 
                 KofiButton { }
             }
+
+            C.SettingsRow {
+                title: qsTr("Community")
+                subtitle: qsTr("Questions, news and people to play with, on Reddit. Opens in your browser.")
+                keywords: qsTr("reddit community subreddit forum help questions news friends players")
+                textMinimum: 200
+
+                C.PillButton {
+                    small: true
+                    iconName: "people"
+                    text: "Reddit"
+                    Accessible.name: qsTr("r/PSRemotePlayTogether on Reddit, opens in your browser")
+                    onClicked: Qt.openUrlExternally("https://www.reddit.com/r/PSRemotePlayTogether/")
+                }
+            }
         }
 
         C.SettingsGroup {
@@ -778,6 +793,21 @@ C.SettingsPage {
                         const folder = Chiaki.settings.logDirectory;
                         Qt.openUrlExternally((folder.startsWith("/") ? "file://" : "file:///") + folder);
                     }
+                }
+            }
+
+            C.SettingsRow {
+                title: qsTr("Report a problem")
+                subtitle: qsTr("On GitHub, opens in your browser. A log from the folder above helps to find it.")
+                keywords: qsTr("bug report issue issues github problem error feedback")
+                textMinimum: 200
+
+                C.PillButton {
+                    small: true
+                    iconName: "external"
+                    text: "GitHub"
+                    Accessible.name: qsTr("Report a problem on GitHub, opens in your browser")
+                    onClicked: Qt.openUrlExternally("https://github.com/Crypto90/PSRemotePlayTogether/issues")
                 }
             }
         }

@@ -39,6 +39,8 @@ Every file comes with a `.sha256` next to it.
 
 6. Wait for the "Build" run of the tag. Its last job, "Publish the release",
    creates the release with the notes and every file.
+7. Post it on [r/PSRemotePlayTogether](https://www.reddit.com/r/PSRemotePlayTogether/),
+   with the flair **Release**: every release is announced there.
 
 A tag with a hyphen, such as `v1.0.0-rc1`, is published as a pre-release. The
 app's update check only offers plain versions, so a pre-release is not
