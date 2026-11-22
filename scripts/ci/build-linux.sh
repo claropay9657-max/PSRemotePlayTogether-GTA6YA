@@ -64,6 +64,10 @@ echo "== Checking that the AppImage starts"
 # "list" prints the registered consoles and exits; it loads every bundled library on the way
 SMOKE_HOME="$(mktemp -d)"
 OUT_PATH="$PWD/$OUT"
+# No sound device and no PipeWire service in a CI container: SDL's PipeWire output would try to
+# connect to libraries that are there (the headers' package brings them) without a service
+mkdir -m 700 -p "$SMOKE_HOME/run"
+export XDG_RUNTIME_DIR="$SMOKE_HOME/run" SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy
 set +e
 HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_HOME/.config" QT_QPA_PLATFORM=offscreen \
 	"$OUT_PATH" --appimage-extract-and-run list
