@@ -4,9 +4,9 @@
 
 # 🎮 PSRemotePlayTogether
 
-**Play single-player PlayStation games together, from anywhere.**
+**Play your games together, from anywhere: on a PS5 or PS4, on your PC or Mac, or on an Xbox.**
 
-One PS5 or PS4 · everybody plays as player 1 · voice chat, webcams and a stream overlay for OBS
+PS5, PS4, PC, Mac and Xbox · everybody on one player, or each their own on a PC · voice chat, webcams and a stream overlay for OBS
 
 [![GitHub Release](https://img.shields.io/github/v/release/Crypto90/PSRemotePlayTogether?style=for-the-badge&color=00d2ff&logo=github)](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Crypto90/PSRemotePlayTogether/total?style=for-the-badge&color=8c52ff&logo=github)](https://github.com/Crypto90/PSRemotePlayTogether/releases)
@@ -408,7 +408,7 @@ Three looks: transparent without boxes (the default), glass boxes, dark boxes. A
 ## ❓ FAQ
 
 **Can we play 4-player games with this?**
-No. The console sees one controller, and all of you are that one player. It is made for playing single-player games together.
+On a console, no: the console sees one controller, and all of you are that one player. It is made for playing single-player games together. A game on the host's Windows or Linux computer, yes: with **Each their own controller** the host is player 1 and friends are players 2, 3 and 4.
 
 **Do my friends need a PlayStation or a PSN account?**
 No. Only the host needs the console and the account. Guests need the invite and a controller, and either the app or just a web browser.

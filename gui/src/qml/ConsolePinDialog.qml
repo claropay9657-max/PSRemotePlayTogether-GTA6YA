@@ -8,11 +8,16 @@ import "controls" as C
 // The passcode of the user on a console, saved so that the app types it in on connecting.
 DialogView {
     property var consoleIndex
+    /** A registered console by its ID: works while it is away from this network too. */
+    property string consoleMac: ""
     title: qsTr("Console login PIN")
     buttonText: qsTr("Save")
     buttonEnabled: pin.acceptableInput
     onAccepted: {
-        Chiaki.setConsolePin(consoleIndex, pin.text.trim());
+        if (consoleMac !== "")
+            Chiaki.setConsolePinForMac(consoleMac, pin.text.trim());
+        else
+            Chiaki.setConsolePin(consoleIndex, pin.text.trim());
         stack.pop();
     }
 

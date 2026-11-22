@@ -95,6 +95,8 @@ class QmlBackend : public QObject
     // What the Twitch channel shows on the game picture: latest follower, goals, poll, chat, ...
     Q_PROPERTY(QObject* twitchElements READ twitchElementsObject CONSTANT)
     Q_PROPERTY(QObject* viewerActions READ viewerActionsObject CONSTANT)
+    // Trying the microphone, the speakers and the webcam on the settings page, outside a session
+    Q_PROPERTY(QObject* deviceCheck READ deviceCheckObject CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
     Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
     // A release newer than this build, found by the check at start; empty if there is none
@@ -269,6 +271,7 @@ public:
     QObject *liveAlerts() const;
     QObject *twitchElementsObject() const;
     QObject *viewerActionsObject() const;
+    QObject *deviceCheckObject() const;
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
     QString updateVersion() const { return update_version; }
@@ -299,6 +302,8 @@ public:
     /** As stopAutoConnect(), and the console is not looked for over PSN either. */
     void cancelAutoConnect();
     Q_INVOKABLE void setConsolePin(int index, QString console_pin);
+    /** The same for a registered console by its ID, whether it is on this network or not. */
+    Q_INVOKABLE void setConsolePinForMac(const QString &mac, QString console_pin);
     Q_INVOKABLE QString openPsnLink();
     Q_INVOKABLE QString openPlaceboOptionsLink();
     Q_INVOKABLE void initPsnAuth(const QUrl &url, const QJSValue &callback);
@@ -489,6 +494,7 @@ private:
     class LiveAlerts *live_alerts = {};
     class TwitchElements *twitch_elements = {};
     class ViewerActions *viewer_actions = {};
+    class DeviceCheck *device_check = {};
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};

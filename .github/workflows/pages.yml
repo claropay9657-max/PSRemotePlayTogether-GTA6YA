@@ -16,6 +16,7 @@ on:
       - main
     paths:
       - 'web/**'
+      - 'test/web/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -48,6 +49,16 @@ jobs:
             cp "$f" "$RUNNER_TEMP/check.mjs"
             node --check "$RUNNER_TEMP/check.mjs" || { echo "::error file=$f::does not parse"; exit 1; }
           done
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test the page's DualSense code
+        # Reports built byte by byte as the controller sends them (test/web); the page's
+        # files are modules without a package.json saying so
+        run: node --experimental-default-type=module --test test/web/*.test.mjs
 
       - name: Set up Pages
         uses: actions/configure-pages@v5

@@ -31,6 +31,18 @@ QmlController::QmlController(Controller *c, uint32_t shortcut, QObject *t, QObje
     , controller(c)
 {
     repeat_timer = new QTimer(this);
+
+    // The charge changes slowly; SDL only knows it in a few steps anyway
+    battery_level = controller->GetBattery();
+    battery_timer = new QTimer(this);
+    battery_timer->start(15000);
+    connect(battery_timer, &QTimer::timeout, this, [this]() {
+        const int level = controller->GetBattery();
+        if (level == battery_level)
+            return;
+        battery_level = level;
+        emit batteryChanged();
+    });
     connect(repeat_timer, &QTimer::timeout, this, [this]() {
         if (!repeat_running++)
             repeat_timer->start(80);
@@ -92,6 +104,11 @@ bool QmlController::isHandheld() const
 bool QmlController::isPS() const
 {
     return controller->IsPS();
+}
+
+QString QmlController::name() const
+{
+    return controller->GetType().trimmed();
 }
 
 bool QmlController::isSteamVirtual() const

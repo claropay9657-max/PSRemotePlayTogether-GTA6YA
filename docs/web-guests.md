@@ -291,8 +291,10 @@ and of the host's side, with a stand-in for WebRTC.
 
 ## Not done
 
-- Moving around inside the stream menu with the controller: it opens and
-  closes with L1+R1+L3+R3, the rest is keyboard, mouse or finger.
-- The DualSense opened directly has only been tried without a real controller.
+- The DualSense opened directly is checked against its report layout with built
+  reports (`node --experimental-default-type=module --test test/web/*.test.mjs`,
+  also run before the page is published), not yet with a real controller.
+- Controllers other than a DualSense opened directly show no battery in a
+  browser: the Gamepad API does not tell it.
 - A browser guest does not see which of the others came in through a browser
   (the host's app marks them "WEB").

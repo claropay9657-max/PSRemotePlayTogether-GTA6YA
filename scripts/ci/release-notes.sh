@@ -39,7 +39,7 @@ row() {
 	fi
 }
 
-echo "**Play single-player PlayStation games together, from anywhere.** Everybody in the session controls the same player with their own controller, on one PS5 or PS4, with voice chat, webcams and an overlay for OBS."
+echo "**Play your games together, from anywhere.** On a PS5 or PS4, a game on your PC or Mac, or an Xbox through its app: everybody plays with a controller of their own, together as one player or, for a game on a PC, each as a player of their own, with voice chat, webcams and an overlay for OBS."
 echo
 if [ -n "$changes" ]; then
 	echo "## What's new"

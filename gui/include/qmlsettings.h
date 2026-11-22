@@ -858,6 +858,10 @@ public:
     Q_INVOKABLE void importSettings();
     Q_INVOKABLE void importPlaceboSettings();
     Q_INVOKABLE void deleteProfile(QString profile);
+    /** False if the name is taken or not allowed; the set in use stays in use. */
+    Q_INVOKABLE bool renameProfile(const QString &from, const QString &to);
+    /** {consoles, psn, streamerMode} of a set, "" for the default one. */
+    Q_INVOKABLE QVariantMap profileSummary(const QString &profile) const;
     Q_INVOKABLE QString stringForDpadShortcut() const;
     Q_INVOKABLE QString stringForStreamMenuShortcut() const;
 

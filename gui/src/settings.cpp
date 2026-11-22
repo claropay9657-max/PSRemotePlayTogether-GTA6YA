@@ -2154,6 +2154,77 @@ void Settings::DeleteProfile(QString profile)
 	LoadControllerMappings();
 }
 
+static QString ProfileStoreName(const QString &profile)
+{
+	return profile.isEmpty() ? QCoreApplication::applicationName()
+		: QStringLiteral("%1-%2").arg(QCoreApplication::applicationName(), profile);
+}
+
+bool Settings::RenameProfile(const QString &from, const QString &to)
+{
+	const QString lower = to.toLower();
+	if(from.isEmpty() || to.isEmpty() || !profiles.contains(from) || from == to
+		|| lower == QLatin1String("default") || lower == QLatin1String("create new profile"))
+		return false;
+	for(const QString &p : std::as_const(profiles))
+	{
+		if(p.compare(to, Qt::CaseInsensitive) == 0 && p != from)
+			return false;
+	}
+	const bool in_use = GetCurrentProfile() == from;
+	// The set in use is this object's own store: its values may not be written out yet
+	if(in_use)
+		settings.sync();
+	QSettings old_store(QCoreApplication::organizationName(), ProfileStoreName(from));
+	QSettings new_store(QCoreApplication::organizationName(), ProfileStoreName(to));
+	new_store.clear();
+	const QStringList keys = old_store.allKeys();
+	for(const QString &key : keys)
+		new_store.setValue(key, old_store.value(key));
+	new_store.sync();
+	if(new_store.status() != QSettings::NoError)
+	{
+		new_store.clear();
+		return false;
+	}
+	if(in_use)
+	{
+		settings.clear();
+		settings.sync();
+	}
+	else
+	{
+		old_store.clear();
+		old_store.sync();
+	}
+	profiles[profiles.indexOf(from)] = to;
+	SaveProfiles();
+	emit ProfilesUpdated();
+	if(in_use)
+	{
+		// Makes the app read the set again, under its new name
+		default_settings.setValue("settings/current_profile", to);
+		emit CurrentProfileChanged();
+	}
+	return true;
+}
+
+QVariantMap Settings::ProfileSummary(const QString &profile)
+{
+	QVariantMap out;
+	if(!profile.isEmpty() && !profiles.contains(profile))
+		return out;
+	QSettings store(QCoreApplication::organizationName(), ProfileStoreName(profile));
+	if(profile == GetCurrentProfile())
+		settings.sync();
+	out["consoles"] = store.beginReadArray("registered_hosts");
+	store.endArray();
+	out["psn"] = !store.value("settings/psn_refresh_token").toString().isEmpty()
+		&& !store.value("settings/psn_account_id").toString().isEmpty();
+	out["streamerMode"] = store.value("settings/streamer_mode", false).toBool();
+	return out;
+}
+
 void Settings::LoadRegisteredHosts(QSettings *qsettings)
 {
 	if(!qsettings)

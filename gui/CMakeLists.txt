@@ -65,6 +65,8 @@ set(SOURCE_FILES
 	src/presetsettings.cpp
 	include/voicechat.h
 	src/voicechat.cpp
+	include/devicecheck.h
+	src/devicecheck.cpp
 	include/livestream.h
 	src/livestream.cpp
 	include/livecontroller.h
@@ -210,6 +212,9 @@ if(WIN32)
 	endif()
 	target_link_libraries(vigemclient PUBLIC setupapi)
 	target_link_libraries(chiaki vigemclient)
+	# The charge of Xbox controllers over Bluetooth, which XInput does not give
+	target_sources(chiaki PRIVATE src/padbattery_win.cpp)
+	target_link_libraries(chiaki cfgmgr32)
 	target_compile_definitions(chiaki PRIVATE PSRPT_VIGEM=1)
 elseif(APPLE)
 	# A window or a screen and its sound through ScreenCaptureKit (macOS 13 and later)

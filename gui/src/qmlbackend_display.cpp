@@ -7,6 +7,7 @@
 #include "livecontroller.h"
 #include "livescenes.h"
 #include "livealerts.h"
+#include "devicecheck.h"
 #include "twitch.h"
 #include "vieweractions.h"
 #include "twitchelements.h"
@@ -178,6 +179,11 @@ QObject *QmlBackend::twitchElementsObject() const
 QObject *QmlBackend::viewerActionsObject() const
 {
     return viewer_actions;
+}
+
+QObject *QmlBackend::deviceCheckObject() const
+{
+    return device_check;
 }
 
 QObject *QmlBackend::overlayLayoutSettings() const

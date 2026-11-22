@@ -3,7 +3,7 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
-## Unreleased
+## 0.5.0
 
 - **New: share a game on this computer (Windows, Linux, macOS).** On the Host page, **This computer** stands next to your consoles: pick a game's window, another window or a whole screen, and your friends join as they join a console, in the app or in a browser. PC games, Steam, emulators, GeForce Now: whatever runs in a window. The app finds which game runs (Steam, Epic, EA, Ubisoft, GOG, Battle.net, Riot and Xbox games, by the GamerNova client's detection) and the room says so.
 - **Xbox through the Xbox app.** Share the Xbox app's window with Remote Play to your own Xbox, or a cloud game with Game Pass: your friends' controllers become Xbox controllers on this computer, which the Xbox app takes, and the room says Xbox.
@@ -20,7 +20,14 @@ becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh
 - **Rooms say what the game runs on:** PS5, PS4, PC or Xbox, in the app and in the browser, and a **Console** filter narrows the list to one.
 - **The share command:** `PSRemotePlayTogether share "<part of a window's title>"` (or `screen`) hosts a game on this computer as set up on the Host page.
 - **Registering a console by its address in Settings** now always adds it to the start page; after clicking on a console found on the network first, it could stay missing.
-- **Good to know:** this version speaks a new version of the session protocol: everybody in a session needs it, older apps see the room but cannot join. The list of public rooms needs its update for rooms of games on a computer (`server/rooms/psrpt_rooms.php`). A game in exclusive fullscreen or protected video can stay black: use borderless or windowed. Some anti-cheat systems refuse virtual controllers. On Linux the app needs PipeWire and the screen sharing of your desktop (xdg-desktop-portal).
+- **Try your microphone, speakers and webcam before you play** (Settings → Voice & webcam): a level meter with the mark from which your friends hear you, a chime on the left, then the right, then both speakers, and your webcam's picture as your friends get it. Nothing is sent.
+- **Setting sets: rename them, and see what is in each.** A pencil renames a set, the one in use too, and every set shows its consoles, its PSN login and streamer mode, no longer only the one in use.
+- **The login PIN for any registered console**, also while it is away from your network (Settings → Your consoles → PIN).
+- **Controllers say their name and charge** (Settings → Controllers): "Xbox Series X Controller" instead of "Controller", with a small battery (full, half full, low, almost empty) or "On a cable".
+- **Xbox controllers over Bluetooth show their charge on Windows.** Windows' own controller interface gives none for them, so the room showed no battery; the app now reads what Windows' Bluetooth settings show.
+- **The page for browsers on a phone held upright:** the picture at the top, the controller on the screen below it, every button within reach and none on top of another. Held sideways and on tablets, L3, R3 and PS no longer overlap, and the shoulder buttons stay clear of the first players' names.
+- **A DualSense in the browser (Chrome, Edge):** the light bar now takes its colour over Bluetooth too, and a battery problem (too hot, too cold) no longer shows as a charge.
+- **Good to know:** this version speaks a new version of the session protocol: everybody in a session needs it, older apps see the room but cannot join. A game in exclusive fullscreen or protected video can stay black: use borderless or windowed. Some anti-cheat systems refuse virtual controllers. On Linux the app needs PipeWire and the screen sharing of your desktop (xdg-desktop-portal).
 
 ## 0.4.3
 

@@ -43,9 +43,10 @@ C.SettingsPage {
         return false;
     }
 
-    /** What the app knows of a controller (a QmlController): only what it is. */
+    /** What the app knows of a controller (a QmlController): what it is and its own name. */
     function padInfo(pad) {
-        let name = qsTr("Controller");
+        // Not one the app knows by kind: the name it gives itself ("Xbox Series X Controller")
+        let name = pad.name && pad.name.length > 0 ? pad.name : qsTr("Controller");
         if (pad.handheld)
             name = qsTr("Built-in controls");
         else if (pad.dualSenseEdge)
@@ -70,6 +71,21 @@ C.SettingsPage {
             note = qsTr("If its buttons mix up, teach them below.");
 
         return { name: name, known: pad.playStation || pad.handheld, badges: badges, note: note };
+    }
+
+    /** Its charge in words and a colour, from QmlController.battery (5, 20, 55, 100; 254 cable; 255 unknown). */
+    function batteryInfo(level) {
+        if (level === 254)
+            return { text: qsTr("On a cable"), fill: -1, color: "#9ff0cc" };
+        if (level > 100)
+            return { text: qsTr("Ready"), fill: -1, color: "#9ff0cc" };
+        if (level >= 90)
+            return { text: qsTr("Battery full"), fill: 1, color: "#9ff0cc" };
+        if (level >= 40)
+            return { text: qsTr("Battery half full"), fill: 0.55, color: "#9ff0cc" };
+        if (level >= 15)
+            return { text: qsTr("Battery low"), fill: 0.25, color: "#fbd98c" };
+        return { text: qsTr("Battery almost empty"), fill: 0.08, color: "#ff9a9a" };
     }
 
     /** Another page of the settings window, by its key, as a link: SettingsView.openPage(). */
@@ -175,11 +191,55 @@ C.SettingsPage {
                         }
                     }
 
-                    Text {
-                        text: qsTr("Ready")
-                        color: "#9ff0cc"
-                        font.pixelSize: 13
-                        font.weight: Font.Bold
+                    // The charge: a small battery and a word, or Ready when the controller does not say
+                    Row {
+                        id: charge
+                        readonly property var battery: page.batteryInfo(padRow.modelData.battery)
+                        spacing: 7
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: battery.text
+
+                        Item {
+                            visible: charge.battery.fill >= 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 24
+                            height: 12
+
+                            Rectangle {
+                                width: 21
+                                height: 12
+                                radius: 3
+                                color: "transparent"
+                                border.width: 1.5
+                                border.color: Qt.rgba(1, 1, 1, 0.45)
+
+                                Rectangle {
+                                    x: 2.5
+                                    y: 2.5
+                                    width: Math.max(2, (parent.width - 5) * Math.max(0, charge.battery.fill))
+                                    height: parent.height - 5
+                                    radius: 1.5
+                                    color: charge.battery.color
+                                }
+                            }
+
+                            Rectangle {
+                                x: 21.5
+                                y: 4
+                                width: 2
+                                height: 4
+                                radius: 1
+                                color: Qt.rgba(1, 1, 1, 0.45)
+                            }
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: charge.battery.text
+                            color: charge.battery.color
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                        }
                     }
                 }
             }

@@ -1763,6 +1763,16 @@ void QmlSettings::deleteProfile(QString profile)
         settings->DeleteProfile(std::move(profile));
 }
 
+bool QmlSettings::renameProfile(const QString &from, const QString &to)
+{
+    return settings->RenameProfile(from, to.trimmed());
+}
+
+QVariantMap QmlSettings::profileSummary(const QString &profile) const
+{
+    return settings->ProfileSummary(profile);
+}
+
 QVariantList QmlSettings::controllerMapping() const
 {
     QVariantList out;

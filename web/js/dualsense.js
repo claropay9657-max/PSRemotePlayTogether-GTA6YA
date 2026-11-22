@@ -28,6 +28,11 @@ const FLAG0_RIGHT_TRIGGER = 0x04;
 const FLAG0_LEFT_TRIGGER = 0x08;
 const FLAG1_LIGHTBAR = 0x04;
 const FLAG1_PLAYER_LEDS = 0x10;
+const FLAG2_LIGHTBAR_SETUP = 0x02;
+/** Fades out the light bar's own blue animation, after which it takes a colour (needed over Bluetooth). */
+const LIGHTBAR_SETUP_LIGHT_OUT = 0x02;
+/** Reports to wait for before that: sent too early after connecting, the controller ignores it. */
+const REPORTS_BEFORE_LIGHT_OUT = 10;
 
 /** The five player lights for player 1 to 5, the way the console shows them. */
 const PLAYER_LEDS = [0x00, 0x04, 0x0a, 0x15, 0x1b, 0x1f];
@@ -153,6 +158,8 @@ export class DualSense {
       led: [0, 0, 0],
       playerIndex: 0,
       dirty: false,
+      /** The light bar still has to be taken from the controller's own animation. */
+      lightOut: false,
     };
     this.sending = false;
     this.onChange = null;
@@ -229,6 +236,7 @@ export class DualSense {
       this.calibration = null;
     }
     this.out.dirty = true;
+    this.out.lightOut = true;
     if (this.onChange) this.onChange();
     return '';
   }
@@ -327,10 +335,13 @@ export class DualSense {
     if (b.length > 52) {
       const level = b[52] & 0x0f;
       const charging = b[52] >> 4;
-      // Charging or full on the cable; otherwise tenths
-      this.battery = charging === 1 || charging === 2 ? 254 : Math.min(100, level * 10 + 5);
+      // Tenths while on its battery; charging or full on the cable; anything else is a
+      // problem with the battery (too hot, too cold, a charging error) and says nothing
+      if (charging === 0) this.battery = Math.min(100, level * 10 + 5);
+      else if (charging === 1 || charging === 2) this.battery = 254;
+      else this.battery = 255;
     }
-    if (this.out.dirty) this.flush();
+    if (this.out.dirty || this.out.lightOut) this.flush();
   }
 
   // ------------------------------------------------------------------ what the game sends back
@@ -372,45 +383,67 @@ export class DualSense {
     this.flush();
   }
 
+  /** Whether the light bar can be taken now (see LIGHTBAR_SETUP_LIGHT_OUT). */
+  get lightOutDue() {
+    return this.out.lightOut && this.reports >= REPORTS_BEFORE_LIGHT_OUT;
+  }
+
   async flush() {
-    if (!this.connected || this.sending || !this.out.dirty) return;
+    if (!this.connected || this.sending || !(this.out.dirty || this.lightOutDue)) return;
     this.sending = true;
-    this.out.dirty = false;
-    // The part that is the same over USB and Bluetooth
-    const c = new Uint8Array(47);
-    c[0] = FLAG0_RIGHT_TRIGGER | FLAG0_LEFT_TRIGGER;
-    c[1] = FLAG1_LIGHTBAR | FLAG1_PLAYER_LEDS;
-    c.set(this.out.triggerRight, 10);
-    c.set(this.out.triggerLeft, 21);
-    c[43] = PLAYER_LEDS[Math.max(0, Math.min(5, this.out.playerIndex))];
-    c[44] = this.out.led[0];
-    c[45] = this.out.led[1];
-    c[46] = this.out.led[2];
     try {
-      if (!this.bluetooth) await this.device.sendReport(REPORT_USB_OUT, c);
-      else {
-        // Bluetooth: a counter and a marker in front, a checksum behind
-        const report = new Uint8Array(77);
-        report[0] = (this.outSeq << 4) & 0xf0;
-        this.outSeq = (this.outSeq + 1) & 0x0f;
-        report[1] = 0x10;
-        report.set(c, 2);
-        const checked = new Uint8Array(2 + 73);
-        checked[0] = 0xa2;
-        checked[1] = REPORT_BT_OUT;
-        checked.set(report.subarray(0, 73), 2);
-        const crc = crc32(checked);
-        report[73] = crc & 0xff;
-        report[74] = (crc >>> 8) & 0xff;
-        report[75] = (crc >>> 16) & 0xff;
-        report[76] = (crc >>> 24) & 0xff;
-        await this.device.sendReport(REPORT_BT_OUT, report);
+      if (this.lightOutDue) {
+        this.out.lightOut = false;
+        const c = new Uint8Array(47);
+        c[38] = FLAG2_LIGHTBAR_SETUP;
+        c[41] = LIGHTBAR_SETUP_LIGHT_OUT;
+        await this.send(c);
+        // The colour and the player lights again, now that the controller takes them
+        this.out.dirty = true;
+      }
+      if (this.out.dirty) {
+        this.out.dirty = false;
+        // The part that is the same over USB and Bluetooth
+        const c = new Uint8Array(47);
+        c[0] = FLAG0_RIGHT_TRIGGER | FLAG0_LEFT_TRIGGER;
+        c[1] = FLAG1_LIGHTBAR | FLAG1_PLAYER_LEDS;
+        c.set(this.out.triggerRight, 10);
+        c.set(this.out.triggerLeft, 21);
+        c[43] = PLAYER_LEDS[Math.max(0, Math.min(5, this.out.playerIndex))];
+        c[44] = this.out.led[0];
+        c[45] = this.out.led[1];
+        c[46] = this.out.led[2];
+        await this.send(c);
       }
     } catch (e) {
       // the controller went away in the middle of it
     }
     this.sending = false;
-    if (this.out.dirty) this.flush();
+    if (this.out.dirty || this.lightOutDue) this.flush();
+  }
+
+  /** One output report: `c` is the part that is the same over USB and Bluetooth (47 bytes). */
+  async send(c) {
+    if (!this.bluetooth) {
+      await this.device.sendReport(REPORT_USB_OUT, c);
+      return;
+    }
+    // Bluetooth: a counter and a marker in front, a checksum behind
+    const report = new Uint8Array(77);
+    report[0] = (this.outSeq << 4) & 0xf0;
+    this.outSeq = (this.outSeq + 1) & 0x0f;
+    report[1] = 0x10;
+    report.set(c, 2);
+    const checked = new Uint8Array(2 + 73);
+    checked[0] = 0xa2;
+    checked[1] = REPORT_BT_OUT;
+    checked.set(report.subarray(0, 73), 2);
+    const crc = crc32(checked);
+    report[73] = crc & 0xff;
+    report[74] = (crc >>> 8) & 0xff;
+    report[75] = (crc >>> 16) & 0xff;
+    report[76] = (crc >>> 24) & 0xff;
+    await this.device.sendReport(REPORT_BT_OUT, report);
   }
 
   close() {

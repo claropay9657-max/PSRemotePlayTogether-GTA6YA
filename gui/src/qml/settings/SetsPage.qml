@@ -6,8 +6,9 @@ import org.streetpea.chiaking
 
 import "../controls" as C
 
-// Setting sets (the app calls them profiles): the ones on this computer, switching
-// between them, a new one, deleting one; and taking the settings to another computer.
+// Setting sets (the app calls them profiles): the ones on this computer with what is in each,
+// switching between them, a new one, renaming and deleting one; and taking the settings to
+// another computer.
 C.SettingsPage {
     id: page
     title: qsTr("Setting sets")
@@ -29,19 +30,61 @@ C.SettingsPage {
     readonly property bool psnLoggedIn: !!(Chiaki.settings.psnRefreshToken && Chiaki.settings.psnAuthToken
                                            && Chiaki.settings.psnAuthTokenExpiry && Chiaki.settings.psnAccountId)
     property bool adding: false
+    /** The set being renamed, "" for none (the default set keeps its name). */
+    property string renaming: ""
     /** What is wrong with the name typed for a new set; "" when it can be made. */
-    readonly property string newNameProblem: {
-        const name = newName.text.trim();
+    readonly property string newNameProblem: nameProblem(newName.text, "")
+
+    /** What is wrong with `typed` as the name of a set (other than `own`, its present name); " " for nothing typed. */
+    function nameProblem(typed, own) {
+        const name = typed.trim();
         if (name.length === 0)
             return " ";
         const lower = name.toLowerCase();
-        if (lower === "default" || lower === "create new profile" || sets.some((s) => s.toLowerCase() === lower))
+        if (lower === "default" || lower === "create new profile"
+                || sets.some((s) => s !== own && s.toLowerCase() === lower))
             return qsTr("There is a set with this name already.");
         return "";
     }
 
     function displayName(name) {
         return name === "" ? qsTr("Default") : name;
+    }
+
+    /** What is in a set, in words: its consoles, its PSN login, streamer mode. */
+    function describe(consoles, psn, streamer) {
+        return (consoles === 0 ? qsTr("No consoles") : consoles === 1 ? qsTr("1 console")
+                : qsTr("%1 consoles").arg(consoles)) + " · "
+            + (psn ? qsTr("PSN logged in") : qsTr("PSN not logged in"))
+            + (streamer ? " · " + qsTr("streamer mode on") : "");
+    }
+
+    function startRenaming(name) {
+        stopAdding(false);
+        renaming = name;
+    }
+
+    function stopRenaming(row, byKeys) {
+        renaming = "";
+        if (byKeys && row)
+            Qt.callLater(() => row.focusRename());
+    }
+
+    /** Renames the set `from` to what was typed; the set in use stays in use. */
+    function rename(row, from, typed, byKeys) {
+        if (nameProblem(typed, from) !== "")
+            return;
+        const to = typed.trim();
+        if (to === from) {
+            stopRenaming(row, byKeys);
+            return;
+        }
+        const index = row.index;
+        renaming = "";
+        if (!Chiaki.settings.renameProfile(from, to))
+            root.showConfirmDialog(qsTr("Rename set"), qsTr("The set “%1” could not be renamed.").arg(from), () => {});
+        if (byKeys)
+            refocusRow(index, newButton);
     }
 
     /** After the list was made anew: the focus back to the row at `index`, or to `fallback`. */
@@ -65,6 +108,7 @@ C.SettingsPage {
     }
 
     function startAdding() {
+        renaming = "";
         newName.text = "";
         adding = true;
         Qt.callLater(() => {
@@ -102,15 +146,25 @@ C.SettingsPage {
                 required property string modelData
                 required property int index
                 readonly property bool inUse: modelData === page.current
+                readonly property bool renamingIt: page.renaming !== "" && page.renaming === modelData
                 readonly property string setName: page.displayName(modelData)
+                /** What is in it: the set in use as it is now, the others as they were saved. */
+                readonly property var summary: {
+                    Chiaki.settings.profiles; // read again when the sets change
+                    return inUse ? null : Chiaki.settings.profileSummary(modelData);
+                }
+
+                function focusRename() {
+                    renameButton.forceActiveFocus(Qt.TabFocusReason);
+                }
 
                 // For the search and the scrolling, as a SettingsRow
                 readonly property bool isSettingRow: true
                 readonly property string title: setName
                 readonly property string subtitle: details.text
-                readonly property string keywords: qsTr("profile profiles manage switch delete")
+                readonly property string keywords: qsTr("profile profiles manage switch delete rename name")
 
-                readonly property bool stacked: width - 66 - 16 < 180 + 20 + controls.implicitWidth
+                readonly property bool stacked: !renamingIt && width - 66 - 16 < 180 + 20 + controls.implicitWidth
                 readonly property bool firstInColumn: {
                     const kids = parent ? parent.visibleChildren : [];
                     for (let i = 0; i < kids.length; ++i) {
@@ -170,11 +224,13 @@ C.SettingsPage {
                     id: texts
                     x: 66
                     y: setRow.stacked ? 12 + Math.round((setRow.topHeight - implicitHeight) / 2) : Math.round((setRow.height - height) / 2)
-                    width: setRow.stacked ? setRow.width - 66 - 16 : setRow.width - 66 - 16 - 20 - controls.implicitWidth
+                    width: setRow.stacked || setRow.renamingIt ? setRow.width - 66 - 16
+                                                               : setRow.width - 66 - 16 - 20 - controls.implicitWidth
                     spacing: 2
 
                     Text {
                         Layout.fillWidth: true
+                        visible: !setRow.renamingIt
                         text: setRow.setName
                         wrapMode: Text.WrapAnywhere
                         color: C.Theme.text
@@ -182,24 +238,75 @@ C.SettingsPage {
                         font.weight: Font.ExtraBold
                     }
 
-                    // What is in it: only known for the set in use
+                    // The new name, typed where the name was
+                    Flow {
+                        Layout.fillWidth: true
+                        visible: setRow.renamingIt
+                        spacing: 8
+
+                        C.Field {
+                            id: renameField
+                            width: Math.min(280, parent.width)
+                            hint: qsTr("New name of the set")
+                            Accessible.name: qsTr("New name of the set %1").arg(setRow.setName)
+                            maximumLength: 40
+                            // Becomes part of a file name
+                            validator: RegularExpressionValidator { regularExpression: /[^\/\\:*?"<>|]*/ }
+                            onAccepted: page.rename(setRow, setRow.modelData, text, true)
+                            Keys.onEscapePressed: (event) => {
+                                if (readOnly)
+                                    page.stopRenaming(setRow, true);
+                                else
+                                    event.accepted = false;
+                            }
+                        }
+
+                        C.PillButton {
+                            kind: "primary"
+                            implicitHeight: 40
+                            text: qsTr("Rename")
+                            enabled: page.nameProblem(renameField.text, setRow.modelData) === ""
+                            onClicked: page.rename(setRow, setRow.modelData, renameField.text, visualFocus)
+                        }
+
+                        C.PillButton {
+                            implicitHeight: 40
+                            text: qsTr("Cancel")
+                            onClicked: page.stopRenaming(setRow, visualFocus)
+                        }
+                    }
+
+                    // What is in it
                     Text {
                         id: details
                         Layout.fillWidth: true
+                        readonly property string problem: setRow.renamingIt
+                            ? page.nameProblem(renameField.text, setRow.modelData).trim() : ""
                         visible: text.length > 0
-                        text: !setRow.inUse ? ""
-                              : (page.consoleCount === 0 ? qsTr("No consoles") : page.consoleCount === 1 ? qsTr("1 console")
-                                 : qsTr("%1 consoles").arg(page.consoleCount)) + " · "
-                                + (page.psnLoggedIn ? qsTr("PSN logged in") : qsTr("PSN not logged in"))
-                                + (Chiaki.settings.streamerMode ? " · " + qsTr("streamer mode on") : "")
+                        text: problem.length > 0 ? problem
+                              : setRow.inUse ? page.describe(page.consoleCount, page.psnLoggedIn, Chiaki.settings.streamerMode)
+                              : setRow.summary && setRow.summary.consoles !== undefined
+                                ? page.describe(setRow.summary.consoles, setRow.summary.psn, setRow.summary.streamerMode) : ""
                         wrapMode: Text.WordWrap
-                        color: C.Theme.textDim
+                        color: problem.length > 0 ? C.Theme.wait : C.Theme.textDim
                         font.pixelSize: 12
+                    }
+                }
+
+                onRenamingItChanged: {
+                    if (renamingIt) {
+                        renameField.text = modelData;
+                        Qt.callLater(() => {
+                            renameField.forceActiveFocus(Qt.TabFocusReason);
+                            renameField.readOnly = false;
+                            renameField.selectAll();
+                        });
                     }
                 }
 
                 RowLayout {
                     id: controls
+                    visible: !setRow.renamingIt
                     x: setRow.stacked ? 66 : setRow.width - 16 - width
                     y: setRow.stacked ? 12 + setRow.topHeight + 10 : Math.round((setRow.height - height) / 2)
                     spacing: 8
@@ -224,6 +331,17 @@ C.SettingsPage {
                             if (byKeys)
                                 page.refocusRow(index, newButton);
                         }
+                    }
+
+                    // The default set keeps its name
+                    C.PillButton {
+                        id: renameButton
+                        visible: setRow.modelData !== ""
+                        small: true
+                        iconName: "pencil"
+                        implicitWidth: implicitHeight
+                        Accessible.name: qsTr("Rename the set %1").arg(setRow.setName)
+                        onClicked: page.startRenaming(setRow.modelData)
                     }
 
                     // The default set and the one in use cannot be deleted

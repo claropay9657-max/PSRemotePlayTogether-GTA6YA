@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls as QQC
 
 import org.streetpea.chiaking
 
@@ -332,28 +331,13 @@ C.SettingsPage {
                     onToggled: Chiaki.settings.autoConnectMac = checked ? consoleRow.modelData.mac : ""
                 }
 
-                // The login PIN goes through the start page's list, so the console has to be there
-                Item {
-                    implicitWidth: pinButton.implicitWidth
-                    implicitHeight: pinButton.implicitHeight
+                // The login PIN, by the console's ID: also while it is away from this network
+                C.PillButton {
                     Layout.leftMargin: 6
-                    QQC.ToolTip.visible: pinHover.hovered && !pinButton.enabled
-                    QQC.ToolTip.text: qsTr("Only while the console is on this network or added by its address")
-                    QQC.ToolTip.delay: 400
-
-                    HoverHandler {
-                        id: pinHover
-                    }
-
-                    C.PillButton {
-                        id: pinButton
-                        anchors.fill: parent
-                        small: true
-                        text: qsTr("PIN")
-                        enabled: consoleRow.where.index >= 0
-                        Accessible.name: qsTr("Login PIN for %1").arg(consoleRow.consoleName)
-                        onClicked: root.showConsolePinDialog(consoleRow.where.index)
-                    }
+                    small: true
+                    text: qsTr("PIN")
+                    Accessible.name: qsTr("Login PIN for %1").arg(consoleRow.consoleName)
+                    onClicked: root.showConsolePinDialog(-1, consoleRow.modelData.mac)
                 }
 
                 C.PillButton {

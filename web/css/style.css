@@ -1572,7 +1572,9 @@ h3 {
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-  --u: min(1vw, 1.9vh);
+  /* At least 117 units across: the sticks, the D-pad, PS, L3 and R3 side by side
+     without touching, on a wide phone as on a tablet */
+  --u: min(0.85vw, 1.9vh);
 }
 
 .touch > * {
@@ -1747,11 +1749,11 @@ h3 {
 }
 
 .t-l3 {
-  left: calc(var(--u) * 45);
+  left: calc(50% - var(--u) * 11.5);
 }
 
 .t-r3 {
-  right: calc(var(--u) * 45);
+  right: calc(50% - var(--u) * 11.5);
 }
 
 .t-ps {
@@ -1782,6 +1784,114 @@ h3 {
 .t-options {
   left: calc(50% + var(--u) * 10);
   width: calc(var(--u) * 9);
+}
+
+/* Held upright, like a handheld: the picture and what is shown on it at the top, the
+   controller below it, every part where a thumb reaches it and nothing on top of another */
+@media (orientation: portrait) {
+  .stage.touch-on {
+    --pic-bottom: calc(env(safe-area-inset-top, 0px) + min(56.25vw, 42vh));
+    /* The controller's unit, for the way into the menu too (which is not inside it) */
+    --pu: min(1.6vw, 0.78vh);
+  }
+
+  .stage.touch-on #screen,
+  .stage.touch-on .hud {
+    top: env(safe-area-inset-top, 0px);
+    bottom: auto;
+    height: min(56.25vw, 42vh);
+  }
+
+  .stage.touch-on .touch {
+    --u: var(--pu);
+  }
+
+  .stage.touch-on .t-l1,
+  .stage.touch-on .t-l2,
+  .stage.touch-on .t-r1,
+  .stage.touch-on .t-r2 {
+    top: calc(var(--pic-bottom) + var(--u) * 3);
+  }
+
+  .stage.touch-on .t-create,
+  .stage.touch-on .t-pad,
+  .stage.touch-on .t-options {
+    top: calc(var(--pic-bottom) + var(--u) * 11.5);
+  }
+
+  /* In the gap between L1 and R1 */
+  .stage.touch-on .t-ps {
+    top: calc(var(--pic-bottom) + var(--u) * 3);
+    bottom: auto;
+  }
+
+  .stage.touch-on .t-dpad {
+    left: calc(var(--u) * 4);
+    bottom: calc(var(--u) * 34);
+    width: calc(var(--u) * 17);
+    height: calc(var(--u) * 17);
+  }
+
+  .stage.touch-on .t-face {
+    right: calc(var(--u) * 3);
+    bottom: calc(var(--u) * 32);
+    width: calc(var(--u) * 21);
+    height: calc(var(--u) * 21);
+  }
+
+  .stage.touch-on .t-stick {
+    bottom: calc(var(--u) * 5);
+    width: calc(var(--u) * 21);
+    height: calc(var(--u) * 21);
+  }
+
+  .stage.touch-on .t-stick-l {
+    left: calc(var(--u) * 4);
+  }
+
+  .stage.touch-on .t-stick-r {
+    right: calc(var(--u) * 4);
+  }
+
+  .stage.touch-on .t-l3 {
+    left: calc(var(--u) * 21);
+    bottom: calc(var(--u) * 26.5);
+  }
+
+  .stage.touch-on .t-r3 {
+    right: calc(var(--u) * 21);
+    bottom: calc(var(--u) * 26.5);
+  }
+
+  /* The way into the menu, in the free band between the buttons and the sticks */
+  .stage.touch-on .menu-handle {
+    top: calc(var(--pic-bottom) + var(--pu) * 21);
+    bottom: auto;
+  }
+}
+
+/* Sideways the display covers the whole screen: the shoulder buttons stay below the
+   first players' names in the top left */
+@media (orientation: landscape) {
+  .stage.touch-on .t-l1,
+  .stage.touch-on .t-l2,
+  .stage.touch-on .t-r1,
+  .stage.touch-on .t-r2 {
+    top: max(calc(var(--u) * 16), 116px);
+  }
+
+  .stage.touch-on .t-create,
+  .stage.touch-on .t-pad,
+  .stage.touch-on .t-options {
+    top: max(calc(var(--u) * 16.5), calc(116px + var(--u) * 0.5));
+  }
+
+  /* Above the way into the menu at the bottom */
+  .stage.touch-on .t-l3,
+  .stage.touch-on .t-r3,
+  .stage.touch-on .t-ps {
+    bottom: calc(var(--u) * 9);
+  }
 }
 
 /* ---------------------------------------------------------------- dialogs */

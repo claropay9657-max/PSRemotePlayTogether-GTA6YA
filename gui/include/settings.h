@@ -633,6 +633,13 @@ class Settings : public QObject
 		void SetStreamMenuShortcut4(uint button);
 
 		void DeleteProfile(QString profile);
+		/**
+		 * Gives a setting set another name, with everything in it. The set in use stays in use
+		 * under the new name. False if `from` is not a set or `to` is taken.
+		 */
+		bool RenameProfile(const QString &from, const QString &to);
+		/** What is in a set ("" for the default one): its consoles, PSN login and streamer mode. */
+		QVariantMap ProfileSummary(const QString &profile);
 
 		QString GetPsnAccountId() const;
 		void SetPsnAccountId(QString account_id);

@@ -239,8 +239,9 @@ Item {
             stack.push(placeboColorMappingDialogComponent);
     }
 
-    function showConsolePinDialog(consoleIndex) {
-        stack.push(consolePinDialogComponent, {consoleIndex: consoleIndex});
+    /** The login PIN of a console: by its place on the start page, or by its ID (`consoleMac`) from the settings. */
+    function showConsolePinDialog(consoleIndex, consoleMac) {
+        stack.push(consolePinDialogComponent, {consoleIndex: consoleIndex, consoleMac: consoleMac || ""});
     }
 
     function showSteamShortcutDialog(fromReminder) {

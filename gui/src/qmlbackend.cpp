@@ -2,6 +2,7 @@
 #include "livecontroller.h"
 #include "livescenes.h"
 #include "livealerts.h"
+#include "devicecheck.h"
 #include "twitch.h"
 #include "twitchelements.h"
 #include "vieweractions.h"
@@ -440,6 +441,12 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     viewer_actions = new ViewerActions(settings, twitch, this);
     connect(twitch, &TwitchClient::Event, viewer_actions, &ViewerActions::OnTwitchEvent);
     connect(this, &QmlBackend::sessionChanged, viewer_actions, &ViewerActions::SetSession);
+    device_check = new DeviceCheck(settings, this);
+    // While playing, the session has the microphone, the speakers and the webcam
+    connect(this, &QmlBackend::sessionChanged, device_check, [this]() {
+        if (session)
+            device_check->stopAll();
+    });
     // With the saved login, a moment after start (it reads the password store)
     QTimer::singleShot(3000, twitch, &TwitchClient::Start);
 
@@ -818,6 +825,8 @@ void QmlBackend::profileChanged()
     settings_qml->setSettings(settings);
     discovery_manager.SetSettings(settings);
     window->setSettings(settings);
+    if (device_check)
+        device_check->SetSettings(settings);
     setDiscoveryEnabled(true);
 
     auto_connect_mac = settings->GetAutoConnectHost().GetServerMAC();
@@ -1814,6 +1823,18 @@ void QmlBackend::setConsolePin(int index, QString console_pin)
         return;
     server.registered_host.SetConsolePin(server.registered_host, std::move(console_pin));
     settings->AddRegisteredHost(server.registered_host);
+}
+
+void QmlBackend::setConsolePinForMac(const QString &mac, QString console_pin)
+{
+    const QList<RegisteredHost> hosts = settings->GetRegisteredHosts();
+    for (RegisteredHost host : hosts) {
+        if (host.GetServerMAC().ToString() != mac)
+            continue;
+        host.SetConsolePin(host, std::move(console_pin));
+        settings->AddRegisteredHost(host);
+        return;
+    }
 }
 
 void QmlBackend::addManualHost(int index, const QString &address)

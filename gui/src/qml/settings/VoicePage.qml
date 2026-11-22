@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 import QtQuick.Controls as QQC
 
 import org.streetpea.chiaking
@@ -27,8 +28,17 @@ C.SettingsPage {
         cameras = Chiaki.settings.coplayCameraDevices();
         Chiaki.settings.refreshAudioDevices();
     }
-    onEnabledChanged: if (enabled) refresh()
+    onEnabledChanged: {
+        if (enabled)
+            refresh();
+        else
+            Chiaki.deviceCheck.stopAll();
+    }
     Component.onCompleted: if (enabled) refresh()
+    Component.onDestruction: Chiaki.deviceCheck.stopAll()
+
+    /** While playing, the session has the microphone, the speakers and the webcam. */
+    readonly property bool playing: !!Chiaki.session
 
     /** The sound device that is used: the chosen one while it is there, else the system's default. */
     function deviceName(chosen, available) {
@@ -190,6 +200,89 @@ C.SettingsPage {
                     }
                 }
 
+                // How loud the microphone hears you, with the mark from which the others hear you
+                C.SettingsRow {
+                    id: micTest
+                    readonly property var check: Chiaki.deviceCheck
+                    title: qsTr("Microphone test")
+                    subtitle: page.playing ? qsTr("While you play, the stream menu shows how loud you are.")
+                              : check.micError.length > 0 ? qsTr("The microphone could not be opened: %1").arg(check.micError)
+                              : check.micTesting ? (check.micLevel >= check.micGate
+                                                    ? qsTr("Your friends hear this. Talk as you would while playing.")
+                                                    : qsTr("Talk: from the mark on, your friends hear you."))
+                              : qsTr("See how loud your microphone hears you. Nothing is sent.")
+                    keywords: qsTr("microphone mic test level meter loud quiet check")
+
+                    // The level, 0..100 as in the stream menu, and the voice chat's mark
+                    Item {
+                        visible: micTest.check.micTesting
+                        implicitWidth: 132
+                        implicitHeight: 10
+                        Accessible.role: Accessible.ProgressBar
+                        Accessible.name: qsTr("Microphone level")
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 5
+                            color: Qt.rgba(1, 1, 1, 0.08)
+                        }
+
+                        Rectangle {
+                            height: parent.height
+                            width: Math.max(height, parent.width * micTest.check.micLevel / 100)
+                            visible: micTest.check.micLevel > 0
+                            radius: 5
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "#8c52ff" }
+                                GradientStop { position: 1; color: micTest.check.micLevel >= micTest.check.micGate ? "#4fe0b0" : "#b48cff" }
+                            }
+                            Behavior on width { NumberAnimation { duration: 60 } }
+                        }
+
+                        Rectangle {
+                            x: Math.round(parent.width * micTest.check.micGate / 100) - 1
+                            y: -3
+                            width: 2
+                            height: parent.height + 6
+                            radius: 1
+                            color: "#e7e4fa"
+                            opacity: 0.8
+                        }
+                    }
+
+                    C.PillButton {
+                        small: true
+                        enabled: !page.playing
+                        iconName: micTest.check.micTesting ? "" : "mic"
+                        text: micTest.check.micTesting ? qsTr("Stop") : qsTr("Test")
+                        Accessible.name: micTest.check.micTesting ? qsTr("Stop the microphone test") : qsTr("Test the microphone")
+                        onClicked: micTest.check.micTesting ? micTest.check.stopMic() : micTest.check.startMic()
+                    }
+                }
+
+                // A chime on the left, then on the right, then on both
+                C.SettingsRow {
+                    id: speakerTest
+                    readonly property var check: Chiaki.deviceCheck
+                    readonly property var sides: ["", qsTr("Playing on the left…"), qsTr("Playing on the right…"), qsTr("Playing on both…")]
+                    title: qsTr("Speaker test")
+                    subtitle: page.playing ? qsTr("While you play, the game and your friends are the test.")
+                              : check.speakerError.length > 0 ? qsTr("The speakers could not be opened: %1").arg(check.speakerError)
+                              : check.speakerTesting ? sides[check.speakerSide] || ""
+                              : qsTr("A chime on the left, then on the right, then on both.")
+                    keywords: qsTr("speakers headphones sound test left right stereo chime check")
+
+                    C.PillButton {
+                        small: true
+                        enabled: !page.playing && !speakerTest.check.speakerTesting
+                        iconName: "speaker"
+                        text: qsTr("Play")
+                        Accessible.name: qsTr("Play a test chime on the speakers")
+                        onClicked: speakerTest.check.playTestSound()
+                    }
+                }
+
                 // A tip at the foot of the card
                 Item {
                     Layout.fillWidth: true
@@ -320,6 +413,78 @@ C.SettingsPage {
                         model: [qsTr("Small"), qsTr("Medium"), qsTr("Large")]
                         currentIndex: Chiaki.settings.coplayCameraQuality
                         onActivated: (index) => Chiaki.settings.coplayCameraQuality = index
+                    }
+                }
+
+                // The picture as the others would get it, before a session
+                C.SettingsRow {
+                    id: cameraTest
+                    readonly property var check: Chiaki.deviceCheck
+                    title: qsTr("Your picture")
+                    subtitle: page.playing ? qsTr("While you play, the stream menu shows it.")
+                              : check.cameraError.length > 0 ? check.cameraError
+                              : check.cameraTesting ? qsTr("As your friends see it, at the size chosen above.")
+                              : qsTr("See your webcam before you play. Nothing is sent.")
+                    keywords: qsTr("webcam camera preview test picture see myself check")
+
+                    C.PillButton {
+                        small: true
+                        enabled: !page.playing
+                        iconName: cameraTest.check.cameraTesting ? "" : "camera"
+                        text: cameraTest.check.cameraTesting ? qsTr("Hide") : qsTr("Show")
+                        Accessible.name: cameraTest.check.cameraTesting ? qsTr("Hide my webcam picture") : qsTr("Show my webcam picture")
+                        onClicked: cameraTest.check.cameraTesting ? cameraTest.check.stopCamera() : cameraTest.check.startCamera()
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    visible: Chiaki.deviceCheck.cameraTesting
+                    implicitHeight: visible ? preview.height + 18 : 0
+
+                    // 16:9 like the picture that is sent, rounded like the webcam tiles in a session
+                    Rectangle {
+                        id: preview
+                        x: 18
+                        width: Math.min(parent.width - 36, 320)
+                        height: Math.round(width * 9 / 16)
+                        radius: 12
+                        color: "#0d0b1f"
+
+                        Image {
+                            id: previewImage
+                            anchors.fill: parent
+                            visible: false
+                            layer.enabled: true
+                            fillMode: Image.PreserveAspectCrop
+                            cache: false
+                            source: Chiaki.deviceCheck.cameraFrame > 0
+                                    ? "image://coplaycam/" + Chiaki.deviceCheck.cameraSlot + "/" + Chiaki.deviceCheck.cameraFrame : ""
+                        }
+
+                        Rectangle {
+                            id: previewMask
+                            anchors.fill: parent
+                            radius: preview.radius
+                            visible: false
+                            layer.enabled: true
+                        }
+
+                        MultiEffect {
+                            anchors.fill: parent
+                            visible: Chiaki.deviceCheck.cameraFrame > 0
+                            source: previewImage
+                            maskEnabled: true
+                            maskSource: previewMask
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            visible: Chiaki.deviceCheck.cameraFrame === 0
+                            text: qsTr("Starting the camera…")
+                            color: C.Theme.textDim
+                            font.pixelSize: 13
+                        }
                     }
                 }
 

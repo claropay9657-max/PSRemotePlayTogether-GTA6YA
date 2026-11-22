@@ -2,11 +2,13 @@
 
 #include <controllermanager.h>
 #include "virtualpads.h"
+#include "padbattery.h"
 
 #include <QCoreApplication>
 #include <QByteArray>
 #include <QTimer>
 
+#include <algorithm>
 #include <cstring>
 
 #ifdef CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER
@@ -752,8 +754,18 @@ int Controller::GetBattery()
 		case SDL_JOYSTICK_POWER_WIRED:
 			return 254;
 		default:
-			return 255;
+			break;
 	}
+	// An Xbox controller over Bluetooth on Windows: SDL does not know, Windows' settings do
+	const SDL_GameControllerType type = SDL_GameControllerGetType(controller);
+	if(type == SDL_CONTROLLER_TYPE_XBOXONE || type == SDL_CONTROLLER_TYPE_XBOX360
+		|| SDL_GameControllerGetVendor(controller) == 0x045e)
+	{
+		const int level = padbattery::XboxBluetooth();
+		if(level >= 0)
+			return std::max(level, 1);
+	}
+	return 255;
 #else
 	return 255;
 #endif
