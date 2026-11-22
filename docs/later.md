@@ -40,6 +40,11 @@ See [pc-source.md](pc-source.md).
   into the shared window only, the mouse with one owner at a time (section 7 of pc-source.md).
   Proposed on 2026-11-22, waiting for a go.
 - **A built-in Xbox client**: connecting to the Xbox console directly, like the app does with a
-  PlayStation, instead of through the Xbox app. Decided for later on 2026-11-22.
+  PlayStation, instead of through the Xbox app. Decided for later on 2026-11-22: there is no Xbox
+  to test with yet (maybe a Series X|S later). Xbox Cloud Gaming speaks nearly the same protocol
+  (WebRTC with H.264, Opus and input over data channels, libdatachannel is in the app already)
+  and needs only a Microsoft account, so it is the way to start without a console: login, start a
+  game, picture and sound to a file, one button press. Gains over sharing the Xbox app's window:
+  friends play from a Mac too, no capture or encoding on the host, maybe a controller each.
 - **Player numbers next to the names** in Each their own controller (today the controller's
   lights say it).
