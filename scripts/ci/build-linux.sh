@@ -81,6 +81,14 @@ if [ "$status" -ne 0 ]; then
 			HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_HOME/.config" QT_QPA_PLATFORM=offscreen QT_DEBUG_PLUGINS=1 \
 				squashfs-root/AppRun list
 			echo "AppRun exited with $?" >&2
+			# Where it crashes
+			if command -v apt-get >/dev/null && ! command -v gdb >/dev/null; then
+				DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends gdb >/dev/null 2>&1 || true
+			fi
+			if command -v gdb >/dev/null; then
+				HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_HOME/.config" QT_QPA_PLATFORM=offscreen \
+					gdb -q -batch -ex run -ex bt --args squashfs-root/usr/bin/PSRemotePlayTogether list 2>&1 | grep -v '^\[New Thread\|^\[Thread ' | tail -60 >&2
+			fi
 		fi
 	) || true
 	exit "$status"
