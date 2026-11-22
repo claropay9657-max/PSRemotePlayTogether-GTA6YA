@@ -26,15 +26,18 @@ Every file comes with a `.sha256` next to it.
 1. Set the version: `PSRPT_VERSION_*` in the top-level `CMakeLists.txt`.
 2. Describe it: add a `## <version>` section at the top of `CHANGELOG.md`. That
    section becomes the "What's new" part of the release notes.
-3. Commit, and make sure the "Build" run of `main` is green.
-4. Tag that commit and push the tag:
+3. If QML changed, compile it with the Qt of the Windows and Linux builds (see
+   "Checking the QML" below): those builds do not start the app's window, so nothing else
+   notices QML that only a newer Qt understands.
+4. Commit, and make sure the "Build" run of `main` is green.
+5. Tag that commit and push the tag:
 
    ```bash
    git tag v1.0.0
    git push origin v1.0.0
    ```
 
-5. Wait for the "Build" run of the tag. Its last job, "Publish the release",
+6. Wait for the "Build" run of the tag. Its last job, "Publish the release",
    creates the release with the notes and every file.
 
 A tag with a hyphen, such as `v1.0.0-rc1`, is published as a pre-release. The
@@ -50,6 +53,25 @@ when a newer chiaki-ng is merged in.)
 If a job failed for a reason outside the code (a download that timed out, for
 example), re-run it from the run's page. "Publish the release" can be re-run
 too: files that are already attached are replaced, not duplicated.
+
+### Checking the QML
+
+A Mac with Homebrew builds against a newer Qt than the Windows and Linux builds (Qt 6.9.3,
+`scripts/ci`). QML that only the newer one understands builds everywhere and then fails to
+load on Windows and Linux: 0.4.0 to 0.4.2 closed right after starting for that reason.
+`scripts/qmlcheck` compiles every QML file of the app with whatever Qt it is built against
+and lists what does not compile:
+
+```bash
+QT=/path/to/Qt/6.9.3/macos   # for example from: aqt install-qt mac desktop 6.9.3 clang_64 --archives qtbase qtdeclarative qtsvg qtshadertools
+cmake -S scripts/qmlcheck -B build/qmlcheck -G Ninja -DCMAKE_PREFIX_PATH=$QT && cmake --build build/qmlcheck
+$QT/libexec/rcc -binary gui/src/qml/qml.qrc -o build/qmlcheck/qml.rcc
+(cd gui/res && $QT/libexec/rcc -binary resources.qrc -o ../../build/qmlcheck/resources.rcc)
+DYLD_FRAMEWORK_PATH=$QT/lib QT_PLUGIN_PATH=$QT/plugins QML_IMPORT_PATH=$QT/qml \
+  build/qmlcheck/qmlcheck build/qmlcheck/qml.rcc build/qmlcheck/resources.rcc
+```
+
+It compiles and does not run: what a page reads from the app at run time is not checked.
 
 ### The release notes
 
