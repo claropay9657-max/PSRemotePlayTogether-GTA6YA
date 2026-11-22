@@ -32,6 +32,22 @@ Done: friends join with only a browser, see `docs/web-guests.md`. What is left:
 - **The game's haptics** stay with the app: a browser turns them into rumble,
   because browsers have nothing finer.
 
+## Guests wake the console
+
+Wanted on 2026-11-22 ("wenn der host das erlaubt, wäre das sinnvoll"); designed, not built yet.
+Today the session and the room end when the console goes to sleep (also when a guest who may
+puts it to sleep), so nobody is left to ask. The idea:
+
+- **Host page, off by default:** "Keep the room while the console sleeps: friends may wake it".
+- When the console sleeps, the host's app ends the console session but keeps the room: guests
+  stay in (or join it from the list, which says "Console asleep"), see a still picture with
+  "The console is asleep", and those allowed get a **Wake the console** button.
+- A guest's wish to wake goes to the host's app (a new packet), which wakes the console the
+  way it does itself (Wakeup with the registration key), connects again and hosts as before;
+  guests come back on their own, as after a lost console today.
+- The host's app must be running (on a computer that does not sleep); the app keeps the
+  computer awake only while somebody is in the room.
+
 ## A game on this computer, and Xbox
 
 See [pc-source.md](pc-source.md).

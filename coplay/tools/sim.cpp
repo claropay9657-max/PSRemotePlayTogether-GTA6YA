@@ -1227,8 +1227,27 @@ static int RunGuest(const Options &o)
 		std::lock_guard<std::mutex> lock(mutex);
 		haptics++;
 	};
+	std::string players_seen;
 	cb.on_state = [&](const SessionState &s) {
 		std::lock_guard<std::mutex> lock(mutex);
+		// Who is in, and as which player (Each their own controller), when it changes
+		std::string players;
+		for(const Participant &p : s.participants)
+		{
+			players += (players.empty() ? "" : ", ") + p.name;
+			if(p.player)
+				players += " P" + std::to_string(p.player);
+			if(p.flags & kParticipantKeyMouse)
+				players += " M+K";
+			if(p.slot == s.your_slot)
+				players += " (me)";
+		}
+		if(players != players_seen)
+		{
+			players_seen = players;
+			std::printf("[guest] players: %s\n", players.c_str());
+			std::fflush(stdout);
+		}
 		if(s.feedback.rumble_seq != rumble_seq)
 		{
 			rumble_seq = s.feedback.rumble_seq;
