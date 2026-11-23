@@ -295,7 +295,10 @@ Item {
             readonly property real meet: modelData.t + game.jumpTime / 2
             readonly property real since: game.t - meet
             x: game.heroX + game.speed * (meet - game.t)
-            visible: x > -80 && x < 1040
+            // Not `visible`: the film draws this game through a layer of an item that is itself not
+            // shown, and there Qt Quick takes no notice of something inside that is switched on
+            // later. Everything in here that comes and goes does so by its opacity.
+            opacity: x > -80 && x < 1040 ? 1 : 0
 
             // The crystal
             Rectangle {
@@ -346,7 +349,7 @@ Item {
                     x: -6
                     y: -6
                     color: "white"
-                    visible: hurdle.since < 0
+                    opacity: hurdle.since < 0 ? 1 : 0
                 }
 
                 // Sparks, in the colour of whoever caught it
@@ -365,7 +368,6 @@ Item {
                 }
 
                 Text {
-                    visible: hurdle.since >= 0 && hurdle.since < 0.9
                     x: 26
                     y: -34 - 46 * F.outCubic(F.seg(hurdle.since, 0, 0.9))
                     text: "+1"
@@ -373,7 +375,7 @@ Item {
                     font.family: game.family
                     font.pixelSize: 30
                     font.weight: Font.ExtraBold
-                    opacity: 1 - F.seg(hurdle.since, 0.5, 0.9)
+                    opacity: hurdle.since >= 0 && hurdle.since < 0.9 ? 1 - F.seg(hurdle.since, 0.5, 0.9) : 0
                 }
             }
         }
@@ -398,7 +400,7 @@ Item {
             id: dust
             required property int index
             readonly property real since: index === 0 ? game.sinceJump : game.sinceLanding
-            visible: since >= 0 && since < 0.45
+            opacity: since >= 0 && since < 0.45 ? 1 : 0
             // It stays behind on the ground while the explorer runs on
             x: game.heroX - 24 - game.speed * Math.max(0, since)
             y: game.groundY - 6
@@ -420,14 +422,13 @@ Item {
     // A ring of the presser's colour going out from the explorer when the jump starts
     Round {
         readonly property real out: F.outCubic(F.seg(game.sinceJump, 0, 0.5))
-        visible: game.sinceJump >= 0 && game.sinceJump < 0.5
         size: 70 + 150 * out
         x: game.heroX - size / 2
         y: game.groundY - 30 - game.lift - size / 2
         color: "transparent"
         border.width: 5 * (1 - out) + 0.5
         border.color: game.glowColor
-        opacity: 0.9 * (1 - out)
+        opacity: game.sinceJump >= 0 && game.sinceJump < 0.5 ? 0.9 * (1 - out) : 0
     }
 
     // What the explorer leaves in the air
@@ -580,7 +581,7 @@ Item {
 
     // What it runs on
     Rectangle {
-        visible: game.tag.length > 0
+        opacity: game.tag.length > 0 ? 1 : 0
         x: 960 - width - 28
         y: 26
         width: tagText.width + 36

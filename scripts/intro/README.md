@@ -30,6 +30,11 @@ resource files. Building against the Qt version of the Windows and Linux builds 
                -vf "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,$TAGS" \
                -c:v libx264 -crf 19 -c:a aac -b:a 192k -shortest intro.mp4
 
+Look at a change the way a viewer sees it, in order from the start: a sheet whose first
+time is 0, or a video. A single frame shows the film as if it had just been made at that
+moment, and that can hide something that only goes wrong while the film plays (the rings of
+the game were missing from every video for that reason, while each single frame had them).
+
 The numbers after the file are the picture's size in points; every point is two pixels
 (`FILMSHOT_DPR` says otherwise). `name=value` anywhere after them sets a property of
 `stage.qml`: `still=1` (the sky stands still), `tall=1` (the upright film) and `promo=1`

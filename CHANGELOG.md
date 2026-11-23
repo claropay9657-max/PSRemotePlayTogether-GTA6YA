@@ -5,6 +5,7 @@ becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh
 
 ## Unreleased
 
+- **The intro film shows its rings.** The explorer jumped for rings and over crystals that were never drawn; only the count in the corner went up. They are there now, with the sparks and the +1 when a ring is caught, the dust under a jump and the word that says what the game runs on. The film at the top of the README shows them as well.
 - **A smoother picture in a web browser.** Frames reach a browser a little unevenly: two within one refresh of the screen, then none. The page showed only the newer of the two, so in an unlucky rhythm every fourth frame was never seen, which looks like a stutter however fast the connection is. Now one frame may wait for the next refresh and every frame is shown, at most 17 ms later. This is in the page itself, so it reaches everybody who joins in a browser without an update of the app.
 - **When a friend's browser cannot keep up, both of you are told.** A browser's connection slows down when packets get lost, the app's does not. If the picture has to start over for a friend again and again, the host now gets a note with the friend's name and what helps (a lower bitrate under Settings → Stream quality, or the app instead of a browser), and the friend gets one on the page. Until now both only saw a picture that stuttered.
 - **Settings → Stream quality** says what to try for friends in a web browser: 720p and 6 to 8 Mbit/s.
