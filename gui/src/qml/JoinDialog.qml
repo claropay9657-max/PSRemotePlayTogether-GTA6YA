@@ -25,6 +25,8 @@ FocusScope {
     property string joiningTitle: ""
     /** The invite of the room being joined from the list; empty when joined with an invite. */
     property string joiningRoom: ""
+    /** The key of the session being joined again from the recent ones; empty otherwise. */
+    property string joiningRecent: ""
     /** The room's own card says that we wait; otherwise it is said under the invite. */
     readonly property bool joiningShown: joiningRoom.length > 0 && rooms.shown.some((r) => r.invite === joiningRoom)
     readonly property bool canJoinInvite: !joining && inviteField.text.trim().length > 0
@@ -60,7 +62,14 @@ FocusScope {
         errorLabel.text = "";
         joiningTitle = title;
         joiningRoom = fromList ? invite : "";
+        joiningRecent = "";
         Chiaki.joinCoPlay(invite, Chiaki.settings.coplayName, controllerOnlyCheck.checked);
+    }
+
+    /** One of the sessions joined before, with the invite it had then. */
+    function joinRecent(entry) {
+        join(entry.invite, entry.title || "");
+        joiningRecent = entry.key;
     }
 
     function focusStart(reason = Qt.TabFocusReason) {
@@ -253,12 +262,47 @@ FocusScope {
         onTriggered: Chiaki.settings.coplayRefreshRooms()
     }
 
+    // Whether the hosts of the sessions joined before are sharing now: asked while the list is seen
+    Timer {
+        interval: 15000
+        repeat: true
+        triggeredOnStart: true
+        running: dialog.visible && !dialog.joining && recent.list.length > 0
+        onTriggered: Chiaki.settings.coplayLookRecent()
+    }
+
     // "Updated … min ago" moves on by itself
     Timer {
         interval: 20000
         repeat: true
-        running: dialog.visible && dialog.roomsUpdatedAt > 0
+        running: dialog.visible && (dialog.roomsUpdatedAt > 0 || recent.list.length > 0)
         onTriggered: dialog.now = Date.now()
+    }
+
+    // The sessions joined before
+    QtObject {
+        id: recent
+
+        readonly property var list: Chiaki.settings.coplayRecent || []
+
+        function joinedText(ms) {
+            if (!(ms > 0))
+                return qsTr("Joined before");
+            const minutes = Math.floor((dialog.now - ms) / 60000);
+            if (minutes < 1)
+                return qsTr("Joined just now");
+            if (minutes < 60)
+                return qsTr("Joined %1 min ago").arg(minutes);
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24)
+                return qsTr("Joined %1 h ago").arg(hours);
+            const days = Math.floor(hours / 24);
+            if (days === 1)
+                return qsTr("Joined yesterday");
+            if (days < 30)
+                return qsTr("Joined %1 days ago").arg(days);
+            return qsTr("Joined on %1").arg(Qt.formatDate(new Date(ms), Locale.ShortFormat));
+        }
     }
 
     // What the list shows: every filter and the order
@@ -550,7 +594,8 @@ FocusScope {
                             color: C.Theme.text
                             Accessible.name: inviteHint.text
                             Accessible.description: inviteAbout.text
-                            text: Chiaki.settings.coplayLastInvite
+                            // Once there is a list of recent sessions, the last one is there
+                            text: recent.list.length > 0 ? "" : Chiaki.settings.coplayLastInvite
                             echoMode: Chiaki.settings.streamerMode ? TextInput.Password : TextInput.Normal
                             onAccepted: if (dialog.canJoinInvite) dialog.join(text, "")
                             ToolTip.visible: addressHover.hovered && inviteField.length === 0 && !inviteField.activeFocus
@@ -1082,6 +1127,198 @@ FocusScope {
             width: dialog.wide ? dialog.innerWidth - dialog.asideWidth - 24 : dialog.innerWidth
             spacing: 10
 
+            // ------------------------------------------------ sessions joined before
+
+            ColumnLayout {
+                id: recentColumn
+                Layout.fillWidth: true
+                Layout.bottomMargin: 18
+                visible: recent.list.length > 0
+                spacing: 10
+
+                Text {
+                    text: qsTr("Recent sessions")
+                    font.pixelSize: 22
+                    font.weight: Font.ExtraBold
+                    color: C.Theme.text
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 13
+                    color: C.Theme.textDim
+                    text: qsTr("The sessions you joined. An invite stays the same until its host makes a new one, so you can join again here. “Open now” means the host is sharing it right now.")
+                }
+
+                Repeater {
+                    model: recent.list
+
+                    Rectangle {
+                        id: recentCard
+                        required property var modelData
+                        readonly property bool joiningHere: dialog.joining && dialog.joiningRecent === modelData.key
+                        readonly property string name: modelData.title || modelData.host || qsTr("A friend's session")
+                        readonly property bool narrow: width < 540
+
+                        Layout.fillWidth: true
+                        implicitHeight: recentRow.implicitHeight + 24
+                        radius: 18
+                        color: joiningHere ? "#1b1631" : (recentHover.hovered ? C.Theme.cardHigh : C.Theme.card)
+                        border.width: 1
+                        border.color: joiningHere ? Qt.rgba(245 / 255, 185 / 255, 66 / 255, 0.7) : C.Theme.line
+
+                        HoverHandler {
+                            id: recentHover
+                        }
+
+                        GridLayout {
+                            id: recentRow
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                verticalCenter: parent.verticalCenter
+                                leftMargin: 12
+                                rightMargin: 12
+                            }
+                            columns: recentCard.narrow ? 2 : 4
+                            columnSpacing: 14
+                            rowSpacing: 10
+
+                            // The game's cover where it was a public room with one, otherwise an initial
+                            Item {
+                                Layout.preferredWidth: 56
+                                Layout.preferredHeight: 56
+                                Layout.alignment: Qt.AlignVCenter
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 14
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: C.Theme.brandFrom }
+                                        GradientStop { position: 1.0; color: C.Theme.brandTo }
+                                    }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: recentCover.status !== Image.Ready
+                                        textFormat: Text.PlainText
+                                        font.pixelSize: 24
+                                        font.weight: Font.ExtraBold
+                                        color: "#ffffff"
+                                        text: (recentCard.modelData.game || recentCard.name).trim().charAt(0).toUpperCase()
+                                    }
+                                }
+
+                                Image {
+                                    id: recentCover
+                                    anchors.fill: parent
+                                    visible: false
+                                    layer.enabled: true
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    sourceSize.width: 112
+                                    sourceSize.height: 112
+                                    source: recentCard.modelData.cover ? recentCard.modelData.cover + "?w=192" : ""
+                                }
+
+                                Rectangle {
+                                    id: recentMask
+                                    anchors.fill: parent
+                                    radius: 14
+                                    visible: false
+                                    layer.enabled: true
+                                }
+
+                                MultiEffect {
+                                    anchors.fill: parent
+                                    source: recentCover
+                                    maskEnabled: true
+                                    maskSource: recentMask
+                                    visible: recentCover.status === Image.Ready
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 4
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                    textFormat: Text.PlainText
+                                    font.pixelSize: 16
+                                    font.weight: Font.ExtraBold
+                                    color: C.Theme.text
+                                    text: recentCard.name
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                    textFormat: Text.PlainText
+                                    font.pixelSize: 13
+                                    color: C.Theme.textSoft
+                                    text: {
+                                        const r = recentCard.modelData;
+                                        const parts = [];
+                                        if (r.host && r.game)
+                                            parts.push(qsTr("%1 plays %2").arg(r.host).arg(r.game));
+                                        else if (r.host && r.title)
+                                            parts.push(qsTr("Hosted by %1").arg(r.host));
+                                        parts.push(recent.joinedText(r.joined));
+                                        return parts.join(" · ");
+                                    }
+                                }
+
+                                Flow {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 3
+                                    spacing: 5
+
+                                    C.Badge {
+                                        small: true
+                                        dot: true
+                                        visible: recentCard.modelData.status > 0
+                                        tone: recentCard.modelData.status === 2 ? "good" : recentCard.modelData.status === 1 ? "wait" : "neutral"
+                                        text: recentCard.modelData.status === 2 ? qsTr("Open now")
+                                            : recentCard.modelData.status === 1 ? qsTr("Checking…") : qsTr("Not open right now")
+                                    }
+                                    C.Badge {
+                                        small: true
+                                        tone: "system"
+                                        visible: text !== ""
+                                        text: rooms.consoleName(recentCard.modelData.console)
+                                    }
+                                }
+                            }
+
+                            C.PillButton {
+                                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                                Layout.minimumWidth: 104
+                                implicitHeight: 42
+                                // Also when nobody is seen: a host without a meeting point is only found by trying
+                                kind: recentCard.modelData.status === 3 ? "ghost" : "primary"
+                                text: recentCard.joiningHere ? (dialog.waiting ? qsTr("Knocking…") : qsTr("Connecting…")) : qsTr("Join")
+                                enabled: !dialog.joining
+                                Accessible.description: recentCard.name
+                                onClicked: dialog.joinRecent(recentCard.modelData)
+                            }
+
+                            C.IconButton {
+                                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                                small: true
+                                iconName: "close"
+                                tip: qsTr("Remove from this list")
+                                enabled: !recentCard.joiningHere
+                                onClicked: Chiaki.settings.coplayForgetRecent(recentCard.modelData.key)
+                            }
+                        }
+                    }
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
@@ -1097,7 +1334,7 @@ FocusScope {
                 Text {
                     Layout.alignment: Qt.AlignVCenter
                     visible: rooms.listed
-                    text: rooms.shown.length === rooms.all.length ? qsTr("%n room(s)", "", rooms.all.length)
+                    text: rooms.shown.length === rooms.all.length ? (rooms.all.length === 1 ? qsTr("1 room") : qsTr("%1 rooms").arg(rooms.all.length))
                                                                   : qsTr("%1 of %2").arg(rooms.shown.length).arg(rooms.all.length)
                     font.pixelSize: 13
                     color: C.Theme.textSoft
@@ -1461,6 +1698,7 @@ FocusScope {
                                         tone: "play"
                                         text: roomCard.modelData.control === "turns" ? qsTr("One plays at a time")
                                             : roomCard.modelData.control === "host" ? qsTr("Only the host plays")
+                                            : roomCard.modelData.control === "each" ? qsTr("Each their own controller")
                                             : qsTr("Everybody plays together")
                                     }
                                     C.Badge {
@@ -1718,7 +1956,8 @@ FocusScope {
                 onVisibleChanged: if (!visible) Qt.callLater(dialog.recoverFocus)
                 kind: "ghost"
                 small: true
-                text: qsTr("%n room(s) hidden by your filters · show all", "", rooms.all.length - rooms.shown.length)
+                text: (rooms.all.length - rooms.shown.length === 1 ? qsTr("1 room hidden by your filters · show all")
+                                                                       : qsTr("%1 rooms hidden by your filters · show all").arg(rooms.all.length - rooms.shown.length))
                 onClicked: dialog.showAllRooms()
             }
         }

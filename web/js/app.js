@@ -23,6 +23,8 @@ import * as P from './proto.js';
 import { DEFAULT_ROOMS_URL, LANGUAGES, consoleName, fetchRooms, filterRooms, languageName } from './rooms.js';
 import { KeyMouse } from './keymouse.js';
 import { JoinError, Session } from './session.js';
+import { CLOSED, LOOKING, OPEN, RECENT_KEY, UNKNOWN, addJoined, consoleOf, joinedText, lookForHost, readRecent,
+  removeRecent, writeRecent } from './recent.js';
 import { TouchControls } from './touch.js';
 import { VoiceDialog } from './voicedialog.js';
 import { VideoPlayer } from './video.js';
@@ -46,6 +48,8 @@ const ui = {
   front: $('front'),
   landing: $('card-landing'),
   rooms: $('card-rooms'),
+  recent: $('recent'),
+  recentList: $('recent-list'),
   join: $('card-join'),
   connecting: $('card-connecting'),
   message: $('card-message'),
@@ -147,8 +151,136 @@ function show(card) {
   ui.stage.hidden = true;
   // The public rooms go with the card for a link: two ways to find a session
   ui.rooms.hidden = card !== ui.landing;
-  if (card === ui.landing) startRooms();
-  else stopRooms();
+  if (card === ui.landing) {
+    startRooms();
+    startRecent();
+  } else {
+    stopRooms();
+    stopRecent();
+  }
+}
+
+// ------------------------------------------------------------------ sessions joined before
+
+let recent = [];
+const recentStatus = new Map(); // key -> OPEN, CLOSED, LOOKING or UNKNOWN
+const recentLooking = new Set();
+let recentTimer = 0;
+
+function startRecent() {
+  if (recentTimer) return;
+  renderRecent();
+  lookRecent();
+  // Whether the hosts share now, asked while the list is seen, as often as the app asks
+  recentTimer = setInterval(() => {
+    lookRecent();
+    renderRecent(); // "Joined … ago" moves on
+  }, 15000);
+}
+
+function stopRecent() {
+  clearInterval(recentTimer);
+  recentTimer = 0;
+}
+
+function lookRecent() {
+  for (const entry of recent) {
+    if (recentLooking.has(entry.key)) continue;
+    recentLooking.add(entry.key);
+    if (!recentStatus.has(entry.key)) recentStatus.set(entry.key, LOOKING);
+    lookForHost(entry, LOCAL).then((result) => {
+      recentLooking.delete(entry.key);
+      if (recentStatus.get(entry.key) === result) return;
+      recentStatus.set(entry.key, result);
+      if (recentTimer) renderRecent();
+    });
+  }
+}
+
+function saveRecent() {
+  remember(RECENT_KEY, writeRecent(recent));
+}
+
+/** The line under a recent session's name, as the app says it. */
+function recentLine(entry) {
+  const parts = [];
+  if (entry.host && entry.game) parts.push(`${entry.host} plays ${entry.game}`);
+  else if (entry.host && entry.title) parts.push(`Hosted by ${entry.host}`);
+  parts.push(joinedText(entry.joined));
+  return parts.join(' · ');
+}
+
+function recentName(entry) {
+  return entry.title || entry.host || 'A friend’s session';
+}
+
+const CLOSE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+
+/** One session joined before, as on the app's Join page. */
+function recentCard(entry) {
+  const status = recentStatus.has(entry.key) ? recentStatus.get(entry.key) : UNKNOWN;
+  const name = recentName(entry);
+  const card = el('article', 'room recent-room');
+  const main = el('div', 'room-main');
+
+  const badges = el('div', 'badges');
+  if (status !== UNKNOWN) {
+    const tone = status === OPEN ? ' good' : status === LOOKING ? ' wait' : '';
+    badges.append(el('span', 'badge dot' + tone,
+      status === OPEN ? 'Open now' : status === LOOKING ? 'Checking…' : 'Not open right now'));
+  }
+  if (entry.console) badges.append(el('span', 'badge system', consoleName(entry.console)));
+  const body = el('div', 'room-body');
+  body.append(el('h3', 'room-title', name), el('p', 'room-sub', recentLine(entry)), badges);
+
+  const action = el('div', 'room-action');
+  // Also when nobody is seen: a host without a meeting point is only found by trying
+  const join = button(status === CLOSED ? 'ghost' : 'primary', 'Join', () => joinRecent(entry));
+  join.dataset.recent = entry.key + ' join';
+  join.setAttribute('aria-label', `Join: ${name}`);
+  const forget = button('icon-button small', '', () => {
+    recent = removeRecent(recent, entry.key);
+    recentStatus.delete(entry.key);
+    saveRecent();
+    renderRecent();
+    const next = ui.recentList.querySelector('button');
+    if (next) next.focus();
+  });
+  forget.innerHTML = CLOSE_ICON;
+  forget.dataset.recent = entry.key + ' forget';
+  forget.title = 'Remove from this list';
+  forget.setAttribute('aria-label', `Remove from this list: ${name}`);
+  action.append(join, forget);
+
+  main.append(roomCover({ game: entry.game, title: name, cover: entry.cover }), body, action);
+  card.append(main);
+  return card;
+}
+
+function renderRecent() {
+  ui.recent.hidden = recent.length === 0;
+  const active = document.activeElement;
+  const focused = active && active.dataset ? active.dataset.recent : undefined;
+  ui.recentList.replaceChildren(...recent.map(recentCard));
+  if (focused) {
+    const again = Array.from(ui.recentList.querySelectorAll('button')).find((b) => b.dataset.recent === focused);
+    if (again) again.focus();
+  }
+}
+
+/** One of the sessions joined before: like a link from a friend, with the invite it had then. */
+function joinRecent(entry) {
+  const parsed = parseInvite(entry.invite, LOCAL);
+  if (!parsed) return;
+  invite = parsed;
+  invite.text = entry.invite;
+  invite.recent = entry;
+  try {
+    sessionStorage.setItem('psrpt.invite', entry.invite);
+  } catch (e) {
+    // only for this visit, then
+  }
+  showJoin();
 }
 
 // ------------------------------------------------------------------ public rooms
@@ -424,7 +556,7 @@ function renderRooms() {
   roomsDrawn = { list: roomList, key };
   const shown = filterRooms(roomList, filters);
   $('rooms-count').textContent = !roomsReadAt ? ''
-    : shown.length === roomList.length ? `${roomList.length} open` : `${shown.length} of ${roomList.length}`;
+    : shown.length === roomList.length ? (roomList.length === 1 ? '1 room' : `${roomList.length} rooms`) : `${shown.length} of ${roomList.length}`;
   // The list is drawn anew every few seconds: the keys find the same room's button again
   const focused = list.contains(document.activeElement) ? document.activeElement.dataset.room || '' : null;
   const items = shown.map(roomCard);
@@ -454,6 +586,7 @@ function joinRoom(room) {
   const parsed = parseInvite(text, LOCAL);
   if (!parsed) return;
   invite = parsed;
+  invite.text = text;
   invite.room = room;
   try {
     sessionStorage.setItem('psrpt.invite', text);
@@ -595,7 +728,11 @@ function readInvite() {
       text = '';
     }
   }
-  return text ? parseInvite(text, LOCAL) : null;
+  if (!text) return null;
+  const parsed = parseInvite(text, LOCAL);
+  // What the list of sessions joined before keeps
+  if (parsed) parsed.text = text.trim();
+  return parsed;
 }
 
 // ------------------------------------------------------------------ the player's picture
@@ -638,14 +775,18 @@ function showAvatar() {
  */
 function fillHead(prefix) {
   const room = invite.room;
-  $(`${prefix}-title`).textContent = room ? `Join “${room.title}”` : 'You are invited to play';
+  // Joined before: whose session it is and when, where a public room tells more
+  const before = !room && invite.recent;
+  $(`${prefix}-title`).textContent = room ? `Join “${room.title}”`
+    : before && before.title ? `Join “${before.title}”`
+    : before && before.host ? `Join ${before.host}` : 'You are invited to play';
   $(`${prefix}-tile`).hidden = !!room;
   const cover = $(`${prefix}-cover`);
   cover.replaceChildren(...(room ? [roomCover(room)] : []));
   cover.hidden = !room;
   const sub = $(`${prefix}-sub`);
-  sub.textContent = room ? roomLine(room) : '';
-  sub.hidden = !room;
+  sub.textContent = room ? roomLine(room) : before ? recentLine(before) : '';
+  sub.hidden = !room && !before;
   const badges = $(`${prefix}-badges`);
   if (badges) {
     if (room) fillBadges(badges, room);
@@ -659,6 +800,7 @@ function showJoin() {
     show(ui.landing);
     return;
   }
+  if (!invite.room && !invite.recent) invite.recent = recent.find((e) => e.key === base64UrlEncode(invite.secret)) || null;
   fillHead('join');
   $('join-name').value = recall('psrpt.name');
   $('join-voice').checked = recall('psrpt.voice') === '1';
@@ -817,6 +959,13 @@ async function join() {
   if (mine !== session) {
     mine.close();
     return;
+  }
+  // For the list of sessions joined before: who hosted it, and on what
+  if (invite.text) {
+    recent = addJoined(recent, invite.text, mine.welcome.hostName, consoleOf(mine.welcome.stream), invite.room || null,
+      Date.now(), LOCAL);
+    if (recent.length) recentStatus.set(recent[0].key, OPEN);
+    saveRecent();
   }
   enterStage();
   if (hasPicture() && !soundOk && sound.problem) notice(sound.problem);
@@ -1927,6 +2076,7 @@ function start() {
     }
     error.hidden = true;
     invite = parsed;
+    invite.text = $('landing-invite').value.trim();
     try {
       sessionStorage.setItem('psrpt.invite', $('landing-invite').value.trim());
     } catch (err) {
@@ -1938,6 +2088,25 @@ function start() {
   $('join-form').addEventListener('submit', (e) => {
     e.preventDefault();
     join();
+  });
+  // Back to where a link is pasted, the recent sessions and the public rooms, as the app's Back
+  $('join-back').addEventListener('click', () => {
+    invite = null;
+    try {
+      sessionStorage.removeItem('psrpt.invite');
+    } catch (e) {
+      // nothing kept, then
+    }
+    show(ui.landing);
+    $('landing-invite').focus();
+  });
+  // Another link opened in this tab while it is not in a session
+  window.addEventListener('hashchange', () => {
+    if (session || !ui.stage.hidden) return;
+    const next = readInvite();
+    if (!next) return;
+    invite = next;
+    showJoin();
   });
   $('join-voice').addEventListener('change', syncJoinOptions);
   $('join-name').addEventListener('input', () => {
@@ -2200,6 +2369,7 @@ function start() {
 
   offerInstall();
 
+  recent = readRecent(recall(RECENT_KEY), LOCAL);
   invite = readInvite();
   if (invite) showJoin();
   else show(ui.landing);

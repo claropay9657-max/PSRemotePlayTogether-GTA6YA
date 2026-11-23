@@ -293,8 +293,12 @@ void CoPlayRoomList::Refresh(const QString &setting)
 			m[QStringLiteral("players")] = players;
 			m[QStringLiteral("max")] = max;
 			m[QStringLiteral("full")] = players >= max;
-			m[QStringLiteral("policy")] = r.value(QStringLiteral("policy")).toString();
-			m[QStringLiteral("control")] = r.value(QStringLiteral("control")).toString(QStringLiteral("all"));
+			// What the list does not know is taken as the careful choice, as the page for browsers does
+			const QString policy = r.value(QStringLiteral("policy")).toString();
+			m[QStringLiteral("policy")] = (policy == QLatin1String("watch") || policy == QLatin1String("open")) ? policy : QStringLiteral("ask");
+			const QString control = r.value(QStringLiteral("control")).toString();
+			m[QStringLiteral("control")] = (control == QLatin1String("turns") || control == QLatin1String("host") || control == QLatin1String("each"))
+				? control : QStringLiteral("all");
 			m[QStringLiteral("web")] = r.value(QStringLiteral("web")).toBool();
 			m[QStringLiteral("invite")] = invite;
 			const int proto = r.value(QStringLiteral("proto")).toInt();

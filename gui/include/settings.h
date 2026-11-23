@@ -341,6 +341,9 @@ class Settings : public QObject
 		void SetCoPlayMixMode(int mode)			{ settings.setValue("coplay/mix_mode", mode); }
 		QString GetCoPlayLastInvite() const		{ return settings.value("coplay/last_invite").toString(); }
 		void SetCoPlayLastInvite(const QString &i)	{ settings.setValue("coplay/last_invite", i); }
+		/** Sessions joined before, newest first, as JSON (coplayrecent.h). */
+		QString GetCoPlayRecent() const			{ return settings.value("coplay/recent").toString(); }
+		void SetCoPlayRecent(const QString &json)	{ settings.setValue("coplay/recent", json); }
 		bool GetCoPlayControllerOnly() const	{ return settings.value("coplay/controller_only", false).toBool(); }
 		void SetCoPlayControllerOnly(bool on)	{ settings.setValue("coplay/controller_only", on); }
 		/** File with the player's picture, already scaled down. */

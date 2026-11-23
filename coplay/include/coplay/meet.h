@@ -127,6 +127,22 @@ struct MeetReply
 
 bool ParseMeetReply(const std::string &body, MeetReply &reply, std::string *error);
 
+enum class HostLook
+{
+	There,    // the host shares the session now
+	NotThere, // the meeting point has no note of the host
+	Unknown   // no answer, or none that makes sense
+};
+
+/**
+ * Whether the host of a session is sharing it right now, for a list of sessions
+ * joined before. One request as a guest that leaves no note: nothing of ours
+ * stays at the meeting point, and the host learns nothing of it. A sharing host
+ * keeps its note there (MeetWorker); a host that shares without a meeting point
+ * is never found this way. Blocks for as long as post does.
+ */
+HostLook LookForHost(const std::string &url, const HttpPost &post, const Secret &secret, std::string *error = nullptr);
+
 /**
  * The URL for what a user wrote into the setting: nothing is the default, "off"
  * is none (an empty string comes back), "example.org/meet.php" gets https://

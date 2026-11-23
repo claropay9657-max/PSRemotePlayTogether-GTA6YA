@@ -273,6 +273,11 @@ h3 {
   margin-top: 20px;
 }
 
+/* Pushes what follows it to the end of a row: Back on the left, the rest on the right */
+.row .row-gap {
+  flex: 1 1 0;
+}
+
 /* ---------------------------------------------------------------- buttons */
 
 /* A pill at least 44 px high. Ghost unless it says otherwise: "primary" goes on, "brand" (the
@@ -589,9 +594,40 @@ h3 {
   color: #9ef7ff;
 }
 
-.badge.landing {
+/* How one gets in: purple, as the app's "door" badges */
+.badge.door {
   background: rgba(140, 82, 255, 0.2);
   color: #d8c6ff;
+}
+
+/* A state with a dot in front: open now, being checked, not open (the app's "good", "wait", "neutral") */
+.badge.dot::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+}
+
+.badge.good {
+  background: rgba(52, 211, 153, 0.12);
+  color: #9ff0cc;
+}
+
+.badge.good::before {
+  background: #34d399;
+}
+
+.badge.wait {
+  background: rgba(245, 185, 66, 0.12);
+  color: #fbd98c;
+}
+
+.badge.wait::before {
+  background: #f5b942;
 }
 
 .badge.web {
@@ -878,6 +914,37 @@ h3 {
   margin: 0;
   font-size: 13px;
   color: var(--text-dim);
+}
+
+/* Sessions joined before, above the public rooms, as on the app's Join page */
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.recent h2 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.recent-room .cover {
+  width: 56px;
+  height: 56px;
+  font-size: 24px;
+}
+
+.recent-room .room-action {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+:where(.front) .recent-room .room-action button.icon-button {
+  min-width: 0;
+  min-height: 34px;
 }
 
 .rooms-main .problem {

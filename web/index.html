@@ -106,6 +106,13 @@
       </div>
 
       <div class="rooms-main">
+        <!-- Sessions joined before, as on the app's Join page: kept in this browser only -->
+        <div id="recent" class="recent" hidden>
+          <h2 id="recent-title">Recent sessions</h2>
+          <p class="rooms-about">The sessions you joined. An invite stays the same until its host makes a new one, so you can join again here. “Open now” means the host is sharing it right now.</p>
+          <div id="recent-list" class="rooms-list" aria-labelledby="recent-title"></div>
+        </div>
+
         <div class="rooms-head">
           <h2 id="rooms-title">Public rooms</h2>
           <span id="rooms-count" class="rooms-count"></span>
@@ -116,7 +123,7 @@
             </button>
           </span>
         </div>
-        <p class="rooms-about">Sessions their hosts want to be found. You join like with a link: straight to the host. Some rooms ask to join first; in others you join as a viewer or join and play.</p>
+        <p class="rooms-about">Sessions their hosts want to be found. Join one like with a link: you connect to the host directly. Some rooms ask to join first; in others you join as a viewer or join and play.</p>
         <p id="rooms-problem" class="problem warn" hidden></p>
         <div id="rooms-list" class="rooms-list"></div>
       </div>
@@ -154,15 +161,15 @@
         </div>
         <div class="toggles">
           <label class="toggle">
-            <span class="toggle-text"><b>Join the voice chat</b><small>The browser asks for your microphone; use headphones.</small></span>
+            <span class="toggle-text"><b>Take part in the voice chat</b><small>The browser asks for your microphone; use headphones.</small></span>
             <input id="join-voice" type="checkbox" role="switch">
           </label>
           <label class="toggle sub">
-            <span class="toggle-text"><b>Start with my microphone muted</b></span>
+            <span class="toggle-text"><b>Start with my microphone muted</b><small>While you play, the stream menu mutes and unmutes you.</small></span>
             <input id="join-muted" type="checkbox" role="switch">
           </label>
           <label class="toggle">
-            <span class="toggle-text"><b>With my controller only</b><small>No picture or sound: I sit in front of the same TV.</small></span>
+            <span class="toggle-text"><b>With my controller only</b><small>No picture or sound: I sit in front of the same TV</small></span>
             <input id="join-controller-only" type="checkbox" role="switch">
           </label>
         </div>
@@ -172,6 +179,8 @@
         </div>
         <p id="join-warning" class="problem warn" hidden></p>
         <div class="row end">
+          <button id="join-back" class="ghost" type="button">Back</button>
+          <span class="row-gap" aria-hidden="true"></span>
           <button id="join-voice-check" class="ghost" type="button">Voice &amp; webcam</button>
           <button id="join-keys" class="ghost" type="button">Keyboard &amp; mouse</button>
           <button id="join-button" class="brand big" type="submit">Join</button>

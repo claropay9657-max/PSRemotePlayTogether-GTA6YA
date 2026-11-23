@@ -12,6 +12,7 @@
 #include <coplay/invite.h>
 
 #include "coplaymeet.h"
+#include "coplayrecent.h"
 
 #include <QClipboard>
 #include <QFile>
@@ -100,7 +101,8 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
 
     // Looking up the host and waiting for its answer can take seconds: not on this thread
     auto watcher = new QFutureWatcher<QString>(this);
-    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, client, client_config, host_address]() {
+    const QString joined_invite = invite_text.trimmed();
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, client, client_config, host_address, joined_invite]() {
         QString failure = watcher->result();
         watcher->deleteLater();
         coplay_joining = false;
@@ -173,6 +175,9 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
         info.coplay_client = client;
         info.coplay_client_config = client_config;
 
+        // For the list of sessions joined before: who hosted it, and on what
+        settings_qml->recent()->Joined(joined_invite, QString::fromStdString(welcome.host_name),
+            CoPlayRecent::ConsoleOf(welcome.stream.ps5, static_cast<int>(welcome.stream.source)));
         emit coplayJoinFinished(true, QString());
         createSession(info);
     });

@@ -127,6 +127,43 @@ bool OpenMeetNote(const Secret &secret, const std::string &text, MeetNote &note)
 	return true;
 }
 
+HostLook LookForHost(const std::string &url, const HttpPost &post, const Secret &secret, std::string *error)
+{
+	auto unknown = [error](const std::string &why) {
+		if(error)
+			*error = why;
+		return HostLook::Unknown;
+	};
+	if(url.empty() || !post)
+		return unknown("no meeting point");
+	uint64_t sender_id = 0;
+	while(!sender_id)
+	{
+		if(!RandomBytes(reinterpret_cast<uint8_t *>(&sender_id), sizeof(sender_id)))
+			return unknown("no random numbers");
+	}
+	HttpRequest request;
+	request.url = url;
+	// An empty note asks without leaving one
+	request.body = MeetRequestBody(MeetRoomId(secret), sender_id, MeetRole::Guest, std::string());
+	HttpResponse response;
+	std::string problem;
+	if(!post(request, response, &problem))
+		return unknown(problem.empty() ? "no answer from the meeting point" : problem);
+	if(response.status != 200)
+		return unknown("the meeting point answered with HTTP " + std::to_string(response.status));
+	MeetReply reply;
+	if(!ParseMeetReply(response.body, reply, &problem))
+		return unknown(problem);
+	for(const std::string &text : reply.notes)
+	{
+		MeetNote note;
+		if(OpenMeetNote(secret, text, note) && note.role == MeetRole::Host)
+			return HostLook::There;
+	}
+	return HostLook::NotThere;
+}
+
 std::string MeetRequestBody(const std::string &room, uint64_t sender_id, MeetRole role, const std::string &note_text)
 {
 	char id[17];

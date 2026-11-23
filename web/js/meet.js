@@ -284,15 +284,17 @@ export function answerSdp(mid, fingerprint, answer) {
 
 /**
  * Reads what stands behind the "#" of the page's address, or what a friend
- * pasted: the key alone, "KEY?meet=example.org/meet.php", or a whole invite
- * of the app ("psrpt://203.0.113.7:9410/KEY?meet=...").
+ * pasted: the whole link, the key alone, "KEY?meet=example.org/meet.php", or a
+ * whole invite of the app ("psrpt://203.0.113.7:9410/KEY?meet=...").
  * The host can also say whom the browser may ask for its address on the
  * internet: "&stun=stun.example.org:3478", or "&stun=off" for nobody.
  * @returns {{secret: Uint8Array, meetUrl: string, stun: string}|null}
  */
 export function parseInvite(text, pageIsLocal = false) {
   let s = (text || '').trim();
-  if (s.startsWith('#')) s = s.slice(1);
+  // The whole link a friend sent ("https://…/#KEY?meet=…"): what stands behind the "#"
+  const hash = s.lastIndexOf('#');
+  if (hash >= 0) s = s.slice(hash + 1);
   try {
     s = decodeURIComponent(s);
   } catch (e) {

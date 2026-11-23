@@ -90,6 +90,14 @@ seconds unless they are posted again. A sharing host posts every 3 seconds (the
 server can ask for a slower pace with `poll`), a guest every 0.7 seconds while
 it is connecting and not at all afterwards.
 
+**Recent sessions** (the Join page of the app and the page for browsers) ask
+whether a host shares now with one request as a guest whose note is empty: the
+answer holds the host's note if there is one, and nothing of the guest stays in
+the room (`coplay::LookForHost`). A browser cannot open an app's note
+(ChaCha20-Poly1305), but its header says it is a host's note, and only who has
+the invite knows the room. This works with every meeting point that speaks this
+protocol; the server needs no change for it.
+
 The reference implementation is one PHP file without dependencies,
 `server/meeting-point/psrpt_meet.php`; `server/meeting-point/README.md` says how
 to deploy it and what to tell a reverse proxy. The default in the app is
@@ -162,6 +170,8 @@ routers.
 - After any failure the app waits (15 s, doubling up to 5 minutes), so a server
   that is down or an endpoint that does not exist never sees more than a few
   requests per minute from one app.
+- Recent sessions are asked about every 15 seconds while the Join page is
+  open, one request for each (at most eight).
 - Nothing is sent when Play Together is not in use.
 
 ## Tested how

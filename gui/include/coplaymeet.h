@@ -16,7 +16,8 @@
  * requests. docs/nat-traversal.md describes how the whole thing works.
  *
  * The meeting point is a server on the internet, so it is only asked while the
- * user shares a session or joins one, never just because the app runs.
+ * user shares a session, joins one or looks at the sessions joined before
+ * (coplayrecent.h), never just because the app runs.
  */
 namespace CoPlayMeet
 {

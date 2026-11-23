@@ -4,6 +4,7 @@
 
 #include "qmlsettings.h"
 #include "coplayrooms.h"
+#include "coplayrecent.h"
 
 #include <coplay/web.h>
 #include <coplay/invite.h>
@@ -470,6 +471,21 @@ QString QmlSettings::coplayRoomsError() const
 void QmlSettings::coplayRefreshRooms()
 {
     CoPlayRoomList::Instance()->Refresh(settings->GetCoPlayRoomsServer());
+}
+
+QVariantList QmlSettings::coplayRecent() const
+{
+    return coplay_recent->List();
+}
+
+void QmlSettings::coplayLookRecent()
+{
+    coplay_recent->Look(settings->GetCoPlayMeetServer());
+}
+
+void QmlSettings::coplayForgetRecent(const QString &key)
+{
+    coplay_recent->Forget(key);
 }
 
 int QmlSettings::coplayMaxGuests() const

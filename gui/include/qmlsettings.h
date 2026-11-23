@@ -4,6 +4,8 @@
 
 #include <coplay/crypto.h>
 
+class CoPlayRecent;
+
 class QmlSettings : public QObject
 {
     Q_OBJECT
@@ -133,6 +135,8 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString coplayRoomsServerKept READ coplayRoomsServerKept NOTIFY coplayChanged)
     Q_PROPERTY(QVariantList coplayLanguages READ coplayLanguages CONSTANT)
     Q_PROPERTY(QVariantList coplayRooms READ coplayRooms NOTIFY coplayRoomsChanged)
+    /** Sessions joined before, newest first (coplayrecent.h). */
+    Q_PROPERTY(QVariantList coplayRecent READ coplayRecent NOTIFY coplayRecentChanged)
     Q_PROPERTY(int coplayRoomsState READ coplayRoomsState NOTIFY coplayRoomsChanged)
     Q_PROPERTY(QString coplayRoomsError READ coplayRoomsError NOTIFY coplayRoomsChanged)
     Q_PROPERTY(QString coplayWebUrl READ coplayWebUrl WRITE setCoplayWebUrl NOTIFY coplayChanged)
@@ -726,6 +730,11 @@ public:
     QString coplayRoomsError() const;
     /** Reads the list of public rooms again. */
     Q_INVOKABLE void coplayRefreshRooms();
+    QVariantList coplayRecent() const;
+    /** Asks for each of them whether its host shares now. */
+    Q_INVOKABLE void coplayLookRecent();
+    Q_INVOKABLE void coplayForgetRecent(const QString &key);
+    CoPlayRecent *recent() const { return coplay_recent; }
     /** How many friends may join a session at the same time. */
     int coplayMaxGuests() const;
     void setCoplayMaxGuests(int n);
@@ -944,6 +953,7 @@ signals:
     void keyboardEnabledChanged();
     void coplayChanged();
     void coplayRoomsChanged();
+    void coplayRecentChanged();
     void overlayChanged();
     void dpadTouchEnabledChanged();
     void dpadTouchIncrementChanged();
@@ -1035,6 +1045,7 @@ private:
     coplay::Secret coplayHostSecret() const;
 
     Settings *settings = {};
+    CoPlayRecent *coplay_recent = {};
     QStringList audio_in_devices;
     QStringList audio_out_devices;
 };

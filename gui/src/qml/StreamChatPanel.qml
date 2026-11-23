@@ -135,7 +135,7 @@ Window {
                         opacity: 0.55
                         font.pixelSize: 12
                         text: panel.players.length > 1
-                              ? qsTr("%n player(s) in this session", "", panel.players.length)
+                              ? qsTr("%1 players in this session").arg(panel.players.length)
                               : qsTr("Everybody who joins can read along")
                     }
                 }

@@ -4139,6 +4139,75 @@ TEST(meet_request_and_reply_text)
 	CHECK(error.find("the room is full") != std::string::npos);
 }
 
+TEST(meet_look_for_host_leaves_nothing_there)
+{
+	Secret secret = GenerateSecret();
+	Secret other = GenerateSecret();
+	MeetNote host;
+	host.role = MeetRole::Host;
+	host.peer_id = 77;
+	MeetNote guest = host;
+	guest.role = MeetRole::Guest;
+	std::string host_text, guest_text, strange_text;
+	CHECK(SealMeetNote(secret, host, host_text) && SealMeetNote(secret, guest, guest_text));
+	CHECK(SealMeetNote(other, host, strange_text));
+
+	std::string answer;
+	int status = 200;
+	bool answers = true;
+	std::vector<std::string> bodies;
+	HttpPost post = [&](const HttpRequest &request, HttpResponse &response, std::string *error) {
+		bodies.push_back(request.body);
+		if(!answers)
+		{
+			if(error)
+				*error = "timed out";
+			return false;
+		}
+		response.status = status;
+		response.body = answer;
+		return true;
+	};
+	const std::string url = "https://meet.example/psrpt_meet.php";
+
+	answer = "psrpt-meet 1\npoll 3000\nnote " + host_text + "\n";
+	CHECK(LookForHost(url, post, secret) == HostLook::There);
+	// asked as a guest, under the session's room, and with no note of its own
+	CHECK(bodies.size() == 1);
+	CHECK(bodies[0].find("room=" + MeetRoomId(secret) + "&") != std::string::npos);
+	CHECK(bodies[0].find("&role=g&note=") != std::string::npos);
+	CHECK(bodies[0].compare(bodies[0].size() - 6, 6, "&note=") == 0);
+	// a new id every time: one look is never taken for the next
+	CHECK(LookForHost(url, post, secret) == HostLook::There && bodies[1] != bodies[0]);
+
+	// nobody there, only a guest's note, or one that is not of this session
+	answer = "psrpt-meet 1\npoll 3000\n";
+	CHECK(LookForHost(url, post, secret) == HostLook::NotThere);
+	answer = "psrpt-meet 1\nnote " + guest_text + "\n";
+	CHECK(LookForHost(url, post, secret) == HostLook::NotThere);
+	answer = "psrpt-meet 1\nnote " + strange_text + "\nnote not-a-note\n";
+	CHECK(LookForHost(url, post, secret) == HostLook::NotThere);
+	// a browser's answers next to the host's own note change nothing
+	answer = "psrpt-meet 1\nnote not-a-note\nnote " + host_text + "\n";
+	CHECK(LookForHost(url, post, secret) == HostLook::There);
+
+	// what does not tell: no answer, another status, no meeting point, no meeting point at all
+	std::string error;
+	answers = false;
+	CHECK(LookForHost(url, post, secret, &error) == HostLook::Unknown && error == "timed out");
+	answers = true;
+	status = 503;
+	CHECK(LookForHost(url, post, secret, &error) == HostLook::Unknown && error.find("503") != std::string::npos);
+	status = 200;
+	answer = "<html>Not found</html>";
+	CHECK(LookForHost(url, post, secret) == HostLook::Unknown);
+	answer = "psrpt-meet 1\nerror this meeting point only knows version 1 of the protocol\n";
+	CHECK(LookForHost(url, post, secret) == HostLook::Unknown);
+	const size_t asked = bodies.size();
+	CHECK(LookForHost("", post, secret) == HostLook::Unknown && LookForHost(url, nullptr, secret) == HostLook::Unknown);
+	CHECK(bodies.size() == asked);
+}
+
 TEST(meet_address_text)
 {
 	const std::string standard = kDefaultMeetUrl;
