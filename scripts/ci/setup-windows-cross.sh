@@ -42,7 +42,7 @@ if command -v apt-get >/dev/null; then
 	export DEBIAN_FRONTEND=noninteractive
 	apt-get update -qq
 	apt-get install -y -qq --no-install-recommends \
-		ca-certificates curl git xz-utils zstd unzip zip file patch perl make \
+		ca-certificates curl git xz-utils zstd unzip zip file patch perl make nsis \
 		cmake ninja-build pkgconf nasm gcc libc6-dev \
 		python3 python3-venv python3-protobuf protobuf-compiler \
 		libglib2.0-0t64 libdbus-1-3 >/dev/null

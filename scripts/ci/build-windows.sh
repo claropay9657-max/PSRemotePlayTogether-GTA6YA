@@ -6,9 +6,11 @@
 #
 #   docker run --rm -v "$PWD:/work" -w /work debian:trixie scripts/ci/build-windows.sh
 #
-# Result: dist/PSRemotePlayTogether-<version>-windows-x64.zip
+# Result: dist/PSRemotePlayTogether-<version>-windows-x64.zip (the app's folder) and
+# dist/PSRemotePlayTogether-<version>-windows-x64-setup.exe (an installer for the same
+# folder, scripts/ci/windows-installer.nsi), each with its .sha256.
 #
-# With wine installed, the co-play tests and the packaged app are also run.
+# With wine installed, the co-play tests, the packaged app and the installer are also run.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
@@ -60,5 +62,35 @@ fi
 
 OUT="$PACKAGE-$VERSION-windows-x64.zip"
 ( cd dist && rm -f "$OUT" && zip -r -q -9 "$OUT" "$PACKAGE" && sha256sum "$OUT" > "$OUT.sha256" )
+
+echo "== Building the installer"
+# What the program itself says its version is: four numbers, which the name of a build between releases is not
+FILEVERSION="$(for part in MAJOR MINOR PATCH; do sed -n "s/^set(PSRPT_VERSION_$part \\([0-9][0-9]*\\)).*/\\1/p" CMakeLists.txt; done | paste -sd. -).0"
+SETUP="$PACKAGE-$VERSION-windows-x64-setup.exe"
+rm -f "dist/$SETUP"
+makensis -NOCD -V2 -DVERSION="$VERSION" -DFILEVERSION="$FILEVERSION" -DSOURCE="$PWD/dist/$PACKAGE" \
+	-DICON="$PWD/gui/chiaking.ico" -DOUTFILE="$PWD/dist/$SETUP" scripts/ci/windows-installer.nsi
+( cd dist && sha256sum "$SETUP" > "$SETUP.sha256" )
+
+if command -v wine >/dev/null; then
+	echo "== Running the installer with wine"
+	# Without its windows: it has to put the app into the user's own programs, and take it away again
+	wine "dist/$SETUP" /S
+	INSTALLED="$(find "$WINEPREFIX/drive_c/users" -path "*/AppData/Local/Programs/$PACKAGE/$PACKAGE.exe" | head -1)"
+	if [ -z "$INSTALLED" ] || [ ! -f "$(dirname "$INSTALLED")/Uninstall.exe" ]; then
+		echo "error: the installer did not put the app and its uninstaller in place" >&2
+		exit 1
+	fi
+	echo "installed to $(dirname "$INSTALLED")"
+	wine "$(dirname "$INSTALLED")/Uninstall.exe" /S
+	# The uninstaller hands over to a copy of itself and returns at once
+	for _ in $(seq 1 60); do [ -e "$INSTALLED" ] || break; sleep 1; done
+	if [ -e "$INSTALLED" ]; then
+		echo "error: the uninstaller left the app behind" >&2
+		exit 1
+	fi
+	echo "and removed again"
+fi
+
 rm -rf dist/"$PACKAGE"
 ls -l dist

@@ -10,7 +10,7 @@ machine.
 | --- | --- | --- |
 | Linux x86_64 | "Linux AppImage (x86_64)" | `PSRemotePlayTogether-<version>-linux-x86_64.AppImage` |
 | Linux arm64 | "Linux AppImage (aarch64)", on an arm64 runner | `PSRemotePlayTogether-<version>-linux-aarch64.AppImage` |
-| Windows x64 | "Windows (cross-compiled)" | `PSRemotePlayTogether-<version>-windows-x64.zip` (portable, unzip and run `PSRemotePlayTogether.exe`) |
+| Windows x64 | "Windows (cross-compiled)" | `PSRemotePlayTogether-<version>-windows-x64-setup.exe` (an installer, for the user alone) and `PSRemotePlayTogether-<version>-windows-x64.zip` (the same folder, unzip and run `PSRemotePlayTogether.exe`) |
 | macOS (Apple silicon) | "macOS dmg (arm64)", on a macOS 15 runner | `PSRemotePlayTogether-<version>-macos-arm64.dmg` |
 
 Every file comes with a `.sha256` next to it.
@@ -245,8 +245,21 @@ co-play tests and the app's `list` command, so a missing DLL fails the build.
 Versions are pinned at the top of `setup-windows-cross.sh` (llvm-mingw, Qt,
 FFmpeg). The MSYS2 packages are whatever is current when the job runs.
 
-There is no Windows installer yet, only the portable zip. The app is not
-code-signed, so Windows SmartScreen will ask before the first start.
+The zip is the app's folder as it is. The installer (`scripts/ci/windows-installer.nsi`,
+built with NSIS' `makensis`, which runs on Linux) puts the same folder into
+`%LOCALAPPDATA%\Programs\PSRemotePlayTogether`, with an entry in the Start menu and in
+Windows' list of installed apps. It installs for the user alone and asks for no
+administrator: under "Program Files" the app could not replace its own folder when it
+updates itself. It is a 64-bit installer, so the build can try it with the 64-bit wine it
+already has: installed without its windows, checked, and removed again.
+
+The app's folder is the app's alone: an update from inside the app, a newer installer and
+the uninstaller each replace or remove it as a whole. The installer therefore only takes a
+folder that is new, empty or already holds the app. When the app updates itself, it takes
+the uninstaller along into the new folder and says its new version in the list of installed
+apps (`gui/src/appupdater.cpp`); the update itself always comes from the zip.
+
+Neither file is code-signed, so Windows SmartScreen will ask before the first start.
 
 ## Webcam capture per platform
 

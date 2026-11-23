@@ -124,6 +124,17 @@ QString RunningBundle()
 AppUpdater::AppUpdater(QObject *parent)
 	: QObject(parent)
 {
+#ifdef Q_OS_WIN
+	// A copy the installer put here (scripts/ci/windows-installer.nsi) stands in Windows' list
+	// of installed apps with its version. After the app has updated itself the list would
+	// still say the old one, so the app that runs says which it is.
+	QSettings listed(QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\") + kProgram, QSettings::NativeFormat);
+	const QString where = listed.value(QStringLiteral("InstallLocation")).toString();
+	const QString version = QCoreApplication::applicationVersion();
+	if(!where.isEmpty() && !version.isEmpty() && QDir(where) == QDir(QCoreApplication::applicationDirPath())
+		&& listed.value(QStringLiteral("DisplayVersion")).toString() != version)
+		listed.setValue(QStringLiteral("DisplayVersion"), version);
+#endif
 }
 
 AppUpdater::~AppUpdater()
@@ -569,6 +580,17 @@ bool AppUpdater::InstallWindows(const QString &zip, const QString &app_dir, cons
 			return false;
 		}
 		fresh = stage + QLatin1Char('/') + kProgram;
+	}
+
+	// A copy the installer put here keeps its uninstaller: the download has none, and Windows'
+	// list of installed apps points to it
+	const QString uninstaller = QStringLiteral("Uninstall.exe");
+	if(QFileInfo::exists(app + QLatin1Char('/') + uninstaller) && !QFileInfo::exists(fresh + QLatin1Char('/') + uninstaller)
+		&& !QFile::copy(app + QLatin1Char('/') + uninstaller, fresh + QLatin1Char('/') + uninstaller))
+	{
+		QDir(stage).removeRecursively();
+		*error = tr("the uninstaller could not be taken along (%1).").arg(QDir::toNativeSeparators(app));
+		return false;
 	}
 
 	// A running program's folder cannot be replaced: a script does it once this app has closed

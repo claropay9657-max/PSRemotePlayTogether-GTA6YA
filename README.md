@@ -56,7 +56,7 @@ Free, for Windows, macOS and Linux. Everybody who uses the app in a session need
 
 | System | Download | How to start |
 | :--- | :---: | :--- |
-| **Windows 10 / 11** (64-bit) | [**⬇️ Windows zip**](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest) | Unzip, run `PSRemotePlayTogether.exe` |
+| **Windows 10 / 11** (64-bit) | [**⬇️ Windows installer**](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest) | Run the `setup.exe`: it installs for you alone, with an entry in the Start menu. Or take the zip, unzip it anywhere and run `PSRemotePlayTogether.exe` |
 | **macOS 15 or newer** (Apple silicon) | [**⬇️ macOS dmg**](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest) | Open, drag the app to Applications |
 | **Linux** (x86_64, arm64) | [**⬇️ AppImage**](https://github.com/Crypto90/PSRemotePlayTogether/releases/latest) | `chmod +x`, then run it |
 
