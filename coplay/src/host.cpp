@@ -1581,6 +1581,46 @@ bool Host::GuestsMaySleep()
 	return config.guests_may_sleep;
 }
 
+void Host::SetMaxGuests(size_t max_guests)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	config.max_guests = std::max<size_t>(1, std::min(max_guests, kMaxGuests));
+}
+
+size_t Host::MaxGuests()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return config.max_guests;
+}
+
+void Host::SetSecret(const Secret &secret)
+{
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		if(secret == config.secret)
+			return;
+		config.secret = secret;
+		hello_key = DeriveHelloKey(secret);
+		welcome_key = DeriveWelcomeKey(secret);
+		// Who knocks with the old invite does not get in with it; who is in stays
+		if(!knocks.empty())
+		{
+			knocks.clear();
+			d.pending_changed = true;
+		}
+		// Addresses met through the old room are not sent to any more
+		punches.clear();
+		d.logs.push_back("New invite: the ones handed out before do not get in any more");
+	}
+	// Set before the network thread started and kept until it has ended
+	if(meet_worker)
+		meet_worker->SetSecret(secret);
+	Fire(d);
+	// Browsers on their way in had their answers sealed with the old key
+	OnWebAnswers();
+}
+
 void Host::SetMixMode(MixMode mode)
 {
 	Deferred d;
@@ -1951,7 +1991,12 @@ void Host::OnOtherNotes(const std::vector<std::string> &texts)
 	for(const std::string &text : texts)
 	{
 		WebOffer offer;
-		if(!OpenWebOffer(config.secret, text, offer))
+		Secret secret;
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			secret = config.secret; // SetSecret() may change it
+		}
+		if(!OpenWebOffer(secret, text, offer))
 			continue;
 		{
 			// A note stays at the meeting point for half a minute and is seen again and again
@@ -1981,7 +2026,12 @@ void Host::OnWebAnswers()
 	WebAnswers answers = gateway->Answers();
 	std::string text;
 	// As many as fit into one note; the others' turn comes when these are in
-	while(!answers.answers.empty() && !SealWebAnswers(config.secret, answers, text))
+	Secret secret;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		secret = config.secret; // SetSecret() may change it
+	}
+	while(!answers.answers.empty() && !SealWebAnswers(secret, answers, text))
 		answers.answers.pop_back();
 	if(answers.answers.empty())
 		text.clear();

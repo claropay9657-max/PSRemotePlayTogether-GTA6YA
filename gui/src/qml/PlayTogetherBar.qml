@@ -767,6 +767,17 @@ Rectangle {
                             interval: 1500
                         }
                     }
+
+                    // A new invite, for when one went where it should not: the old ones stop working
+                    C.IconButton {
+                        id: newInviteButton
+                        Layout.alignment: Qt.AlignTop
+                        visible: panel.hosting
+                        small: true
+                        iconName: "refresh"
+                        tip: qsTr("New invite")
+                        onClicked: panel.openMenu(newInviteMenu, newInviteButton, "below")
+                    }
                 }
 
                 // Nobody else can come into this session
@@ -860,6 +871,46 @@ Rectangle {
                     subtitle: checked ? qsTr("Switch off to keep the room as it is") : qsTr("Closed: nobody new gets in")
                     checked: panel.hosting && !panel.session.coplayLocked
                     onToggled: panel.session.coplayLocked = !checked
+                }
+
+                // How many may be in, changed while playing; fewer than are in removes nobody
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: panel.hosting
+                    spacing: 12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+
+                        Text {
+                            id: playersTitle
+                            Layout.fillWidth: true
+                            text: qsTr("Room size")
+                            font.pixelSize: 13
+                            font.weight: Font.ExtraBold
+                            color: C.Theme.text
+                        }
+
+                        Text {
+                            readonly property int places: panel.hosting ? panel.session.coplayMaxGuests : 0
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 12
+                            color: panel.players.length > places + 1 ? C.Theme.wait : C.Theme.textDim
+                            text: (places === 1 ? qsTr("You and 1 friend") : qsTr("You and up to %1 friends").arg(places))
+                                  + " · " + (panel.players.length > places + 1 ? qsTr("%1 here: nobody new gets in").arg(panel.players.length)
+                                                                              : qsTr("%1 here").arg(panel.players.length))
+                        }
+                    }
+
+                    C.Stepper {
+                        Accessible.name: playersTitle.text
+                        from: 2
+                        to: 9
+                        value: panel.hosting ? panel.session.coplayMaxGuests + 1 : 2
+                        onMoved: (n) => panel.session.coplayMaxGuests = n - 1
+                    }
                 }
 
                 // A public room open to newcomers: how they get in (the words of the room list)
@@ -1323,6 +1374,51 @@ Rectangle {
             iconName: "browser"
             text: qsTr("For a friend without the app: a link for the web browser")
             onTriggered: panel.copyText(panel.inviteWeb)
+        }
+    }
+
+    // A new invite: what it does, and the way back
+    C.Menu {
+        id: newInviteMenu
+        property var placement: null
+        onAboutToShow: if (placement) placement()
+        padding: 6
+        font.pixelSize: 14
+        background: MenuGround {}
+
+        // Wrapped at this width: without it the menu would be as wide as the whole sentence
+        Item {
+            implicitWidth: 300
+            implicitHeight: newInviteText.implicitHeight
+            width: 300
+
+            Label {
+                id: newInviteText
+                width: parent.width
+                leftPadding: 10
+                rightPadding: 10
+                topPadding: 6
+                bottomPadding: 6
+                wrapMode: Text.WordWrap
+                font.pixelSize: 13
+                color: C.Theme.textSoft
+                text: qsTr("The invites and links you handed out stop working. Who is in stays; whose connection breaks needs the new one to come back.")
+            }
+        }
+
+        MenuEntry {
+            danger: true
+            iconName: "refresh"
+            text: qsTr("Make a new invite")
+            onTriggered: {
+                panel.session.coplayNewInvite();
+                panel.copyInvite();
+            }
+        }
+
+        MenuEntry {
+            iconName: "close"
+            text: qsTr("Keep the invite")
         }
     }
 

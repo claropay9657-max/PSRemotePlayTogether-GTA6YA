@@ -1078,6 +1078,55 @@ int StreamSession::GetCoPlayMixMode() const
 	return coplay->mix_mode;
 }
 
+int StreamSession::GetCoPlayMaxGuests() const
+{
+	if(!coplay || !coplay->host)
+		return 0;
+	return static_cast<int>(coplay->host->MaxGuests());
+}
+
+void StreamSession::SetCoPlayMaxGuests(int max_guests)
+{
+	if(!IsCoPlayHosting() || max_guests < 1 || max_guests > static_cast<int>(coplay::kMaxGuests))
+		return;
+	if(static_cast<size_t>(max_guests) == coplay->host->MaxGuests())
+		return;
+	// Fewer than are in removes nobody: newcomers are turned away until there is room
+	coplay->host->SetMaxGuests(static_cast<size_t>(max_guests));
+	CHIAKI_LOGI(GetChiakiLog(), "Play Together: room for %d friends now", max_guests);
+	// The room list says how many fit
+	if(coplay->room)
+	{
+		coplay->room_info.max = max_guests + 1;
+		CoPlayUpdateRoom();
+	}
+	emit CoPlayChanged();
+}
+
+void StreamSession::coplayNewInvite()
+{
+	if(!IsCoPlayHosting())
+		return;
+	const coplay::Secret secret = coplay::GenerateSecret();
+	coplay->host->SetSecret(secret);
+	{
+		QMutexLocker locker(&coplay->mutex);
+		coplay->invite_secret = secret;
+		const QString local = QString::fromStdString(coplay::GuessLocalAddress());
+		coplay->invite_lan = CoPlayInviteFor(local.isEmpty() ? QStringLiteral("127.0.0.1") : local);
+		coplay->invite = coplay->invite_address.isEmpty() ? coplay->invite_lan : CoPlayInviteFor(coplay->invite_address);
+	}
+	// A public room: the list hands out the new one
+	if(coplay->room)
+	{
+		coplay->room_info.invite = CoPlayInviteFor(QString());
+		CoPlayUpdateRoom();
+	}
+	CHIAKI_LOGI(GetChiakiLog(), "Play Together: new invite; the ones handed out before do not get in any more");
+	emit CoPlayNewKey(QString::fromStdString(coplay::SecretToString(secret)), coplay->is_public);
+	emit CoPlayChanged();
+}
+
 void StreamSession::SetCoPlayMixMode(int mode)
 {
 	const int max_mode = static_cast<int>(pc_source ? coplay::MixMode::EachOwn : coplay::MixMode::HostOnly);

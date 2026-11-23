@@ -280,6 +280,8 @@ class StreamSession : public QObject
 	Q_PROPERTY(bool coplayReachGood READ GetCoPlayReachGood NOTIFY CoPlayChanged)
 	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
 	Q_PROPERTY(int coplayMixMode READ GetCoPlayMixMode WRITE SetCoPlayMixMode NOTIFY CoPlayChanged)
+	/** The host: how many friends may be in at once, changed while the session runs (1 to 8). */
+	Q_PROPERTY(int coplayMaxGuests READ GetCoPlayMaxGuests WRITE SetCoPlayMaxGuests NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayVideoEnabled READ GetCoPlayVideoEnabled WRITE SetCoPlayVideoEnabled NOTIFY CoPlayChanged)
 	/** A guest whom the host lets use mouse and keyboard in the game on its computer. */
 	Q_PROPERTY(bool coplayKeyMouseAllowed READ GetCoPlayKeyMouseAllowed NOTIFY CoPlayChanged)
@@ -688,6 +690,13 @@ class StreamSession : public QObject
 		QVariantList GetCoPlayPlayers() const;
 		int GetCoPlayMixMode() const;
 		void SetCoPlayMixMode(int mode);
+		int GetCoPlayMaxGuests() const;
+		void SetCoPlayMaxGuests(int max_guests);
+		/**
+		 * The host: a new invite while the session runs. The ones handed out before do not get
+		 * in any more; who is in stays. The new key is kept for later sessions (CoPlayNewKey).
+		 */
+		Q_INVOKABLE void coplayNewInvite();
 		bool GetCoPlayVideoEnabled() const;
 		bool GetCoPlayKeyMouseAllowed() const;
 		bool GetCoPlayKeyMouse() const;
@@ -875,6 +884,8 @@ class StreamSession : public QObject
 		void coplayChatMessage(const QVariantMap &message);
 		/** Something the user should be told, e.g. that the port for sharing is taken. */
 		void CoPlayNotice(const QString &text);
+		/** coplayNewInvite() made a new key: the private sessions' one, or the public room's. */
+		void CoPlayNewKey(const QString &key, bool public_room);
 		/** Host: a guest left and asked for the console to be put to sleep, and guests may. */
 		void CoPlaySleepRequested(const QString &name);
 		/** Somebody in the room wants the sleeping console woken: a guest's name, or empty for the host. */

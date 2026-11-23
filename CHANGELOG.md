@@ -3,6 +3,12 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## Unreleased
+
+- **The room size counts everybody.** On the Host page it is now **Room size**, counted in players with you included, as the room list counts them: **2** is you and one friend. Until now the number counted only the friends, so a "room for 2" let in two friends, three people in all. The limit itself always held, in private and public rooms, for the app and for browsers.
+- **New: change the room size while you play.** The host's stream menu has **Room size** under **Open to newcomers**. Fewer places than people in the room removes nobody; newcomers find it full until there is room again. A public room's card shows the new size.
+- **New: a new invite while you play.** The button next to **Invite** in the host's stream menu makes a new invite at once: the invites and links handed out before stop working (they do not even find you at the meeting point any more), everybody in the room stays, and the new invite is copied. **Settings → Network → New invites…** now does the same during a private session; before, it only changed the invite of the next session.
+
 ## 0.5.4
 
 - **New: your PlayStation's picture from a capture card.** If your PS5 or PS4 is plugged into a capture card on this computer, switch on **Picture from a capture card** under the console on the Host page and choose the card. Your friends then see and hear the card, the console's own HDMI picture encoded on this computer instead of the Remote Play stream, while their controllers still play through Remote Play as before. Your own picture stays the Remote Play one. Where the card gives no sound, your friends hear the console's. The console sends H.264 in such a session, so that your friends get its picture again at once if the card stops; the app tells you when that happens.

@@ -329,7 +329,14 @@ C.SettingsPage {
                         text: qsTr("New invites…")
                         onClicked: root.showConfirmDialog(qsTr("New invites"),
                             qsTr("Invites you handed out before stop working. Make new ones?"),
-                            () => Chiaki.settings.coplayNewKey())
+                            () => {
+                                // A private session that runs takes the new key at once (the stream menu does the same)
+                                const s = Chiaki.session;
+                                if (s && s.coplayHosting && !s.coplayPublic)
+                                    s.coplayNewInvite();
+                                else
+                                    Chiaki.settings.coplayNewKey();
+                            })
                     }
                 }
             }

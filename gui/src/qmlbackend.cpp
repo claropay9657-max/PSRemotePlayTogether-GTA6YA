@@ -1678,6 +1678,14 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 
     connect(session, &StreamSession::NicknameReceived, this, &QmlBackend::checkNickname);
 
+    // A new invite in the stream menu is the one for later sessions too
+    connect(session, &StreamSession::CoPlayNewKey, this, [this](const QString &key, bool public_room) {
+        if (public_room)
+            settings->SetCoPlayPublicSecret(key);
+        else
+            settings->SetCoPlaySecret(key);
+        settings_qml->coplayChanged();
+    });
     connect(session, &StreamSession::CoPlayNotice, this, [this](const QString &text) {
         emit error(tr("Play Together"), text);
     });

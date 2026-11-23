@@ -231,6 +231,12 @@ class MeetWorker
 		 * more request per round, so it is only set while it is needed.
 		 */
 		void SetExtraNote(const std::string &text);
+		/**
+		 * Another invite's key: the note moves to that key's room at once, and the one in the
+		 * old room is taken away, so that an old invite does not even find the host any more.
+		 * The extra note goes (it was sealed with the old key); the caller sets a new one.
+		 */
+		void SetSecret(const Secret &secret);
 		void Stop();
 
 		MeetState State();
@@ -242,11 +248,16 @@ class MeetWorker
 		void Run();
 
 		const MeetConfig config;
-		const Secret secret;
+		// with mutex: they change with SetSecret()
+		Secret secret;
 		const MeetRole role;
 		const OnNotes on_notes;
 		const OnOtherNotes on_other_notes;
-		const std::string room;
+		std::string room;
+		/** A room to take our note out of, once (SetSecret()); empty when there is none. */
+		std::string leave_room;
+		/** The note as it is, for sealing it again with a new key. */
+		MeetNote plain_note;
 		uint64_t sender_id = 0;
 
 		std::thread thread;

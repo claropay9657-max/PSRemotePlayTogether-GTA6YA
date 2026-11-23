@@ -284,6 +284,19 @@ class Host
 		void SetBattery(uint8_t battery);
 		void SetMixMode(MixMode mode);
 		MixMode GetMixMode();
+		/**
+		 * How many guests may be in at once, while the session runs (1 to kMaxGuests). Fewer than
+		 * are in removes nobody: newcomers are turned away ("full") until there is room again.
+		 */
+		void SetMaxGuests(size_t max_guests);
+		size_t MaxGuests();
+		/**
+		 * A new invite, while the session runs: from now on only the new key gets in, through
+		 * the address and through the meeting point (whose note moves to the new key's room).
+		 * Who is in stays, with the keys of their own connection; who knocks with the old invite
+		 * is forgotten. A guest whose connection breaks needs the new invite to come back.
+		 */
+		void SetSecret(const Secret &secret);
 		void SetGuestCanControl(uint8_t slot, bool allowed);
 		/**
 		 * Lets a guest use mouse and keyboard (on_key_mouse), or not; everybody's list says so.

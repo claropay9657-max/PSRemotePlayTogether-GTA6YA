@@ -1717,6 +1717,57 @@ TEST(net_session_full)
 	CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 1000));
 }
 
+TEST(net_room_size_changes_while_the_session_runs)
+{
+	TestHost h(1);
+	TestGuest g1(h.MakeInvite(), "One");
+	CHECK(g1.Connect());
+	CHECK(h.host->MaxGuests() == 1);
+	// one more place: the second gets in
+	h.host->SetMaxGuests(2);
+	TestGuest g2(h.MakeInvite(), "Two");
+	CHECK(g2.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 1000));
+	// fewer places than are in: nobody goes, a newcomer finds it full
+	h.host->SetMaxGuests(1);
+	TestGuest g3(h.MakeInvite(), "Three", kWantAll, 1500);
+	std::string error;
+	CHECK(!g3.Connect(&error));
+	CHECK(error.find("full") != std::string::npos);
+	CHECK(h.host->Guests().size() == 2);
+	// never fewer than one, never more than the protocol has places for
+	h.host->SetMaxGuests(0);
+	CHECK(h.host->MaxGuests() == 1);
+	h.host->SetMaxGuests(100);
+	CHECK(h.host->MaxGuests() == kMaxGuests);
+}
+
+TEST(net_new_invite_while_the_session_runs)
+{
+	TestHost h;
+	const Invite old_invite = h.MakeInvite();
+	TestGuest g1(old_invite, "One");
+	CHECK(g1.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 1000));
+
+	Secret fresh = GenerateSecret();
+	h.host->SetSecret(fresh);
+	// the old invite gets no answer any more
+	TestGuest g2(old_invite, "Two", kWantAll, 1200);
+	std::string error;
+	CHECK(!g2.Connect(&error));
+	CHECK(h.host->Guests().size() == 1);
+	// the new one gets in
+	Invite new_invite = old_invite;
+	new_invite.secret = fresh;
+	TestGuest g3(new_invite, "Three");
+	CHECK(g3.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 1000));
+	// and who was in before stays in, and is still heard
+	g1.client->SetInput(Pad(kButtonCircle));
+	CHECK(WaitFor([&] { return (h.host->MixedInput().buttons & kButtonCircle) != 0; }, 1000));
+}
+
 TEST(net_input_reaches_host_and_is_merged)
 {
 	TestHost h;
@@ -4162,6 +4213,61 @@ TEST(meet_request_and_reply_text)
 	CHECK(!ParseMeetReply("<!doctype html><html>Not found</html>", reply, &error));
 	CHECK(!ParseMeetReply("psrpt-meet 1\nerror the room is full\n", reply, &error));
 	CHECK(error.find("the room is full") != std::string::npos);
+}
+
+TEST(meet_worker_moves_to_a_new_key)
+{
+	Secret first = GenerateSecret();
+	Secret second = GenerateSecret();
+	std::mutex m;
+	std::vector<std::string> bodies;
+	MeetConfig config;
+	config.url = "https://meet.example/psrpt_meet.php";
+	config.host_poll_ms = 40;
+	config.post = [&](const HttpRequest &request, HttpResponse &response, std::string *) {
+		{
+			std::lock_guard<std::mutex> lock(m);
+			bodies.push_back(request.body);
+		}
+		response.status = 200;
+		response.body = "psrpt-meet 1\npoll 40\n";
+		return true;
+	};
+	MeetWorker worker(config, first, MeetRole::Host, nullptr);
+	MeetNote note;
+	note.role = MeetRole::Host;
+	note.peer_id = 5;
+	worker.SetNote(note);
+	auto sent_to = [&](const Secret &s) {
+		std::lock_guard<std::mutex> lock(m);
+		for(const std::string &b : bodies)
+		{
+			if(b.find("room=" + MeetRoomId(s) + "&") != std::string::npos)
+				return true;
+		}
+		return false;
+	};
+	CHECK(WaitFor([&] { return sent_to(first); }, 1000));
+	worker.SetSecret(second);
+	CHECK(WaitFor([&] { return sent_to(second); }, 1000));
+	worker.Stop();
+	std::lock_guard<std::mutex> lock(m);
+	// the note in the new room opens with the new key; the old room got an empty note once
+	bool opened = false, left = false;
+	for(const std::string &b : bodies)
+	{
+		const size_t at = b.find("&note=");
+		const std::string text = b.substr(at + 6);
+		if(b.find("room=" + MeetRoomId(second) + "&") != std::string::npos && !text.empty())
+		{
+			MeetNote opened_note;
+			opened = opened || (OpenMeetNote(second, text, opened_note) && opened_note.peer_id == 5);
+		}
+		if(b.find("room=" + MeetRoomId(first) + "&") != std::string::npos && text.empty())
+			left = true;
+	}
+	CHECK(opened);
+	CHECK(left);
 }
 
 TEST(meet_look_for_host_leaves_nothing_there)

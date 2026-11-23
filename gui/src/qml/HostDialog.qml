@@ -144,7 +144,7 @@ DialogView {
     readonly property string controlName: controlNames[mixMode] || controlNames[0]
     /** What the game runs on, as the room list says it. */
     readonly property string consoleName: talkChosen ? "" : pcChosen ? (pcTarget && pcTarget.xbox ? "Xbox" : qsTr("PC")) : chosen ? (chosen.ps5 ? "PS5" : "PS4") : ""
-    readonly property string guestsText: Chiaki.settings.coplayMaxGuests === 1 ? qsTr("1 friend") : qsTr("Up to %1 friends").arg(Chiaki.settings.coplayMaxGuests)
+    readonly property string guestsText: qsTr("%1 players").arg(Chiaki.settings.coplayMaxGuests + 1)
 
     /** One line about what Start is about to start. */
     readonly property string summary: {
@@ -1261,27 +1261,29 @@ DialogView {
                                             Layout.fillWidth: true
                                             spacing: 1
 
+                                            // Everybody counts, you too: "2" is you and one friend, as the room list counts
                                             Label {
-                                                text: qsTr("Friends")
+                                                text: qsTr("Room size")
                                                 color: C.Theme.text
                                                 font.pixelSize: 14
                                                 font.weight: Font.ExtraBold
                                             }
 
                                             Label {
-                                                text: qsTr("%1 to %2").arg(1).arg(8)
+                                                text: Chiaki.settings.coplayMaxGuests === 1 ? qsTr("You and 1 friend")
+                                                    : qsTr("You and up to %1 friends").arg(Chiaki.settings.coplayMaxGuests)
                                                 color: C.Theme.textDim
                                                 font.pixelSize: 12
                                             }
                                         }
 
                                         C.Stepper {
-                                            value: Chiaki.settings.coplayMaxGuests
-                                            from: 1
-                                            to: 8
-                                            lessText: qsTr("Fewer friends")
-                                            moreText: qsTr("More friends")
-                                            onMoved: (n) => Chiaki.settings.coplayMaxGuests = n
+                                            value: Chiaki.settings.coplayMaxGuests + 1
+                                            from: 2
+                                            to: 9
+                                            lessText: qsTr("Fewer players")
+                                            moreText: qsTr("More players")
+                                            onMoved: (n) => Chiaki.settings.coplayMaxGuests = n - 1
                                         }
                                     }
                                 }

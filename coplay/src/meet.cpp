@@ -353,13 +353,36 @@ void MeetWorker::Stop()
 
 void MeetWorker::SetNote(const MeetNote &note)
 {
+	std::lock_guard<std::mutex> lock(mutex);
 	std::string text;
 	if(!SealMeetNote(secret, note, text))
 		return;
-	std::lock_guard<std::mutex> lock(mutex);
+	plain_note = note;
 	note_text = std::move(text);
 	have_note = true;
 	note_new = true;
+	changed.notify_all();
+}
+
+void MeetWorker::SetSecret(const Secret &new_secret)
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	if(new_secret == secret)
+		return;
+	const std::string old_room = room;
+	secret = new_secret;
+	room = MeetRoomId(new_secret);
+	extra_text.clear();
+	extra_there = false;
+	extra_new = false;
+	if(have_note)
+	{
+		std::string text;
+		if(SealMeetNote(secret, plain_note, text))
+			note_text = std::move(text);
+		note_new = true;
+		leave_room = old_room;
+	}
 	changed.notify_all();
 }
 
@@ -411,7 +434,12 @@ void MeetWorker::Run()
 		note_new = false;
 		HttpRequest request;
 		request.url = config.url;
-		request.body = MeetRequestBody(room, sender_id, role, note_text);
+		// The room and key of this round: SetSecret() may change them meanwhile
+		const std::string round_room = room;
+		const Secret round_secret = secret;
+		const std::string leave = leave_room;
+		leave_room.clear();
+		request.body = MeetRequestBody(round_room, sender_id, role, note_text);
 		request.cancel = &stop;
 		// The second note goes under an id of its own, as if it were a second host. It is
 		// posted for as long as it is set (a note expires), and once more to take it away.
@@ -419,8 +447,18 @@ void MeetWorker::Run()
 		const std::string extra = extra_text;
 		extra_new = false;
 		HttpRequest extra_request = request;
-		extra_request.body = MeetRequestBody(room, sender_id + 1, role, extra);
+		extra_request.body = MeetRequestBody(round_room, sender_id + 1, role, extra);
 		lock.unlock();
+
+		// An old invite's room: our note out of it (an empty one takes it away), once
+		if(!leave.empty())
+		{
+			HttpRequest away = request;
+			away.body = MeetRequestBody(leave, sender_id, role, std::string());
+			HttpResponse away_response;
+			requests++;
+			config.post(away, away_response, nullptr);
+		}
 
 		HttpResponse response;
 		std::string problem;
@@ -448,7 +486,7 @@ void MeetWorker::Run()
 			for(const std::string &text : reply.notes)
 			{
 				MeetNote note;
-				if(OpenMeetNote(secret, text, note))
+				if(OpenMeetNote(round_secret, text, note))
 				{
 					if(note.role != role)
 						notes.push_back(std::move(note));
