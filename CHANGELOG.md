@@ -3,7 +3,7 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
-## Unreleased
+## 0.5.2
 
 - **The intro film shows its rings.** The explorer jumped for rings and over crystals that were never drawn; only the count in the corner went up. They are there now, with the sparks and the +1 when a ring is caught, the dust under a jump and the word that says what the game runs on. The film at the top of the README shows them as well.
 - **A smoother picture in a web browser.** Frames reach a browser a little unevenly: two within one refresh of the screen, then none. The page showed only the newer of the two, so in an unlucky rhythm every fourth frame was never seen, which looks like a stutter however fast the connection is. Now one frame may wait for the next refresh and every frame is shown, at most 17 ms later. This is in the page itself, so it reaches everybody who joins in a browser without an update of the app.
