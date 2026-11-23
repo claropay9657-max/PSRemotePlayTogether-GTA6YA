@@ -266,6 +266,21 @@ The link carries the host's choice of STUN server (`&stun=host:port`, or
 `&stun=off`) when the host has set one under Settings → Network & invites; otherwise the page
 asks Google's and Cloudflare's.
 
+## On a home screen
+
+The page can be installed: `web/manifest.webmanifest` names it, its pictures
+(`web/img/icon-*.png`, made from the app's icon; the "maskable" one fills its square so that a
+phone can cut its own shape from it) and that it opens full screen. Chrome and Edge then
+offer to install it, which the page passes on as **Install this page** at its foot; on an
+iPhone or iPad the way is **Share → Add to Home Screen**, and a line at the foot says so
+there. On Android an invite link then opens in the installed page; on an iPhone or iPad
+links open in Safari, and the installed page starts at its front, where a link can be pasted.
+
+There is no service worker, on purpose: nothing of the page is kept on the device. A copy
+kept there could be older than the host's app expects (see "The page for web browsers" in
+[releasing.md](releasing.md)), and the page is of no use without a connection anyway.
+`test/web/manifest.test.mjs` checks the manifest, the pictures and that it stays that way.
+
 ## Trying it on one machine
 
 Without a console and without a second computer. PHP serves the page and the

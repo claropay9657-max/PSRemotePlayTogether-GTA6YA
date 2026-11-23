@@ -257,6 +257,8 @@ A friend who does not want to install anything can play from a browser.
 
 The page is **[crypto90.github.io/PSRemotePlayTogether](https://crypto90.github.io/PSRemotePlayTogether/)**. Opened without an invite, it shows the public rooms, and an invite can be pasted there too.
 
+**On a phone or tablet it can sit on the home screen like an app.** In Chrome or Edge the page offers **Install this page** at its foot; on an iPhone or iPad it is **Share → Add to Home Screen**. It then opens full screen, without the browser's bars. It stays the page: nothing is kept on the device, so it is always the newest.
+
 The browser gets the same picture and sound and its controller plays along like everybody else's. Voice chat, text chat, webcams (the friend's own too), a player picture and rumble work as well. Without a controller the keyboard can stand in, and a phone or tablet gets controls on the screen.
 
 On the game picture it looks and works like the app: the same display of players, webcams and controllers with the same presets and the same way of arranging them, the same stream menu, chat and options. The stream menu opens with **Ctrl+O** (**⌘O** on a Mac), with **L1+R1+L3+R3** on the controller, or with the **Menu** button that shows when the mouse moves.

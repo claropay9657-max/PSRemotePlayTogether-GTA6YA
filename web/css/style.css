@@ -1341,6 +1341,31 @@ h3 {
   color: #ffffff;
 }
 
+/* The same pill as a button: "Install this page" */
+button.pill-link {
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.foot-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* How to install on an iPhone or iPad, where the page cannot offer it itself */
+.foot-how {
+  width: 100%;
+  max-width: 1400px;
+  margin: -6px auto 0;
+  padding: 0 var(--gutter) 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
 /* ---------------------------------------------------------------- narrower windows */
 
 @media (max-width: 899px) {

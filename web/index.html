@@ -17,6 +17,19 @@
 <title>PSRemotePlayTogether</title>
 <meta name="description" content="Join a friend's shared game from your browser, on a PlayStation, a PC or an Xbox: same picture, same sound, your own controller.">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<!--
+  On a home screen: the page can be installed (Chrome and Edge offer it, on an iPhone or iPad
+  it is "Add to Home Screen" in the Share menu) and then opens full screen, without the
+  browser's bars. It stays a page all the same: nothing of it is kept on the device, so it is
+  always the newest, which the host's app counts on (docs/web-guests.md).
+-->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0c0a1d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Play Together">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/game.css">
 </head>
@@ -200,9 +213,13 @@
 
   <footer class="foot">
     <span>powered by <a href="https://gamernova.net/" target="_blank" rel="noopener">GamerNova.net</a></span>
-    <a class="pill-link" href="https://github.com/Crypto90/PSRemotePlayTogether" target="_blank" rel="noopener">Get the app</a>
+    <span class="foot-pills">
+      <a class="pill-link" href="https://github.com/Crypto90/PSRemotePlayTogether" target="_blank" rel="noopener">Get the app</a>
+      <button id="install" class="pill-link" type="button" hidden title="Puts this page on your home screen or desktop. It then opens full screen, without the browser's bars.">Install this page</button>
+    </span>
     <span>Free and open source. Not affiliated with Sony Interactive Entertainment.</span>
   </footer>
+  <p id="install-how" class="foot-how" hidden>On an iPhone or iPad: tap Share, then <b>Add to Home Screen</b>. This page then opens like an app, full screen.</p>
 </div>
 
 <!-- ============================================================ playing -->

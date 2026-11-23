@@ -450,6 +450,39 @@ function joinRoom(room) {
   showJoin();
 }
 
+/**
+ * The page on a home screen, like an app: where the browser can install it (Chrome, Edge), the
+ * foot of the page gets a button for it; on an iPhone or iPad only the Share menu can, so a
+ * line says how. Not when the page already runs installed.
+ */
+function offerInstall() {
+  const button = $('install');
+  const how = $('install-how');
+  if (!button || !how) return;
+  const installed = navigator.standalone === true
+    || ['standalone', 'fullscreen', 'minimal-ui'].some((mode) => matchMedia(`(display-mode: ${mode})`).matches);
+  if (installed) return;
+  let offer = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); // not the browser's own bar: the button, when the player wants it
+    offer = e;
+    button.hidden = false;
+  });
+  button.addEventListener('click', () => {
+    if (!offer) return;
+    const asked = offer;
+    offer = null;
+    button.hidden = true;
+    asked.prompt();
+  });
+  window.addEventListener('appinstalled', () => {
+    button.hidden = true;
+  });
+  // iPadOS says it is a Mac; a Mac has no touch screen
+  const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (apple) how.hidden = false;
+}
+
 /** Something the player has to know, at the top of the picture for a few seconds. */
 function notice(text) {
   const n = el('div', 'notice', text);
@@ -2002,6 +2035,8 @@ function start() {
       sizes: CAMERA_SIZES,
     };
   }
+
+  offerInstall();
 
   invite = readInvite();
   if (invite) showJoin();

@@ -3,6 +3,10 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## Unreleased
+
+- **The page for web browsers can sit on the home screen like an app.** On a phone or tablet, Chrome and Edge offer **Install this page** at the foot of the page; on an iPhone or iPad it is **Share → Add to Home Screen**. It then opens full screen, without the browser's bars. This is in the page itself, so it is there without an update of the app.
+
 ## 0.5.2
 
 - **The intro film shows its rings.** The explorer jumped for rings and over crystals that were never drawn; only the count in the corner went up. They are there now, with the sparks and the +1 when a ring is caught, the dust under a jump and the word that says what the game runs on. The film at the top of the README shows them as well.
