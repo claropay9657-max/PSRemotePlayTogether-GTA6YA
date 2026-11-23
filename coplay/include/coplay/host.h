@@ -178,6 +178,13 @@ struct HostCallbacks
 	std::function<void(uint8_t slot, const std::string &name)> on_wake_requested;
 	/** Somebody knocked, or stopped waiting; see Host::Pending(). */
 	std::function<void()> on_pending_changed;
+	/**
+	 * A guest in a web browser keeps falling behind: its connection cannot carry the picture
+	 * the way the console sends it, so the picture has had to start over for it several times
+	 * within seconds. Every such start is a key frame the console sends to everybody. Said once
+	 * for each guest; a lower bitrate for the session is what helps.
+	 */
+	std::function<void(uint8_t slot, const std::string &name)> on_guest_behind;
 	std::function<void(const std::string &)> on_log;
 };
 
@@ -382,6 +389,11 @@ class Host
 			uint64_t web_backlog_ms = 0;
 			/** Its connection cannot keep up: video is held back until the pile is gone. */
 			bool web_starved = false;
+			/** How often that has happened lately, and since when that is counted. */
+			uint32_t web_starved_count = 0;
+			uint64_t web_starved_since_ms = 0;
+			/** The host has been told that this guest keeps falling behind. */
+			bool web_behind_told = false;
 		};
 
 		/** Things to do once the lock is released. */
@@ -401,6 +413,8 @@ class Host
 			uint8_t sleep_slot = 0;
 			std::string sleep_name;
 			std::vector<std::string> logs;
+			/** Guests in a browser that keep falling behind: slot and name. */
+			std::vector<std::pair<uint8_t, std::string>> behind;
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, Opus frame
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 			std::vector<ChatMessage> chats;

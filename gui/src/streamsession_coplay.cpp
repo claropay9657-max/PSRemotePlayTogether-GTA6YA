@@ -467,6 +467,17 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 		const QString who = QString::fromStdString(name);
 		QMetaObject::invokeMethod(this, [this, who] { emit CoPlayWakeRequested(who); }, Qt::QueuedConnection);
 	};
+	// A friend in a web browser whose connection cannot carry the picture as it is sent: the
+	// host is the only one who can change that, so the host is told, once
+	callbacks.on_guest_behind = [this](uint8_t, const std::string &name) {
+		const QString who = QString::fromStdString(name);
+		QMetaObject::invokeMethod(this, [this, who] {
+			const QString where = IsPcSource()
+				? tr("A smaller picture helps: choose a lower one under Picture where you pick what to share, for the next session.")
+				: tr("A lower bitrate helps: Settings → Stream quality, for the next session.");
+			emit CoPlayNotice(tr("%1's browser cannot keep up with the picture. It stutters for them, and every new start costs everybody a little quality. %2 With the app instead of a browser, %1 gets the picture more directly.").arg(who, where));
+		}, Qt::QueuedConnection);
+	};
 	// Friends without the app join from a web browser; the meeting point leads them here
 	if(connect_info.coplay_web_guests && config.meet.Enabled() && coplay::WebGuestsSupported())
 	{

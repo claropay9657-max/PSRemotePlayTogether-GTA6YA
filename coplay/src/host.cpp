@@ -34,6 +34,9 @@ static const size_t kMaxChatImages = 24;
 static const size_t kChatUpSeenSize = 64;
 /** Packets for a guest in a browser that have been waiting this long mean its connection cannot keep up. */
 static const uint32_t kWebBacklogMs = 250;
+/** A browser whose picture had to start over this often within this long cannot carry the stream as it is. */
+static const uint32_t kWebBehindCount = 3;
+static const uint32_t kWebBehindWindowMs = 20000;
 /** A connection to a browser stays open this long after the last packet for it (a Bye) went out. */
 static const uint32_t kWebCloseDelayMs = 400;
 static const size_t kMaxWebSeen = 256;
@@ -230,6 +233,11 @@ void Host::Fire(Deferred &d)
 		callbacks.on_sleep_requested(d.sleep_slot, d.sleep_name);
 	if(d.wake_requested && callbacks.on_wake_requested)
 		callbacks.on_wake_requested(d.wake_slot, d.wake_name);
+	if(callbacks.on_guest_behind)
+	{
+		for(const auto &who : d.behind)
+			callbacks.on_guest_behind(who.first, who.second);
+	}
 	if(d.pending_changed && callbacks.on_pending_changed)
 		callbacks.on_pending_changed();
 	if(callbacks.on_voice)
@@ -2151,6 +2159,22 @@ void Host::TickWeb(uint64_t now_ms, Deferred &d)
 			continue;
 		g.web_starved = false;
 		g.web_backlog_ms = 0;
+		// Once is a hiccup. Again and again within seconds, its connection cannot carry the picture
+		// as the console sends it, and each new start is a key frame for everybody: the host
+		// should know, because only a lower bitrate for the session changes that
+		if(!g.web_starved_since_ms || ElapsedMs(now_ms, g.web_starved_since_ms) > kWebBehindWindowMs)
+		{
+			g.web_starved_since_ms = now_ms;
+			g.web_starved_count = 0;
+		}
+		g.web_starved_count++;
+		if(g.web_starved_count >= kWebBehindCount && !g.web_behind_told)
+		{
+			g.web_behind_told = true;
+			d.behind.emplace_back(g.slot, g.name);
+			d.logs.push_back(g.name + "'s browser cannot keep up with the picture: it had to start over "
+				+ std::to_string(g.web_starved_count) + " times within " + std::to_string(kWebBehindWindowMs / 1000) + " s");
+		}
 		if(g.want & kWantVideo)
 			RequestKeyframe(now_ms, d);
 	}

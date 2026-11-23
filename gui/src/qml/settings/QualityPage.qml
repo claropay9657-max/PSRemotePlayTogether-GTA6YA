@@ -553,7 +553,7 @@ C.SettingsPage {
                 Text {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignTop
-                    text: qsTr("Friends who join get what the console sends you. A shaky picture for everybody? Lower the bitrate for Away first.")
+                    text: qsTr("Friends who join get what the console sends you. A shaky picture for everybody? Lower the bitrate for Away first. A browser's connection slows down when packets get lost: if the picture stutters for a friend in a web browser, try 720p and 6 to 8 Mbit/s.")
                     wrapMode: Text.WordWrap
                     lineHeight: 1.1
                     color: C.Theme.textSoft

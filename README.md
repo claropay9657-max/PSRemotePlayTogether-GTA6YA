@@ -432,6 +432,15 @@ No. The game picture is in the app's window, which OBS can capture. Only if you 
 **How much upload does the host need?**
 Roughly the Remote Play bitrate per guest, plus 0.4 to 2.5 Mbit/s per webcam and receiver, depending on the picture size chosen.
 
+**The picture stutters or lags. What helps?**
+- **Everybody on the newest version**, host and friends alike.
+- **The host's settings are everybody's picture.** Friends get exactly what the console sends the host (**Settings → Stream quality**). If it stutters for friends, lower the bitrate first, then the resolution: 720p with 6 to 8 Mbit/s plays smoothly on most connections, and 60 frames per second matter more than 1080p.
+- **The host on a cable**, to the router and, if possible, the console too. Wi-Fi between host and console is a common reason for a picture that stutters for everybody.
+- **Enough upload:** the host sends the bitrate once to every friend.
+- **The app is more direct than a browser.** A browser's connection slows down whenever packets get lost, so a high bitrate can reach a friend in a browser late or in bursts. With the app, or with a lower bitrate, it is smooth. In a browser: Chrome or Edge, hardware acceleration switched on, the tab in front.
+- **Look at the numbers:** the stream menu shows them on the picture (in the app: **Settings → Sound & Wi-Fi → Stream statistics while playing**; in a browser: **Stats on the picture**). Packet loss or a long way "to the host and back" point to the connection, dropped frames to a computer that cannot decode fast enough.
+- **The picture is cut off at the edges?** Stream menu → **Picture** → **Fit**.
+
 **Do I have to forward a port in my router?**
 Usually not: with most routers friends get in by themselves, through the meeting point. If a friend cannot connect, forwarding UDP port 9410 always works. See [Does the host have to open a port?](#does-the-host-have-to-open-a-port)
 
@@ -448,7 +457,7 @@ Only into a public room, and only as you set it up: with **Ask to join**, nobody
 The display on the game picture needs the Vulkan renderer there, which is the default: **Settings → Picture → Renderer**.
 
 **How do I get updates?**
-The app asks GitHub at start whether a newer version exists and tells you. It never downloads anything by itself, and the check can be switched off under **Settings → Updates & logs**.
+The app asks GitHub at start whether a newer version exists and tells you. **Update and restart** under **Settings → Updates & logs** then installs it (from version 0.5.1 on; before that, from the download page). Nothing is downloaded without your click, and the check can be switched off on the same page.
 
 ---
 

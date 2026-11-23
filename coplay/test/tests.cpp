@@ -1116,8 +1116,10 @@ struct TestHost
 	std::atomic<int> reach_changes{0};
 	std::atomic<int> sleep_requests{0};
 	std::atomic<int> pending_changes{0};
+	std::atomic<int> behind{0};
 	std::mutex mutex;
 	std::string sleep_name; // who asked for the console to sleep
+	std::string behind_name; // whose browser cannot keep up
 	std::vector<std::pair<uint8_t, std::vector<uint8_t>>> voice; // slot, frame
 	std::vector<KeyMouseUpdate> key_mouse;
 	std::atomic<int> wake_requests{0};
@@ -1143,6 +1145,13 @@ struct TestHost
 		cb.on_keyframe_needed = [this] { keyframe_requests++; };
 		cb.on_guests_changed = [this] { guest_changes++; };
 		cb.on_pending_changed = [this] { pending_changes++; };
+		cb.on_guest_behind = [this](uint8_t, const std::string &name) {
+			{
+				std::lock_guard<std::mutex> lock(mutex);
+				behind_name = name;
+			}
+			behind++;
+		};
 		cb.on_sleep_requested = [this](uint8_t, const std::string &name) {
 			{
 				std::lock_guard<std::mutex> lock(mutex);
@@ -5490,6 +5499,63 @@ TEST(net_browser_that_cannot_keep_up_gets_no_more_video_until_it_can)
 	CHECK(t.Count(peer, PacketType::Video) == sent_until_held + VideoFragmentCount(key.size()));
 	host.PushVideo(delta.data(), delta.size(), 0, false);
 	CHECK(t.Count(peer, PacketType::Video) == sent_until_held + VideoFragmentCount(key.size()) + VideoFragmentCount(delta.size()));
+}
+
+TEST(net_browser_that_keeps_falling_behind_is_named_to_the_host_once)
+{
+	WebTestHost t;
+	Host &host = *t.h->host;
+	const uint64_t peer = 6;
+	t.Join(peer, "Slow");
+	CHECK(WaitFor([&] { return host.Guests().size() == 1; }, 2000));
+
+	std::vector<uint8_t> sps = { 0, 0, 0, 1, 0x67, 0x64, 0x00, 0x20, 0, 0, 0, 1, 0x68, 0xee };
+	host.PushVideo(sps.data(), sps.size(), 0, false);
+	std::vector<uint8_t> key(2000, 0x11);
+	key[0] = 0, key[1] = 0, key[2] = 1, key[3] = 0x65;
+	std::vector<uint8_t> delta(1500, 0x22);
+	delta[0] = 0, delta[1] = 0, delta[2] = 1, delta[3] = 0x41;
+	host.PushVideo(key.data(), key.size(), 0, false);
+
+	// Its connection falls behind, the pile goes away, the picture starts over with a key frame
+	auto falls_behind_and_recovers = [&] {
+		{
+			std::lock_guard<std::mutex> lock(t.web->mutex);
+			t.web->buffered[peer] = 50000;
+		}
+		host.PushVideo(delta.data(), delta.size(), 0, false); // the pile is noticed here
+		SleepMs(350);
+		size_t held_at = t.Count(peer, PacketType::Video);
+		host.PushVideo(delta.data(), delta.size(), 0, false);
+		CHECK(t.Count(peer, PacketType::Video) == held_at); // held back
+		{
+			std::lock_guard<std::mutex> lock(t.web->mutex);
+			t.web->buffered[peer] = 0;
+		}
+		// Video flows again with the first key frame after the host has seen the pile gone
+		CHECK(WaitFor([&] {
+			host.PushVideo(key.data(), key.size(), 0, false);
+			return t.Count(peer, PacketType::Video) > held_at;
+		}, 3000));
+	};
+
+	// Once or twice is a hiccup: nothing is said
+	falls_behind_and_recovers();
+	falls_behind_and_recovers();
+	SleepMs(100);
+	CHECK(t.h->behind == 0);
+	// The third time within seconds, the host is told who it is
+	falls_behind_and_recovers();
+	CHECK(WaitFor([&] { return t.h->behind == 1; }, 2000));
+	{
+		std::lock_guard<std::mutex> lock(t.h->mutex);
+		CHECK(t.h->behind_name == "Slow");
+	}
+	// And not again, however often it goes on
+	falls_behind_and_recovers();
+	falls_behind_and_recovers();
+	SleepMs(100);
+	CHECK(t.h->behind == 1);
 }
 
 int main(int argc, char **argv)

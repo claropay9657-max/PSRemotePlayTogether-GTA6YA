@@ -785,6 +785,7 @@ function enterStage() {
   playersKey = '';
   feedback = { rumble: 0, trigger: 0, led: 0, player: 0 };
   statsLast = { at: performance.now(), bytes: 0, shown: 0, fragments: 0, nacks: 0 };
+  restartsSeen = { count: 0, times: [], told: false };
 
   makePlayer();
   sound.setGameFormat(session.welcome.audio);
@@ -1001,10 +1002,29 @@ function padTick() {
   session.setPad(grabbed() ? P.emptyPad() : state);
 }
 
+/** When the picture last had to start over, for telling a hiccup from a connection that cannot carry it. */
+let restartsSeen = { count: 0, times: [], told: false };
+
+/**
+ * A picture that starts over again and again within seconds is not a hiccup: this
+ * connection cannot carry it as the host sends it. Only the host can change that (a lower
+ * bitrate), so the player is told once what to ask for.
+ */
+function watchPicture() {
+  const restarts = session.assembler.stats.restarts;
+  const now = performance.now();
+  for (; restartsSeen.count < restarts; restartsSeen.count++) restartsSeen.times.push(now);
+  restartsSeen.times = restartsSeen.times.filter((t) => now - t <= 20000);
+  if (restartsSeen.told || restartsSeen.times.length < 3 || !hasPicture()) return;
+  restartsSeen.told = true;
+  notice('The picture keeps starting over: this connection cannot keep up with it. Ask the host for a lower bitrate, or join with the app instead of the browser.');
+}
+
 function slowTick() {
   if (!session) return;
   if (pad) pad.tick();
   updateStats();
+  watchPicture();
   // A controller that was plugged in after joining makes the controls on the screen unnecessary
   if (touch && touch.visible && touch.auto && pad && pad.kind) setTouch(false, true);
 }

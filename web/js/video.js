@@ -31,7 +31,8 @@ export class FrameAssembler {
     this.lastDeliveredCaptureMs = 0;
     this.lastKeyframeRequestMs = 0;
     this.rttMs = 0;
-    this.stats = { fragments: 0, duplicates: 0, delivered: 0, dropped: 0, nackFragments: 0, keyframeRequests: 0 };
+    // restarts: how often the picture had to start over with a key frame after it had been running
+    this.stats = { fragments: 0, duplicates: 0, delivered: 0, dropped: 0, nackFragments: 0, keyframeRequests: 0, restarts: 0 };
   }
 
   /** Drops everything and waits for a key frame. */
@@ -156,6 +157,7 @@ export class FrameAssembler {
       this.waitingForKey = false;
       this.keyframeRequestDue = false;
       this.missingNackMs.clear();
+      if (this.deliveredAny) this.stats.restarts++;
     }
 
     for (;;) {
@@ -186,6 +188,7 @@ export class FrameAssembler {
       this.stats.dropped += skipped;
       this.lostSinceDelivery += skipped;
       this.recoveredPending = true;
+      if (this.deliveredAny) this.stats.restarts++;
       this.dropBefore(key);
       this.nextSeq = key;
       this.missingNackMs.clear();
