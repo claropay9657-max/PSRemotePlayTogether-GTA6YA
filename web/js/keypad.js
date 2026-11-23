@@ -15,15 +15,31 @@
 
 import * as P from './proto.js';
 
-/** What an input can be bound to, in the order the app has them. */
+/**
+ * What an input can be bound to, in the order the app has them (keymouse::Function). The last
+ * one, "mouse", is no button of the controller: its key catches the mouse for aiming and lets
+ * it go again, which is for the page to do.
+ */
 export const FUNCTIONS = [
-  ['cross', '✕ Cross'], ['circle', '○ Circle'], ['square', '□ Square'], ['triangle', '△ Triangle'],
+  ['cross', 'Cross'], ['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle'],
   ['dpad_up', 'D-pad up'], ['dpad_down', 'D-pad down'], ['dpad_left', 'D-pad left'], ['dpad_right', 'D-pad right'],
   ['l1', 'L1'], ['r1', 'R1'], ['l2', 'L2'], ['r2', 'R2'], ['l3', 'L3'], ['r3', 'R3'],
-  ['options', 'Options'], ['create', 'Create'], ['touchpad', 'Touchpad'], ['ps', 'PS'],
+  ['options', 'Options'], ['create', 'Create'], ['touchpad', 'Touchpad'], ['ps', 'PS button'],
   ['left_up', 'Left stick up'], ['left_down', 'Left stick down'], ['left_left', 'Left stick left'], ['left_right', 'Left stick right'],
   ['right_up', 'Right stick up'], ['right_down', 'Right stick down'], ['right_left', 'Right stick left'], ['right_right', 'Right stick right'],
-  ['walk', 'Walk: the left stick part of the way'],
+  ['walk', 'Walk: the left stick only part of the way'],
+  ['mouse', 'Mouse aims, on and off: catches the mouse and lets it go'],
+];
+
+/** The same, the way the app's settings show them: one card for each part of the controller. */
+export const SECTIONS = [
+  { title: 'Left stick', keys: [['left_up', 'Up'], ['left_down', 'Down'], ['left_left', 'Left'], ['left_right', 'Right']] },
+  { title: 'Right stick', keys: [['right_up', 'Up'], ['right_down', 'Down'], ['right_left', 'Left'], ['right_right', 'Right']] },
+  { title: 'Face buttons', keys: [['cross', 'Cross'], ['circle', 'Circle'], ['square', 'Square'], ['triangle', 'Triangle']] },
+  { title: 'D-pad', keys: [['dpad_up', 'Up'], ['dpad_down', 'Down'], ['dpad_left', 'Left'], ['dpad_right', 'Right']] },
+  { title: 'Shoulders and triggers', keys: [['l1', 'L1'], ['r1', 'R1'], ['l2', 'L2'], ['r2', 'R2'], ['l3', 'L3'], ['r3', 'R3']] },
+  { title: 'Middle', keys: [['options', 'Options'], ['create', 'Create'], ['touchpad', 'Touchpad'], ['ps', 'PS button']] },
+  { title: 'Walking and the mouse', keys: [['walk', 'Walk'], ['mouse', 'Mouse aims, on and off']] },
 ];
 
 /** How many inputs one function takes. */
@@ -84,12 +100,12 @@ export function curveAt(curve, speed) {
   return points[part] + (points[part + 1] - points[part]) * (at - part);
 }
 
-/** "even", "fine" or "quick" if the curve is one of those, otherwise "". */
+/** "even", "fine" or "quick" if the curve is one of those, otherwise "custom": one drawn by the player. */
 export function curveName(curve) {
   for (const [name, points] of Object.entries(CURVES)) {
     if (points.every((p, i) => Math.abs(p - curve[i]) < 0.005)) return name;
   }
-  return '';
+  return 'custom';
 }
 
 /** How the mouse aims, and the rest that can be set; what the app starts with. */
@@ -339,12 +355,11 @@ export class Converter {
 // ------------------------------------------------------------------ what comes with the page
 
 /**
- * Two ways to start from. "classic" is the keys the page always had: both sticks and every
- * button on the keyboard. "shooter" is mouse and WASD as in a game on a computer.
- *
- * Not everything the app's layouts use is a browser's to give: Esc always gives the mouse
- * back, the F keys and Ctrl belong to the browser (Ctrl with W closes the tab), so here
- * Options is Enter, PS is P and Circle is C alone.
+ * Two ways to start from, as in the app. "shooter" is mouse and WASD as in a game on a
+ * computer: the app's own layout, key for key, but for the two keys a browser keeps for
+ * itself. Esc always gives the mouse back and leaves full screen, so Options is Return here;
+ * and Ctrl together with W closes the tab, so Circle is C alone. "classic" is keys only: the
+ * keys this page came with, both sticks and every button on the keyboard.
  */
 export const LAYOUTS = {
   classic: {
@@ -355,6 +370,7 @@ export const LAYOUTS = {
     l3: ['k:KeyF'], r3: ['k:KeyG'],
     right_up: ['k:KeyT'], right_down: ['k:KeyV'], right_left: ['k:KeyR'], right_right: ['k:KeyY'],
     options: ['k:Enter'], create: ['k:Backspace'], ps: ['k:KeyP'], touchpad: ['k:KeyM'],
+    mouse: ['k:F8'],
   },
   shooter: {
     left_up: ['k:KeyW'], left_left: ['k:KeyA'], left_down: ['k:KeyS'], left_right: ['k:KeyD'],
@@ -363,28 +379,51 @@ export const LAYOUTS = {
     l1: ['k:KeyQ', 'm:4'], r1: ['k:KeyG', 'm:5'],
     l3: ['k:ShiftLeft'], r3: ['k:KeyF', 'm:3'],
     dpad_up: ['k:ArrowUp'], dpad_left: ['k:ArrowLeft'], dpad_down: ['k:ArrowDown'], dpad_right: ['k:ArrowRight'],
-    options: ['k:Enter'], create: ['k:Backspace'], ps: ['k:KeyP'], touchpad: ['k:Tab', 'k:KeyM'],
+    options: ['k:Enter'], touchpad: ['k:Tab', 'k:KeyM'], ps: ['k:F1'], create: ['k:F2'],
     walk: ['k:AltLeft'],
+    mouse: ['k:F8'],
   },
 };
 
+/** Keys a browser never hands to a page while a game is played: Esc gives the mouse back and leaves full screen. */
+export const BROWSERS_OWN = new Set(['k:Escape']);
+
 const KEY_NAMES = {
   ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
-  Space: 'Space', Enter: 'Enter', Backspace: 'Backspace', Tab: 'Tab', Escape: 'Esc', CapsLock: 'Caps Lock',
+  Space: 'Space', Enter: 'Return', NumpadEnter: 'Enter', Backspace: 'Backspace', Tab: 'Tab', Escape: 'Esc', CapsLock: 'Caps Lock',
   ShiftLeft: 'Shift', ShiftRight: 'Right Shift', ControlLeft: 'Ctrl', ControlRight: 'Right Ctrl',
-  AltLeft: 'Alt', AltRight: 'Right Alt', MetaLeft: 'Meta', MetaRight: 'Right Meta',
+  AltLeft: 'Alt', AltRight: 'AltGr', MetaLeft: 'Meta', MetaRight: 'Right Meta',
   Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Backslash: '\\', Semicolon: ';', Quote: "'",
   Backquote: '`', Comma: ',', Period: '.', Slash: '/', IntlBackslash: '<',
   Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End', PageUp: 'Page Up', PageDown: 'Page Down',
 };
-const MOUSE_NAMES = ['', 'Left button', 'Right button', 'Middle button', 'Back button', 'Forward button'];
+/** What a Mac writes on the same keys. */
+const MAC_KEY_NAMES = {
+  ControlLeft: 'Control', ControlRight: 'Right Control', AltLeft: 'Option', AltRight: 'Right Option',
+  MetaLeft: 'Cmd', MetaRight: 'Right Cmd',
+};
+const WINDOWS_KEY_NAMES = { MetaLeft: 'Win', MetaRight: 'Right Win' };
 
-/** An input in words, for a key cap: "W", "Shift", "Left button", "Wheel up". */
-export function inputLabel(input) {
-  if (input.startsWith('m:')) return MOUSE_NAMES[Number(input.slice(2))] || 'Mouse button';
+const system = (() => {
+  const text = typeof navigator === 'undefined' ? '' : String((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '');
+  return /mac|iphone|ipad/i.test(text) ? 'mac' : /win/i.test(text) ? 'windows' : '';
+})();
+
+/**
+ * An input in words, for a key cap, as the app writes it: "W", "Shift", "Left click", "Wheel up".
+ * @param {string} input
+ * @param {string} [on] "mac" or "windows" for what those write on their keys; this computer if left out
+ */
+export function inputLabel(input, on = system) {
+  if (input === 'm:1') return 'Left click';
+  if (input === 'm:2') return 'Right click';
+  if (input === 'm:3') return 'Middle click';
+  if (input.startsWith('m:')) return 'Mouse ' + input.slice(2);
   if (input === 'w:up') return 'Wheel up';
   if (input === 'w:down') return 'Wheel down';
   const code = input.slice(2);
+  if (on === 'mac' && MAC_KEY_NAMES[code]) return MAC_KEY_NAMES[code];
+  if (on === 'windows' && WINDOWS_KEY_NAMES[code]) return WINDOWS_KEY_NAMES[code];
   if (KEY_NAMES[code]) return KEY_NAMES[code];
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit\d$/.test(code)) return code.slice(5);

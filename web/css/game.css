@@ -2854,6 +2854,35 @@
 }
 
 /* Something the player has to know: the microphone could not be opened, the webcam went away */
+/* The mouse was just caught for aiming: for a moment, how to get it back (the app's note, at its place) */
+.caught-note {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  z-index: 3;
+  max-width: calc(100% - 24px);
+  height: 40px;
+  padding: 0 20px;
+  border: 1px solid rgba(140, 82, 255, 0.6);
+  border-radius: 20px;
+  background: rgba(14, 11, 30, 0.88);
+  color: #e7dcff;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 38px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.caught-note.shown {
+  opacity: 1;
+}
+
 .notices {
   position: absolute;
   left: 0;

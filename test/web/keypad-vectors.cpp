@@ -26,7 +26,7 @@ namespace
 const char *const kIds[] = {
 	"cross", "circle", "square", "triangle", "dpad_up", "dpad_down", "dpad_left", "dpad_right",
 	"l1", "r1", "l2", "r2", "l3", "r3", "options", "create", "touchpad", "ps",
-	"left_up", "left_down", "left_left", "left_right", "right_up", "right_down", "right_left", "right_right", "walk",
+	"left_up", "left_down", "left_left", "left_right", "right_up", "right_down", "right_left", "right_right", "walk", "mouse",
 };
 const size_t kIdCount = sizeof(kIds) / sizeof(kIds[0]);
 
@@ -164,6 +164,7 @@ const Layout kClassic = {
 	{ "l3", { "k:KeyF" } }, { "r3", { "k:KeyG" } },
 	{ "right_up", { "k:KeyT" } }, { "right_down", { "k:KeyV" } }, { "right_left", { "k:KeyR" } }, { "right_right", { "k:KeyY" } },
 	{ "options", { "k:Enter" } }, { "create", { "k:Backspace" } }, { "ps", { "k:KeyP" } }, { "touchpad", { "k:KeyM" } },
+	{ "mouse", { "k:F8" } },
 };
 
 const Layout kShooter = {
@@ -173,8 +174,9 @@ const Layout kShooter = {
 	{ "l1", { "k:KeyQ", "m:4" } }, { "r1", { "k:KeyG", "m:5" } },
 	{ "l3", { "k:ShiftLeft" } }, { "r3", { "k:KeyF", "m:3" } },
 	{ "dpad_up", { "k:ArrowUp" } }, { "dpad_left", { "k:ArrowLeft" } }, { "dpad_down", { "k:ArrowDown" } }, { "dpad_right", { "k:ArrowRight" } },
-	{ "options", { "k:Enter" } }, { "create", { "k:Backspace" } }, { "ps", { "k:KeyP" } }, { "touchpad", { "k:Tab", "k:KeyM" } },
+	{ "options", { "k:Enter" } }, { "touchpad", { "k:Tab", "k:KeyM" } }, { "ps", { "k:F1" } }, { "create", { "k:F2" } },
 	{ "walk", { "k:AltLeft" } },
+	{ "mouse", { "k:F8" } },
 };
 
 /** The mouse moving steadily for a while, then resting: the stick goes out and comes back. */
@@ -347,7 +349,7 @@ int main()
 		// Whatever comes: keys, buttons, the mouse and the wheel in no order
 		const char *const inputs[] = { "k:KeyW", "k:KeyA", "k:KeyS", "k:KeyD", "k:Space", "k:KeyC", "k:KeyR", "k:KeyE", "k:Digit1", "k:KeyQ",
 			"k:KeyG", "k:ShiftLeft", "k:KeyF", "k:ArrowUp", "k:ArrowLeft", "k:ArrowDown", "k:ArrowRight", "k:Enter", "k:Tab", "k:AltLeft",
-			"m:1", "m:2", "m:3", "m:4", "m:5", "k:KeyX" };
+			"m:1", "m:2", "m:3", "m:4", "m:5", "k:KeyX", "k:F1", "k:F2", "k:F8" };
 		const int count = static_cast<int>(sizeof(inputs) / sizeof(inputs[0]));
 		for(uint32_t seed : { 7u, 99u, 2026u })
 		{

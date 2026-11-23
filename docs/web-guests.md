@@ -28,7 +28,9 @@ server only helps the two find each other.
 | --- | --- |
 | Game picture and sound | yes (WebCodecs; H.264, and H.265 where the browser has it) |
 | Controller | yes, through the Gamepad API |
-| Keyboard and mouse as a controller | yes, as in the app: the mouse aims, every key and mouse button can be set (**Keyboard and mouse**). The same conversion as the app's, checked against it |
+| Keyboard and mouse as a controller | yes, as in the app: **Keyboard & mouse** is the app's settings page of that name, row for row (the mouse aims with the same speeds, acceleration curve, dead zone and smoothing; every key and mouse button can be set; **Try it here**), **Mouse aims** is in the stream menu and F8 catches the mouse and lets it go. The same conversion as the app's, checked against it. Esc stays the browser's: it always gives the mouse back |
+| The mouse as the touchpad | yes, as in the app: dragging on the picture swipes, another mouse button presses it |
+| Trying microphone, speakers and webcam before joining | yes: **Voice & webcam** on the card for joining, with the app's microphone meter and mark, its chime (left, right, both) and the webcam's picture as the others get it |
 | Without a controller, on a phone or tablet | controls on the screen; the picture is the touchpad |
 | Rumble | where the browser has it (Chrome, Edge, Safari) |
 | The game's haptics | as rumble; the strength is set in the stream menu |
@@ -58,6 +60,22 @@ can switch to H.264 (Settings → Stream quality).
 millisecond in each direction. What a browser adds on top is its decoder and
 its drawing, which wait for the screen's next refresh: a frame or so more than
 the app.
+
+## The same as the app
+
+What the page offers is meant to work, look and read like the app: the same
+things in the same places with the same words, ranges and starting values, so
+that nobody learns it twice. Whoever adds something to the page takes it from
+the app's sources (the QML of the page or menu in question, `controls/Theme.qml`
+for colours and sizes) instead of designing it anew, and checks it against the
+app: logic against numbers made by the app's own code (`test/web/keypad-vectors.json`,
+`test/web/chime-vectors.json`), looks side by side with the app's page.
+
+Where a browser cannot do what the app does, the page says so at that place.
+Today that is: Esc always gives the mouse back and leaves full screen, so it
+cannot be a button of the controller; the mouse can only be caught right after a
+click or a key press; microphone, speakers and camera are chosen in the browser
+or the system, not on the page; and nothing that needs the app to host.
 
 ## On the game picture: the app's own
 
@@ -199,7 +217,9 @@ nothing to install.
 | `js/meet.js` | the notes and the meeting point |
 | `js/session.js` | the connection and the protocol |
 | `js/video.js` | putting frames back together, decoding, drawing |
-| `js/keypad.js`, `js/mouseaim.js`, `js/keysdialog.js` | keyboard and mouse as a controller: the conversion (a port of `gui/src/keymousepad.cpp`), catching the mouse, the window where it is set up |
+| `js/keypad.js`, `js/mouseaim.js`, `js/keysdialog.js` | keyboard and mouse as a controller: the conversion (a port of `gui/src/keymousepad.cpp`), catching the mouse, and the window **Keyboard & mouse** (a port of `gui/src/qml/settings/KeyboardPage.qml`) |
+| `js/devicecheck.js`, `js/voicedialog.js` | trying microphone, speakers and webcam (a port of `gui/src/devicecheck.cpp`), and the window **Voice & webcam** |
+| `js/setparts.js` | the pieces the app's settings pages are made of (group, row, switch, slider, …), for those two windows |
 | `js/audio.js`, `js/audio-worklet.js` | game sound, voices, the microphone |
 | `js/pad.js` | controller and keyboard |
 | `js/touch.js` | controls on the screen |

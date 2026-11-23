@@ -7,7 +7,7 @@
 const RATE = 48000;
 const VOICE_FRAME = 960; // 20 ms
 /** A voice frame quieter than this is not sent ... */
-const GATE_RMS = 0.006;
+export const GATE_RMS = 0.006;
 /** ... unless somebody was heard this short a time ago. */
 const HANGOVER_MS = 450;
 

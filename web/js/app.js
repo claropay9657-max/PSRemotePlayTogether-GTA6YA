@@ -14,6 +14,7 @@ import { Hud } from './hud.js';
 import { parseInvite } from './meet.js';
 import { StreamMenu } from './menu.js';
 import { OverlayOptions } from './options.js';
+import { inputLabel } from './keypad.js';
 import { KeysDialog } from './keysdialog.js';
 import { MouseAim } from './mouseaim.js';
 import { Pad, controllerName } from './pad.js';
@@ -23,6 +24,7 @@ import { DEFAULT_ROOMS_URL, LANGUAGES, consoleName, fetchRooms, filterRooms, lan
 import { KeyMouse } from './keymouse.js';
 import { JoinError, Session } from './session.js';
 import { TouchControls } from './touch.js';
+import { VoiceDialog } from './voicedialog.js';
 import { VideoPlayer } from './video.js';
 
 const $ = (id) => document.getElementById(id);
@@ -52,6 +54,7 @@ const ui = {
   note: $('stage-note'),
   asleep: $('asleep'),
   notices: $('notices'),
+  caught: $('caught-note'),
   banner: $('banner'),
   handle: $('menu-handle'),
   stats: $('stats'),
@@ -94,6 +97,11 @@ let keyMouseAllowed = false;
 /** The mouse as a stick of the player's controller (mouseaim.js), and the window where that is set up. */
 let mouseAim = null;
 let keysDialog = null;
+let voiceDialog = null;
+/** The two switches beside the converter (Keyboard & mouse): as the app starts, both on. */
+const keySwitches = { keyboard: true, mouseTouch: true };
+/** The mouse was given to a menu or the chat and is to be caught again afterwards. */
+let catchAgain = false;
 let pad = null;
 let touch = null;
 let hud = null;
@@ -1028,21 +1036,86 @@ async function rejoin(text) {
 
 // ------------------------------------------------------------------ while playing
 
+/** What is written on the key that catches the mouse and lets it go; "" if no key does. */
+function catchKey() {
+  const inputs = pad.keypad.getBindings().mouse || [];
+  return inputs.length ? inputLabel(inputs[0]) : '';
+}
+
+/** What the player set for the keyboard and the mouse stays in this browser. */
+function keepKeys() {
+  remember('psrpt.keypad', JSON.stringify({
+    bindings: pad.keypad.getBindings(), options: pad.keypad.options, keyboard: keySwitches.keyboard, mouseTouch: keySwitches.mouseTouch,
+  }));
+}
+
 /**
- * The mouse can be caught for aiming while a game is on the screen and the player has switched
- * that on (Keyboard and mouse). `say`: tell the player how, if it is.
+ * While a game is on the screen, the keyboard plays and the player has switched it on
+ * (Keyboard & mouse, or "Mouse aims" in the stream menu), the mouse is caught and aims, as in
+ * the app. A browser only lets a page catch the mouse right after a click or a key press, so
+ * `say` tells the player how, if the mouse is to aim and is not caught yet.
  */
 function syncMouseAim(say) {
   if (!mouseAim) return;
+  pad.keyboardOn = keySwitches.keyboard;
+  if (!keySwitches.keyboard) pad.keypad.releaseAll();
   const was = mouseAim.on;
-  mouseAim.setOn(!!session && !ui.stage.hidden && pad.keypad.options.aim && MouseAim.supported());
-  if (mouseAim.on && (say || !was)) notice('Click the picture and the mouse aims. Esc gives the mouse back.');
+  const can = keySwitches.keyboard && MouseAim.supported();
+  mouseAim.setOn(!!session && !ui.stage.hidden && can && pad.keypad.options.aim);
+  if (menu) menu.setMouseAim(can, pad.keypad.options.aim, catchKey());
+  if (mouseAim.on && !mouseAim.caught && (say || !was)) {
+    const key = catchKey();
+    notice(key ? `Click the picture, or press ${key}, and the mouse aims.` : 'Click the picture and the mouse aims.');
+  }
+}
+
+/** The mouse aims, or no longer does: the switch in Keyboard & mouse, "Mouse aims" in the stream menu, the key for it. */
+function setAim(on) {
+  pad.keypad.setOptions({ ...pad.keypad.options, aim: on && MouseAim.supported() });
+  keepKeys();
+  syncMouseAim(false);
+  if (keysDialog) keysDialog.sync();
+}
+
+/** The key that catches the mouse and lets it go: remembered, like the switch in Keyboard & mouse. */
+function mouseKey() {
+  if (!mouseAim || !MouseAim.supported() || (keyMouse && keyMouse.on)) return;
+  if (mouseAim.caught) {
+    setAim(false);
+    return;
+  }
+  // The mouse aims already and the browser gave it back (Esc), or it is to aim from now on
+  if (!pad.keypad.options.aim) setAim(true);
+  mouseAim.catchNow();
+}
+
+let caughtTimer = 0;
+
+/** The mouse was just caught for aiming: for a moment, how to get it back. */
+function showCaught(caught) {
+  clearTimeout(caughtTimer);
+  ui.caught.classList.toggle('shown', caught);
+  if (!caught) return;
+  const key = catchKey();
+  const menuKeys = /mac|iphone|ipad/i.test(navigator.platform || '') ? '⌘O' : 'Ctrl+O';
+  ui.caught.textContent = `The mouse aims · ${key ? key + ' or Esc' : 'Esc'} lets it go · ${menuKeys} opens the menu`;
+  caughtTimer = setTimeout(() => ui.caught.classList.remove('shown'), 6000);
 }
 
 function padTick() {
   if (!session || !pad) return;
-  // A menu, the chat or a window of the page needs the mouse back
-  if (mouseAim && mouseAim.caught && typing()) mouseAim.letGo();
+  // A menu, the chat or a window of the page needs the mouse back, and gets it; afterwards the
+  // mouse is the game's again, if the browser still counts the click or key that closed them
+  if (mouseAim && mouseAim.on) {
+    const busy = typing() || (keyMouse && keyMouse.on);
+    if (mouseAim.caught && busy) {
+      mouseAim.letGo();
+      catchAgain = true;
+    } else if (catchAgain && !busy) {
+      catchAgain = false;
+      mouseAim.catchNow();
+    }
+  }
   const state = pad.read();
   session.setController(pad.shownKind, pad.battery);
   // The same buttons as in the app open and close the stream menu
@@ -1789,6 +1862,11 @@ function start() {
       menu.close();
       keysDialog.show();
     },
+    onMouseAims: () => {
+      setAim(!pad.keypad.options.aim);
+      // Caught as soon as the menu is closed
+      catchAgain = pad.keypad.options.aim;
+    },
     onPreset: (index) => hudSettings.setActive(index),
     onArrange: () => {
       menu.close();
@@ -1953,22 +2031,48 @@ function start() {
   // What the player set for the keyboard and the mouse, kept in this browser
   try {
     const kept = JSON.parse(recall('psrpt.keypad') || 'null');
-    if (kept && kept.bindings) pad.keypad.setBindings(kept.bindings);
-    if (kept && kept.options) pad.keypad.setOptions(kept.options);
+    if (kept && kept.bindings) {
+      // From before there was a key for the mouse: it gets the one it comes with, if that is free
+      if (!kept.bindings.mouse && !Object.values(kept.bindings).some((inputs) => inputs.includes('k:F8'))) kept.bindings.mouse = ['k:F8'];
+      pad.keypad.setBindings(kept.bindings);
+    }
+    // Until something is set: what the app starts with
+    pad.keypad.setOptions(kept && kept.options ? kept.options : { ...pad.keypad.options, deadZone: 0.1 });
+    if (kept && kept.keyboard === false) keySwitches.keyboard = false;
+    if (kept && kept.mouseTouch === false) keySwitches.mouseTouch = false;
   } catch (e) {
     // as the page comes
   }
+  pad.keyboardOn = keySwitches.keyboard;
+  // Keys are the game's only while a game is on the screen
+  pad.playing = () => !ui.stage.hidden;
+  pad.onMouseKey = mouseKey;
   // Not while a menu or the chat is open, and not while the mouse goes to a game on the host's computer
-  mouseAim = new MouseAim(ui.stage, pad.keypad, () => !typing() && !(keyMouse && keyMouse.on));
+  mouseAim = new MouseAim(ui.stage, pad.keypad, () => !typing() && !(keyMouse && keyMouse.on), showCaught);
   const keys = $('keys');
   keysDialog = new KeysDialog(keys, $('keys-body'), pad.keypad, {
     canAim: MouseAim.supported(),
+    switches: keySwitches,
+    skin: () => (hud ? hud.padSkin : 'PS5'),
     onChange: () => {
-      remember('psrpt.keypad', JSON.stringify({ bindings: pad.keypad.getBindings(), options: pad.keypad.options }));
+      keepKeys();
       syncMouseAim(false);
     },
   });
   $('join-keys').addEventListener('click', () => keysDialog.show());
+  // Trying the microphone, the speakers and the webcam before joining
+  const voice = $('voice');
+  voiceDialog = new VoiceDialog(voice, $('voice-body'), {
+    cameraSize: () => prefs.camSize,
+    onCameraSize: (index) => {
+      prefs.camSize = index;
+      remember('psrpt.camSize', index);
+      if (menu) syncVoice();
+    },
+    playing: () => !!session,
+  });
+  $('join-voice-check').addEventListener('click', () => voiceDialog.show());
+  $('voice-close').addEventListener('click', () => voice.close());
   $('keys-close').addEventListener('click', () => keys.close());
 
   $('asleep-wake').addEventListener('click', () => {
@@ -2019,6 +2123,30 @@ function start() {
     // Two quick shots are not a wish for full screen
     if (mouseAim && mouseAim.caught) return;
     menu.h.onFullscreen();
+  });
+
+  // The mouse as the touchpad, as in the app: dragging on the picture with the left button
+  // swipes on the touchpad, any other button presses it. Not while the mouse aims, and not
+  // while it goes to a game on the host's computer.
+  const mouseTouches = () => keySwitches.mouseTouch && !!session && !typing()
+    && !(mouseAim && mouseAim.on) && !(keyMouse && keyMouse.on);
+  ui.screen.addEventListener('mousedown', (e) => {
+    if (!mouseTouches() || e.button === 0) return;
+    e.preventDefault();
+    pad.mouseTouchPress = true;
+  });
+  window.addEventListener('mousemove', (e) => {
+    // The left button alone, held on the picture
+    if (e.buttons !== 1 || !mouseTouches() || (e.target !== ui.screen && !pad.mouseFinger)) return;
+    const box = ui.stage.getBoundingClientRect();
+    if (box.width > 0 && box.height > 0) pad.setMouseTouch({ x: (e.clientX - box.left) / box.width, y: (e.clientY - box.top) / box.height });
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) pad.setMouseTouch(null);
+    pad.mouseTouchPress = false;
+  });
+  ui.screen.addEventListener('contextmenu', (e) => {
+    if (mouseTouches()) e.preventDefault();
   });
   document.addEventListener('fullscreenchange', () => {
     if (menu.open) menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());

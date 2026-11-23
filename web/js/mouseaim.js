@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 //
 // The mouse as part of a controller: its movement moves a stick, its buttons and wheel are
-// buttons (keypad.js works that out). A click on the picture catches the mouse, as games do;
-// Esc gives it back, as browsers do. While it is not caught the mouse is the page's own.
+// buttons (keypad.js works that out). While the player plays the mouse is caught, as in the
+// app; a browser lets that happen only right after a click or a key press, so a click on the
+// picture catches it, and so does the key for it (F8). Esc always gives it back, as browsers
+// do. While it is not caught the mouse is the page's own.
 
 import { buttonInput } from './keypad.js';
 
@@ -11,7 +13,7 @@ export class MouseAim {
    * @param {HTMLElement} target what a click catches the mouse on (the picture)
    * @param {import('./keypad.js').Converter} keypad
    * @param {() => boolean} free whether the mouse may be caught right now (no menu open, nobody else has it)
-   * @param {(caught: boolean) => void} onChange the mouse was caught, or came back
+   * @param {(caught: boolean, own: boolean) => void} onChange the mouse was caught, or came back; `own`: because this was switched off, not because the player or the browser took it back
    */
   constructor(target, keypad, free, onChange) {
     this.target = target;
@@ -20,24 +22,24 @@ export class MouseAim {
     this.onChange = onChange || (() => {});
     this.on = false;
     this.wheelRest = 0;
+    /** Whether the mouse was caught when last looked: a browser also reports changes that are none. */
+    this.wasCaught = false;
+    /** When the browser was last asked for the mouse: one question at a time. */
+    this.askedAt = -1e9;
     this.handlers = {
       click: () => {
-        if (!this.on || this.caught || !this.free() || !this.target.requestPointerLock) return;
-        // As the mouse itself reports it, without the system's acceleration, where the browser can
-        try {
-          const p = this.target.requestPointerLock({ unadjustedMovement: true });
-          if (p && p.catch) p.catch(() => this.target.requestPointerLock());
-        } catch (e) {
-          this.target.requestPointerLock();
-        }
+        if (this.on && this.free()) this.catchNow();
       },
       lockChange: () => {
-        if (!this.caught) {
+        const caught = this.caught;
+        if (caught === this.wasCaught) return;
+        this.wasCaught = caught;
+        if (!caught) {
           // Its buttons will not be seen coming up
           this.keypad.releaseMouse();
           this.wheelRest = 0;
         }
-        this.onChange(this.caught);
+        this.onChange(caught);
       },
       mousemove: (e) => {
         if (!this.caught) return;
@@ -97,7 +99,39 @@ export class MouseAim {
     document[act]('auxclick', h.auxclick);
     document[act]('wheel', h.wheel, on ? { passive: false } : undefined);
     document[act]('contextmenu', h.menu);
-    if (!on) this.letGo();
+    if (!on) {
+      // Its own doing: nobody is told by the browser any more
+      const was = this.wasCaught;
+      this.letGo();
+      this.wasCaught = false;
+      this.keypad.releaseMouse();
+      this.wheelRest = 0;
+      if (was) this.onChange(false, true);
+    }
+  }
+
+  /** Catches the mouse now. A browser only does that right after a click or a key press; otherwise nothing happens. */
+  catchNow() {
+    if (this.caught || !this.target.requestPointerLock) return;
+    // A click on a button in the picture reaches the picture too: asked once, not twice
+    const now = performance.now();
+    if (now - this.askedAt < 250) return;
+    this.askedAt = now;
+    const plain = () => {
+      try {
+        const p = this.target.requestPointerLock();
+        if (p && p.catch) p.catch(() => {});
+      } catch (e) {
+        // not now, then
+      }
+    };
+    // As the mouse itself reports it, without the system's acceleration, where the browser can
+    try {
+      const p = this.target.requestPointerLock({ unadjustedMovement: true });
+      if (p && p.catch) p.catch(plain);
+    } catch (e) {
+      plain();
+    }
   }
 
   /** Gives the mouse back to the page. */

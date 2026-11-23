@@ -65,8 +65,17 @@ export class Pad {
     // The keyboard and the mouse as a controller; the keys the page always had until the player sets others
     this.keypad = new Converter();
     this.keypad.setBindings(LAYOUTS.classic);
+    /** "Keyboard as controller": the keys play. */
     this.keyboardOn = true;
+    /** Whether a game is on the screen: only then are keys the game's (set by the page). */
+    this.playing = () => true;
+    /** The key that catches the mouse for aiming and lets it go was pressed (set by the page). */
+    this.onMouseKey = null;
     this.keyboardUsed = false;
+    // The mouse as the touchpad: one finger, and whether the touchpad is pressed
+    this.mouseFinger = null;
+    this.mouseTouchId = 0;
+    this.mouseTouchPress = false;
     this.kind = P.CONTROLLER_NONE;
     this.label = '';
     this.battery = P.BATTERY_UNKNOWN;
@@ -83,7 +92,11 @@ export class Pad {
     this.applied = { strong: 0, weak: 0, at: 0 };
     this.onKeyDown = (e) => this.key(e, true);
     this.onKeyUp = (e) => this.key(e, false);
-    this.onBlur = () => this.keypad.releaseAll();
+    this.onBlur = () => {
+      this.keypad.releaseAll();
+      this.setMouseTouch(null);
+      this.mouseTouchPress = false;
+    };
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
@@ -96,7 +109,7 @@ export class Pad {
       if (this.keypad.press(input, false)) e.preventDefault();
       return;
     }
-    if (!this.keyboardOn || this.typing()) return;
+    if (!this.keyboardOn || !this.playing() || this.typing()) return;
     // A key together with ⌘ or Ctrl is the browser's own, unless Ctrl itself is a key to play with
     const modifier = /^(Control|Meta|Alt|Shift)/.test(e.code);
     const ctrlPlays = this.keypad.bound('k:ControlLeft') || this.keypad.bound('k:ControlRight');
@@ -105,8 +118,33 @@ export class Pad {
     // The page must not scroll, go back or move the focus while somebody plays
     e.preventDefault();
     if (e.repeat) return;
-    this.keypad.press(input, true);
+    if (this.keypad.press(input, true) === 'mouse') {
+      // No button of the controller: it catches the mouse for aiming and lets it go
+      if (this.onMouseKey) this.onMouseKey();
+      return;
+    }
     this.keyboardUsed = true;
+  }
+
+  /**
+   * The mouse as the touchpad, as in the app: a finger at x, y of the picture (0 to 1 each),
+   * or null when it comes up. The first call puts the finger down, the next ones move it.
+   */
+  setMouseTouch(point) {
+    if (!point) {
+      this.mouseFinger = null;
+      return;
+    }
+    const within = (v) => Math.max(0, Math.min(1, v));
+    const x = Math.trunc(within(point.x) * P.TOUCHPAD_WIDTH);
+    const y = Math.trunc(within(point.y) * P.TOUCHPAD_HEIGHT);
+    if (this.mouseFinger) {
+      this.mouseFinger.x = x;
+      this.mouseFinger.y = y;
+    } else {
+      this.mouseFinger = { id: this.mouseTouchId, x, y };
+      this.mouseTouchId = (this.mouseTouchId + 1) & 0x7f;
+    }
   }
 
   gamepads() {
@@ -169,6 +207,13 @@ export class Pad {
     this.kind = kind;
     this.label = label;
     this.battery = battery;
+
+    // The mouse as the touchpad, unless a real one is being touched
+    if (this.mouseFinger && !pad.touches.some((t) => t.id >= 0)) {
+      pad.touches = [{ id: this.mouseFinger.id, x: this.mouseFinger.x, y: this.mouseFinger.y }, { id: -1, x: 0, y: 0 }];
+      pad.touchIdNext = this.mouseTouchId;
+    }
+    if (this.mouseTouchPress) pad.buttons |= P.BTN.Touchpad;
 
     // The keyboard and the mouse: their buttons count with the controller's, their sticks instead of its own
     const keys = this.keypad.state(performance.now());

@@ -172,7 +172,8 @@
         </div>
         <p id="join-warning" class="problem warn" hidden></p>
         <div class="row end">
-          <button id="join-keys" class="ghost" type="button">Keyboard and mouse</button>
+          <button id="join-voice-check" class="ghost" type="button">Voice &amp; webcam</button>
+          <button id="join-keys" class="ghost" type="button">Keyboard &amp; mouse</button>
           <button id="join-button" class="brand big" type="submit">Join</button>
         </div>
       </form>
@@ -248,6 +249,8 @@
   <div id="hud"></div>
   <div id="stats" class="stats" hidden></div>
   <div id="notices" class="notices"></div>
+  <!-- The mouse was just caught for aiming: for a moment, how to get it back -->
+  <div id="caught-note" class="caught-note" role="status"></div>
 
   <div id="banner" class="banner" hidden>
     <span class="banner-spin" aria-hidden="true"></span>
@@ -294,14 +297,25 @@
   </div>
 </div>
 
-<!-- ============================================================ keyboard and mouse -->
-<!-- What is in it is built by js/keysdialog.js -->
-<dialog id="keys" class="dialog keys">
-  <h2>Keyboard and mouse</h2>
-  <p class="dim">A controller is the way to play: plug it in or pair it, then press any button. Without one, the keyboard and the mouse stand in. Keys go by their place on the keyboard, whatever is printed on them.</p>
-  <div id="keys-body" class="keys-body"></div>
+<!-- ============================================================ keyboard & mouse -->
+<!-- The app's settings page of the same name; what is in it is built by js/keysdialog.js -->
+<dialog id="keys" class="dialog settings" aria-labelledby="keys-title">
+  <h2 id="keys-title">Keyboard &amp; mouse</h2>
+  <p>Play with the keyboard as a controller, and with the mouse too: walk with the keys and aim with the mouse, as in a game on a computer.</p>
+  <div id="keys-body" class="set-body"></div>
   <div class="row end">
     <button id="keys-close" class="primary" type="button">Close</button>
+  </div>
+</dialog>
+
+<!-- ============================================================ voice & webcam -->
+<!-- Trying the microphone, the speakers and the webcam, as on the app's settings page of the same name; built by js/voicedialog.js -->
+<dialog id="voice" class="dialog settings" aria-labelledby="voice-title">
+  <h2 id="voice-title">Voice &amp; webcam</h2>
+  <p>Everybody in a shared session can talk to and see each other. Here you can try your microphone, your speakers and your webcam first.</p>
+  <div id="voice-body" class="set-body"></div>
+  <div class="row end">
+    <button id="voice-close" class="primary" type="button">Close</button>
   </div>
 </dialog>
 

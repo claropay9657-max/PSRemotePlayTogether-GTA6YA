@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CURVES, Converter, FUNCTIONS, LAYOUTS, SLOTS, buttonInput, curveAt, curveMadeValid, curveName, defaultOptions, inputLabel, keyInput } from '../../web/js/keypad.js';
+import { BROWSERS_OWN, CURVES, Converter, FUNCTIONS, LAYOUTS, SECTIONS, SLOTS, buttonInput, curveAt, curveMadeValid, curveName, defaultOptions, inputLabel, keyInput } from '../../web/js/keypad.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const vectors = JSON.parse(fs.readFileSync(path.join(here, 'keypad-vectors.json'), 'utf8'));
@@ -75,8 +75,27 @@ test('every function is known, and a layout binds each input once', () => {
       }
     }
     // What a browser keeps for itself is not bound: Esc gives the mouse back, Ctrl with W closes the tab
-    for (const input of seen) assert.ok(!/^k:(Escape|Control|Meta|F\d)/.test(input), `${name}: ${input} is the browser's`);
+    for (const input of seen) {
+      assert.ok(!BROWSERS_OWN.has(input) && !/^k:(Control|Meta)/.test(input), `${name}: ${input} is the browser's`);
+    }
+    // The key that catches the mouse and lets it go, as in the app
+    assert.deepEqual(layout.mouse, ['k:F8']);
   }
+});
+
+test('the cards of the settings show every function once, as the app groups them', () => {
+  const shown = SECTIONS.flatMap((section) => section.keys.map(([id]) => id));
+  assert.deepEqual(shown.slice().sort(), FUNCTIONS.map(([id]) => id).sort());
+  assert.deepEqual(SECTIONS.map((section) => section.title),
+    ['Left stick', 'Right stick', 'Face buttons', 'D-pad', 'Shoulders and triggers', 'Middle', 'Walking and the mouse']);
+});
+
+test('the key for the mouse is nobody\'s button', () => {
+  const c = new Converter();
+  c.setBindings(LAYOUTS.shooter);
+  assert.equal(c.press('k:F8', true), 'mouse');
+  assert.deepEqual(c.state(1), { buttons: 0, l2: 0, r2: 0, lx: 0, ly: 0, rx: 0, ry: 0 });
+  assert.equal(c.press('k:F8', false), 'mouse');
 });
 
 test('bindings that make no sense are left out', () => {
@@ -114,7 +133,7 @@ test('the curves and what is set stay within bounds', () => {
   assert.equal(curveAt(CURVES.even, -1), 0);
   assert.equal(curveAt(CURVES.even, 3), 1);
   assert.equal(curveName(CURVES.fine), 'fine');
-  assert.equal(curveName([0.1, 0.2, 0.3, 0.4]), '');
+  assert.equal(curveName([0.1, 0.2, 0.3, 0.4]), 'custom');
   const c = new Converter();
   c.setOptions({ sensX: 'nonsense', sensY: 99, deadZone: 7, smoothingMs: 0, aimButton: 'r2', curve: 'x' });
   assert.equal(c.options.sensX, 0.05);
@@ -130,10 +149,18 @@ test('inputs are named the way a key cap shows them', () => {
   assert.equal(inputLabel('k:KeyW'), 'W');
   assert.equal(inputLabel('k:Digit1'), '1');
   assert.equal(inputLabel('k:ShiftLeft'), 'Shift');
+  assert.equal(inputLabel('k:Enter'), 'Return');
+  assert.equal(inputLabel('k:F8'), 'F8');
+  assert.equal(inputLabel('k:AltLeft', ''), 'Alt');
+  assert.equal(inputLabel('k:AltLeft', 'mac'), 'Option');
+  assert.equal(inputLabel('k:ControlLeft', 'mac'), 'Control');
+  assert.equal(inputLabel('k:MetaLeft', 'windows'), 'Win');
   assert.equal(inputLabel('k:ArrowUp'), '↑');
   assert.equal(inputLabel('k:Numpad5'), 'Num 5');
-  assert.equal(inputLabel('m:1'), 'Left button');
-  assert.equal(inputLabel('m:4'), 'Back button');
+  assert.equal(inputLabel('m:1'), 'Left click');
+  assert.equal(inputLabel('m:2'), 'Right click');
+  assert.equal(inputLabel('m:3'), 'Middle click');
+  assert.equal(inputLabel('m:4'), 'Mouse 4');
   assert.equal(inputLabel('w:down'), 'Wheel down');
   assert.equal(keyInput({ code: 'KeyW' }), 'k:KeyW');
   assert.equal(keyInput({ code: '' }), '');

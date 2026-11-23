@@ -50,13 +50,16 @@ const ICONS = {
   fullscreen: [2, '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'],
   stats: [2, '<path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/>'],
   keyboard: [2, '<rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>'],
+  close: [2.4, '<path d="M6 6l12 12M18 6 6 18"/>'],
+  info: [2, '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>'],
+  play: [0, '<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>'],
   touch: [2, '<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>'],
   // Circle on a PlayStation controller: what goes back to the game
   circle: [2.4, '<circle cx="12" cy="12" r="7"/>'],
 };
 
 /** One of the line icons, in the colour of the text around it. */
-function icon(name, size, cls) {
+export function icon(name, size, cls) {
   const [width, drawing] = ICONS[name];
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'micon' + (cls ? ' ' + cls : ''));
@@ -359,7 +362,11 @@ export class StreamMenu {
     this.moreGroup = el('div', 'mgroup');
     this.fullButton = this.dockButton({ icon: 'fullscreen', tip: 'Full screen', onClick: () => h.onFullscreen() });
     this.statsButton = this.dockButton({ icon: 'stats', tip: 'Stats on the picture', onClick: () => h.onStats() });
-    this.moreGroup.append(this.fullButton, this.statsButton);
+    // Mouse and keyboard as a controller: whether the mouse aims while playing.
+    // Its keys and how it aims are under Controller → Keyboard & mouse
+    this.aimButton = this.dockButton({ icon: 'keyboard', text: 'Mouse aims', onClick: () => h.onMouseAims() });
+    this.aimButton.hidden = true;
+    this.moreGroup.append(this.aimButton, this.fullButton, this.statsButton);
 
     // Thin upright lines between the parts, while the dock is on one line
     this.lines = [el('div', 'mline'), el('div', 'mline'), el('div', 'mline')];
@@ -848,7 +855,7 @@ export class StreamMenu {
     if (c.dualsense) {
       this.entry(m, { icon: 'gamepad', text: 'DualSense…', chosen: c.dualsenseOn, onClick: () => this.h.onDualSense() });
     }
-    this.entry(m, { icon: 'keyboard', text: 'Keyboard and mouse…', onClick: () => this.h.onKeys() });
+    this.entry(m, { icon: 'keyboard', text: 'Keyboard & mouse…', onClick: () => this.h.onKeys() });
   }
 
   /** What is shown on the game picture: the saved arrangements, arranging, the options. */
@@ -1143,7 +1150,9 @@ export class StreamMenu {
   /** @param {'fit'|'zoom'|'stretch'} mode @param {number} zoom -1..4 */
   setPicture(mode, zoom, full, stats, hasPicture) {
     this.pictureGroup.hidden = !hasPicture;
-    this.moreGroup.hidden = !hasPicture;
+    this.fullButton.hidden = !hasPicture;
+    this.statsButton.hidden = !hasPicture;
+    this.moreGroup.hidden = !hasPicture && this.aimButton.hidden;
     for (const [m, b] of Object.entries(this.modeButtons)) {
       b.classList.toggle('chosen', m === mode);
       b.setAttribute('aria-checked', m === mode ? 'true' : 'false');
@@ -1158,6 +1167,23 @@ export class StreamMenu {
     this.statsButton.setAttribute('aria-pressed', stats ? 'true' : 'false');
     this.layoutSoon();
     this.recoverSoon();
+  }
+
+  /**
+   * "Mouse aims" in the dock, as in the app.
+   * @param {boolean} shown the keyboard plays and this browser can catch the mouse
+   * @param {boolean} on
+   * @param {string} key what is written on the key that catches the mouse and lets it go; "" for none
+   */
+  setMouseAim(shown, on, key) {
+    this.aimButton.hidden = !shown;
+    this.moreGroup.hidden = this.fullButton.hidden && this.aimButton.hidden;
+    this.aimButton.classList.toggle('checked', !!on);
+    this.aimButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+    this.aimButton.title = !on ? 'Aim with the mouse and walk with the keys, as in a game on a computer'
+      : key ? `While you play, the mouse is caught and aims. ${key} lets it go and catches it again.`
+        : 'While you play, the mouse is caught and aims. This menu lets it go.';
+    this.layoutSoon();
   }
 
   /** @param {object} c {touch, haptics, dualsense, dualsenseOn, note, padKind} */
