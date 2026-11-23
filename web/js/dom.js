@@ -37,12 +37,15 @@ export function appendWithLinks(parent, text) {
   let last = 0;
   for (const match of text.matchAll(pattern)) {
     if (match.index > last) parent.append(text.slice(last, match.index));
-    const a = el('a', '', match[0]);
-    a.href = match[0];
+    // What ends a sentence is not part of the address, as in the app
+    const address = match[0].replace(/[.,;:!?)\]}]+$/, '');
+    if (!address.includes('://') || address.endsWith('://')) continue;
+    const a = el('a', '', address);
+    a.href = address;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     parent.append(a);
-    last = match.index + match[0].length;
+    last = match.index + address.length;
   }
   if (last < text.length) parent.append(text.slice(last));
 }

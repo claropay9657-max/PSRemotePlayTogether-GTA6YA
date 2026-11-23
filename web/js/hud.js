@@ -495,7 +495,7 @@ export class Hud {
       if (p.player > 0) tags.append(el('span', 'hud-tag-player', `P${p.player}`));
       if (p.host) tags.append(el('span', 'hud-tag-host', 'HOST'));
       if (p.live) tags.append(el('span', 'hud-tag-live', 'LIVE'));
-      if (this.shared && !p.canControl) tags.append(el('span', 'hud-tag-watching', 'WATCHING'));
+      if (this.shared && (p.watching !== undefined ? p.watching : !p.canControl)) tags.append(el('span', 'hud-tag-watching', 'WATCHING'));
       if (p.muted || p.silenced) tags.append(el('span', 'hud-tag-muted', 'MUTED'));
       const b = battery();
       b.set(p.battery, cfg.battery);

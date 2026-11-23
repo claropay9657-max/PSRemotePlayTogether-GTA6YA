@@ -223,7 +223,7 @@ export class StreamMenu {
     this.roomTitle = el('div', 'mroom-title', 'Play Together');
     this.roomLine = el('div', 'mroom-line');
     roomHead.append(this.roomTitle, this.roomLine);
-    this.roomNote = el('div', 'mroom-note', 'Controller only: no picture from the console');
+    this.roomNote = el('div', 'mroom-note', 'Controller only: your controller plays along, rumble too');
     this.roomNote.hidden = true;
     room.append(roomHead, this.roomNote);
 
@@ -311,9 +311,9 @@ export class StreamMenu {
     this.volume = bar(0, 100, 1, (v) => h.onVolume(v));
     this.volumeText = el('span', 'mvalue');
     this.soundGroup.append(
-      this.dockButton({ icon: 'minus', tip: 'Quieter', onClick: () => h.onVolume(clamp(Number(this.volume.value) - 6, 0, 100)) }),
+      this.dockButton({ icon: 'minus', tip: 'Quieter', onClick: () => h.onVolume(clamp(Math.round(Number(this.volume.value) - 6.25), 0, 100)) }),
       this.volume,
-      this.dockButton({ icon: 'plus', tip: 'Louder', onClick: () => h.onVolume(clamp(Number(this.volume.value) + 6, 0, 100)) }),
+      this.dockButton({ icon: 'plus', tip: 'Louder', onClick: () => h.onVolume(clamp(Math.round(Number(this.volume.value) + 6.25), 0, 100)) }),
       this.volumeText);
     this.soundGroup.title = 'Game volume';
 
@@ -674,7 +674,9 @@ export class StreamMenu {
   padInput(buttons, lx, ly) {
     const nav = this.padNav;
     const now = performance.now();
-    const far = 16384;
+    // As the app's controller in its menus: the stick counts from far out, a held direction
+    // repeats after 250 ms every 80 ms, at most 50 times, and Options closes the menu
+    const far = 30000;
     let dir = '';
     if ((buttons & BTN.DpadUp) || ly < -far) dir = 'up';
     else if ((buttons & BTN.DpadDown) || ly > far) dir = 'down';
@@ -691,10 +693,12 @@ export class StreamMenu {
     if (!dir) nav.dir = '';
     else if (dir !== nav.dir) {
       nav.dir = dir;
-      nav.next = now + 400;
+      nav.next = now + 250;
+      nav.repeats = 0;
       this.move(dir);
-    } else if (now >= nav.next) {
-      nav.next = now + 110;
+    } else if (now >= nav.next && (nav.repeats || 0) < 50) {
+      nav.next = now + 80;
+      nav.repeats = (nav.repeats || 0) + 1;
       this.move(dir);
     }
     if (pressed & BTN.Cross) this.activate();
@@ -702,6 +706,7 @@ export class StreamMenu {
       this.root.classList.add('keys');
       this.back();
     }
+    if (pressed & BTN.Options) this.close();
   }
 
   // ------------------------------------------------------------ lists
@@ -979,15 +984,17 @@ export class StreamMenu {
       ? 'Left out of live streams: players who go live do not show your voice, webcam or name'
       : 'Players who go live may show your voice, webcam and name');
     this.keyMouseButton.hidden = !v.keyMouse;
-    this.keyMouseButton.set('keyboard', v.keyMouseOn ? 'Mouse & keys on' : 'Mouse & keys', v.keyMouseOn ? 'good' : '');
+    // The app's switch "Mouse and keyboard", with its lines (a click on the picture catches the mouse here)
+    this.keyMouseButton.set('keyboard', 'Mouse and keyboard', v.keyMouseOn ? 'good' : '');
     this.keyMouseButton.setAttribute('aria-label', v.keyMouseOn
-      ? 'Mouse and keyboard go to the game when you click the picture. Switch off'
-      : 'The host lets you play with mouse and keyboard. Switch on');
+      ? 'Mouse and keyboard, on: they go to the game when you click the picture. Esc lets them go'
+      : 'Mouse and keyboard, off: the host lets you play with them too');
     this.pictureButton.hidden = !v.pictureSwitch;
-    this.pictureButton.set(v.pictureOff ? 'gamepad' : 'eye', v.pictureOff ? 'Controller only' : 'Picture and sound', v.pictureOff ? 'dim' : '');
+    // The app's switch "Picture and sound", with its lines
+    this.pictureButton.set(v.pictureOff ? 'gamepad' : 'eye', 'Picture and sound', v.pictureOff ? 'dim' : 'good');
     this.pictureButton.setAttribute('aria-label', v.pictureOff
-      ? 'Controller only: no picture and sound here. Switch them on'
-      : 'Picture and sound here. Switch to controller only');
+      ? 'Picture and sound, off. Controller only: your controller plays along, rumble too'
+      : 'Picture and sound, on: the game on this computer too, as the host sends it');
     this.camRow.hidden = !v.cam || !v.camOn;
     this.camSizeButton.label.textContent = CAM_SIZES[v.camSize] || CAM_SIZES[1];
     this.roomNote.hidden = !v.pictureOff;
@@ -1063,8 +1070,13 @@ export class StreamMenu {
     tile.disabled = t.you;
     tile.classList.toggle('control', !!p.inControl);
     tile.setAttribute('aria-label', nameOf(p) + (t.you ? ' (you)' : ''));
-    if (!t.you) tile.setAttribute('aria-haspopup', 'menu');
-    else tile.removeAttribute('aria-haspopup');
+    if (!t.you) {
+      tile.setAttribute('aria-haspopup', 'menu');
+      tile.setAttribute('aria-description', 'Click for more');
+    } else {
+      tile.removeAttribute('aria-haspopup');
+      tile.removeAttribute('aria-description');
+    }
 
     const parts = [face('ptile-face', p)];
     t.cam = null;

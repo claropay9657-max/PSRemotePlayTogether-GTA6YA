@@ -211,7 +211,7 @@ export class Session {
           throw new JoinError('The host is sharing, but its app did not answer a web browser. '
             + 'It needs a version that lets friends join from a browser, with that switched on under Play Together.', 'no-web');
         }
-        throw new JoinError('Nobody is sharing with this invite right now. Ask your friend to start sharing and to send you a fresh link, then try again.', 'no-host');
+        throw new JoinError('No answer from the host, and it is not at the meeting point either. Check the link, and that the host is sharing right now.', 'no-host');
       }
 
       if (noteStale) {

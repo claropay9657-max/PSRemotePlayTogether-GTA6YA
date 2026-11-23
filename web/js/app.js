@@ -42,7 +42,9 @@ const MENU_KEY = MAC ? '⌘O' : 'Ctrl+O';
 /** The same buttons as in the app, held together. */
 const MENU_COMBO = P.BTN.L1 | P.BTN.R1 | P.BTN.L3 | P.BTN.R3;
 /** After a lost connection the page keeps trying to get back in for this long. */
-const REJOIN_MS = 60000;
+/** As long as the app tries to get back to the host, one attempt every 2 seconds. */
+const REJOIN_MS = 90000;
+const REJOIN_PAUSE_MS = 2000;
 
 const ui = {
   front: $('front'),
@@ -76,6 +78,8 @@ const SHORTCODES = {
   ':party:': '🥳', ':trophy:': '🏆', ':100:': '💯', ':rocket:': '🚀', ':ok:': '👌', ':wave:': '👋',
   ':thinking:': '🤔', ':sweat:': '😅', ':cool:': '😎', ':pray:': '🙏',
 };
+const SHORTCODE_PATTERNS = Object.entries(SHORTCODES)
+  .map(([code, emoji]) => [new RegExp(code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), emoji]);
 const FACES = [
   [/(^|\s):-?\)(?=\s|$)/g, '$1🙂'], [/(^|\s):-?D(?=\s|$)/g, '$1😄'], [/(^|\s);-?\)(?=\s|$)/g, '$1😉'],
   [/(^|\s):-?\((?=\s|$)/g, '$1🙁'], [/(^|\s):-?[pP](?=\s|$)/g, '$1😛'], [/(^|\s)<3(?=\s|$)/g, '$1❤️'],
@@ -871,7 +875,8 @@ function makeSession() {
     secret: invite.secret,
     meetUrl: invite.meetUrl,
     stun: invite.stun,
-    name: $('join-name').value.trim() || 'Guest',
+    // Nameless, the host calls the player "Guest 2" and so on, as it does for the app
+    name: $('join-name').value.trim(),
     playerId: playerId(),
     avatar,
     want: wantFlags(),
@@ -1049,9 +1054,9 @@ function showStageNote() {
   ui.note.hidden = !off;
   if (!off) return;
   $('stage-note-title').textContent = 'Controller only';
-  const why = controllerOnly ? 'No picture and sound here. Your controller plays along.'
+  const why = controllerOnly ? 'Controller only: no picture and sound here. Your controller plays along.'
     : 'This browser cannot show the picture. Your controller plays along.';
-  const back = controllerOnly ? '\nTo get picture and sound: stream menu → Controller only.' : '';
+  const back = controllerOnly ? '\nTo get picture and sound: stream menu → Picture and sound.' : '';
   $('stage-note-text').textContent = `${why}\nPress ${pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY} for the stream menu.${back}`;
 }
 
@@ -1162,7 +1167,7 @@ async function rejoin(text) {
       lastProblem = e && e.message ? e.message : String(e);
       // A full session or a wrong version does not get better by waiting
       if (e instanceof JoinError && ['full', 'version', 'unsupported', 'refused', 'locked'].includes(e.kind)) break;
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, REJOIN_PAUSE_MS));
       continue;
     }
     if (leaving || attempt !== session) {
@@ -1180,7 +1185,7 @@ async function rejoin(text) {
   if (leaving) return;
   session = null;
   leaveStage();
-  message('The connection was lost', lastProblem || 'The host could not be reached any more.');
+  message('The connection was lost', lastProblem || 'The connection to the host was lost.');
 }
 
 // ------------------------------------------------------------------ while playing
@@ -1339,6 +1344,8 @@ function playersNow() {
     // Each their own controller without a controller of their own
     canControl: p.canControl && (p.host || s.mixMode !== P.MIX_HOST_ONLY) && (p.host || s.mixMode !== P.MIX_EACH_OWN || p.player > 0),
     player: p.player || 0,
+    // The WATCHING tag, as the app shows it: who may not play, and everybody but the host under "Only me"
+    watching: !p.host && (!p.canControl || s.mixMode === P.MIX_HOST_ONLY),
     keyMouse: (p.flags & P.PARTICIPANT_KEY_MOUSE) !== 0,
     onlyHost: !p.host && s.mixMode === P.MIX_HOST_ONLY,
     inControl: p.inControl,
@@ -1599,7 +1606,8 @@ function onInputs(inputs) {
 
 function withEmoji(text) {
   let out = text;
-  for (const [code, emoji] of Object.entries(SHORTCODES)) out = out.split(code).join(emoji);
+  // Upper or lower case alike, as in the app
+  for (const [pattern, emoji] of SHORTCODE_PATTERNS) out = out.replace(pattern, emoji);
   for (const [pattern, emoji] of FACES) out = out.replace(pattern, emoji);
   return out;
 }
@@ -1920,7 +1928,8 @@ function start() {
   prefs.camSize = Number(recall('psrpt.camSize', '1'));
   prefs.noStreams = recall('psrpt.noStreams') === '1';
   prefs.mode = ['fit', 'zoom', 'stretch'].includes(recall('psrpt.pictureMode')) ? recall('psrpt.pictureMode') : 'fit';
-  prefs.zoom = Number(recall('psrpt.zoom', '0')) || 0;
+  prefs.zoom = Number(recall('psrpt.zoom', '-1'));
+  if (!Number.isFinite(prefs.zoom)) prefs.zoom = -1;
   prefs.stats = recall('psrpt.stats') === '1';
   sound.setGameVolume(prefs.volume / 100);
   sound.setVoiceVolume(prefs.voiceVolume / 100);
@@ -2257,7 +2266,7 @@ function start() {
     // The stream menu: the app's own shortcut
     if (e.code === 'KeyO' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
       e.preventDefault();
-      if (hud.editing) hud.setEditing(false);
+      // Arranging goes on once the menu is closed again, as in the app
       menu.toggle(true);
       return;
     }
