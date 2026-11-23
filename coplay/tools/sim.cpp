@@ -1239,6 +1239,8 @@ static int RunGuest(const Options &o)
 				players += " P" + std::to_string(p.player);
 			if(p.flags & kParticipantKeyMouse)
 				players += " M+K";
+			if(p.flags & kParticipantWeb)
+				players += " WEB";
 			if(p.slot == s.your_slot)
 				players += " (me)";
 		}

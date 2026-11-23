@@ -79,6 +79,8 @@ export const PARTICIPANT_MAY_SLEEP = 1 << 3;
 export const PARTICIPANT_KEY_MOUSE = 1 << 4;
 /** The room stays while the console sleeps, and this player may wake it. */
 export const PARTICIPANT_MAY_WAKE = 1 << 5;
+/** Joined from a web browser, without the app. A host older than 0.5.3 does not say it. */
+export const PARTICIPANT_WEB = 1 << 6;
 
 /** Asks the host to wake its sleeping console. */
 export function wakeFrame() {

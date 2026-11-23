@@ -468,7 +468,9 @@ enum ParticipantFlags : uint8_t
 	/** The host lets this player use mouse and keyboard in the shared game (a game on its computer). */
 	kParticipantKeyMouse = 1 << 4,
 	/** The room stays while the console sleeps, and this player may wake it (PacketType::WakeUp). */
-	kParticipantMayWake = 1 << 5
+	kParticipantMayWake = 1 << 5,
+	/** Joined from a web browser, without the app: everybody shows it on that player ("WEB"). */
+	kParticipantWeb = 1 << 6
 };
 
 struct Participant

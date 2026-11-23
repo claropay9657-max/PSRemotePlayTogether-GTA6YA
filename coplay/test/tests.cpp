@@ -5262,6 +5262,12 @@ TEST(net_browser_guest_is_a_guest_like_any_other)
 		SessionState s;
 		ByteReader r(states.back().data() + 1, states.back().size() - 1);
 		CHECK(ReadSessionState(r, s) && s.your_slot == 1 && s.participants.size() == 2);
+		// everybody is told who came with a browser: the host did not, this guest did
+		if(s.participants.size() == 2)
+		{
+			CHECK(!(s.participants[0].flags & kParticipantWeb));
+			CHECK(s.participants[1].slot == 1 && (s.participants[1].flags & kParticipantWeb));
+		}
 	}
 	// a Hello that comes again (its Welcome got lost) is answered again, without a second guest
 	t.FromBrowser(peer, t.HelloFrame("Pixel"));

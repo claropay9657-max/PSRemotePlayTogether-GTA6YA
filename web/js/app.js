@@ -1183,8 +1183,8 @@ function playersNow() {
     slot: p.slot,
     name: p.name,
     you: p.slot === s.yourSlot,
-    // Of the others the page cannot tell whether they came with a browser; of itself it can
-    web: p.slot === s.yourSlot,
+    // The host says who came with a browser; of itself the page knows, whatever the host's version
+    web: (p.flags & P.PARTICIPANT_WEB) !== 0 || p.slot === s.yourSlot,
     host: p.host,
     // Guests watch while only the host plays ("Only me"), whatever they may do otherwise, and in
     // Each their own controller without a controller of their own

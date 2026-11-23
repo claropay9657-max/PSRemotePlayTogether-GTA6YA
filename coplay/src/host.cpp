@@ -1130,7 +1130,7 @@ void Host::SendState(Guest &g, uint64_t now_ms)
 		p.slot = other.slot;
 		p.flags = static_cast<uint8_t>((other.can_control ? kParticipantCanControl : 0) | (other.in_control ? kParticipantInControl : 0)
 			| (config.guests_may_sleep ? kParticipantMaySleep : 0) | (other.key_mouse_allowed ? kParticipantKeyMouse : 0)
-			| (config.guests_may_wake ? kParticipantMayWake : 0));
+			| (config.guests_may_wake ? kParticipantMayWake : 0) | (other.web_peer ? kParticipantWeb : 0));
 		p.name = other.name;
 		p.controller = other.controller;
 		p.battery = other.battery;

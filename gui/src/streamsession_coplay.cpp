@@ -1597,6 +1597,8 @@ void StreamSession::CoPlayStartGuest()
 			if(p.slot == your_slot)
 				coplay->may_wake = (p.flags & coplay::kParticipantMayWake) != 0;
 			m["keyMouse"] = (p.flags & coplay::kParticipantKeyMouse) != 0;
+			// Joined from a web browser: the host says so of every guest
+			m["web"] = (p.flags & coplay::kParticipantWeb) != 0;
 			m["controller"] = static_cast<int>(p.controller);
 			m["battery"] = static_cast<int>(p.battery);
 			m["player"] = static_cast<int>(p.player);
