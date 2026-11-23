@@ -98,6 +98,9 @@ class QmlSettings : public QObject
     /** A game on this computer: the picture's height (720, 1080, 1440, 2160). */
     Q_PROPERTY(int coplayPcHeight READ coplayPcHeight WRITE setCoplayPcHeight NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayPcKeyMouse READ coplayPcKeyMouse WRITE setCoplayPcKeyMouse NOTIFY coplayChanged)
+    /** Hosting a console: friends get the picture and sound of a capture card, and which one (Chiaki.cardDevices()). */
+    Q_PROPERTY(bool coplayCard READ coplayCard WRITE setCoplayCard NOTIFY coplayChanged)
+    Q_PROPERTY(QVariantMap coplayCardTarget READ coplayCardTarget WRITE setCoplayCardTarget NOTIFY coplayChanged)
     Q_PROPERTY(QString coplayLastInvite READ coplayLastInvite WRITE setCoplayLastInvite NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayControllerOnly READ coplayControllerOnly WRITE setCoplayControllerOnly NOTIFY coplayChanged)
     Q_PROPERTY(bool coplayAutoReconnect READ coplayAutoReconnect WRITE setCoplayAutoReconnect NOTIFY coplayChanged)
@@ -654,6 +657,10 @@ public:
     void setCoplayPcHeight(int height);
     bool coplayPcKeyMouse() const;
     void setCoplayPcKeyMouse(bool on);
+    bool coplayCard() const;
+    void setCoplayCard(bool on);
+    QVariantMap coplayCardTarget() const;
+    void setCoplayCardTarget(const QVariantMap &target);
     void setCoplayMixMode(int mode);
     QString coplayLastInvite() const;
     void setCoplayLastInvite(const QString &invite);

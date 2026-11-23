@@ -245,6 +245,21 @@ float, 44.1 kHz) in a test program. **Not tested:** a real capture card on any s
 device thread with AVFoundation, Media Foundation and V4L2, and which name each card gives its
 sound. The shell on the development Mac cannot list devices (CoreAudio is out of its reach).
 
-**Later, if wanted:** a PlayStation on the card with the friends' controllers through Remote
-Play: a console session for the controllers only, and the card's picture to the guests instead
-of the console's (`CoPlayVideoSampleCb`).
+**PlayStation on a capture card (built 2026-11-23).** Hosting a console, the Host page offers
+"Picture from a capture card" and the card (settings `coplay/card`, `coplay/card_target`). Before
+the console session starts, `CoPlayStartCard()` (`streamsession_coplay.cpp`) starts a `PcCapture` on
+the card at the console's resolution and frame rate. While it runs, the card's H.264 goes to the
+guests instead of the console's, and its Opus from its first sound on (a card without sound, say
+without the microphone permission, leaves them the console's); their key frames are asked of the
+card. The host's own
+picture stays the console's, and the guests' controllers still go to the console (the StreamInfo
+keeps PS5/PS4, DualSense, `source = Console`). The console is asked for H.264 too: an app's decoder
+stays with the codec it joined with, so only then can the guests go back to the console's picture
+without joining again. That happens when the card cannot start or stops (`CoPlayCardFailed()`):
+the console's StreamInfo, sound format and parameter sets (kept meanwhile) go to the guests, the
+console is asked for a key frame, and the host is told. The card stops with the console session.
+
+Tested: the build, and in a test program the host's calls in that order: a guest gets the card's
+picture, then the console's from its next key frame, none of the console's frames before it.
+**Not tested:** a real capture card and console, the switch in a running session, the web page's
+guests during the switch.

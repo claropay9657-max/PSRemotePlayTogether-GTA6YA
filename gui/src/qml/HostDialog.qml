@@ -72,8 +72,23 @@ DialogView {
         pcKeyMouseProblem = Chiaki.pcKeyMouseProblem();
     }
     onPcTargetChanged: pcGame = pcTarget ? Chiaki.pcGameIn(pcTarget) : ""
-    onPcChosenChanged: if (pcChosen) refreshPc()
-    Component.onCompleted: if (pcChosen) refreshPc()
+    onPcChosenChanged: if (pcChosen) refreshPc(); else refreshCard()
+    Component.onCompleted: if (pcChosen) refreshPc(); else refreshCard()
+
+    // A console on a capture card: friends get the card's picture and sound (pcsource.h)
+    /** The capture devices there are, read when a console is chosen. */
+    property var cardDevices: []
+    /** Which of them is the card (Chiaki.settings.coplayCardTarget): the same device, else the same name, else the first. */
+    readonly property int cardIndex: {
+        const t = Chiaki.settings.coplayCardTarget;
+        if (!t || !t.kind)
+            return 0;
+        const i = cardDevices.findIndex((d) => d.token === t.token);
+        return i >= 0 ? i : Math.max(0, cardDevices.findIndex((d) => d.title === t.title));
+    }
+    function refreshCard() {
+        cardDevices = Chiaki.cardDevices();
+    }
 
     /** What a window or screen of this computer is, under its name. */
     function pcLine(t) {
@@ -190,6 +205,9 @@ DialogView {
             Chiaki.hostThisComputer(pcTarget);
             return;
         }
+        // The capture card shown is the one the friends get the picture of
+        if (Chiaki.settings.coplayCard && cardDevices.length > 0)
+            Chiaki.settings.coplayCardTarget = cardDevices[cardIndex];
         Chiaki.hostConsole(chosen.index, chosen.discovered ? chosen.name : "");
     }
 
@@ -851,6 +869,37 @@ DialogView {
                                         font.pixelSize: 12
                                         text: Chiaki.pcNote()
                                     }
+                                }
+                            }
+
+                            // A console whose HDMI goes through a capture card: friends get the card's
+                            // picture and sound, their controllers still reach the console
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                visible: !dialog.pcChosen && !!dialog.chosen
+                                spacing: 8
+
+                                C.ToggleRow {
+                                    readonly property bool found: dialog.cardDevices.length > 0
+                                    Layout.fillWidth: true
+                                    // Without a card, only there to be switched off
+                                    enabled: found || checked
+                                    toggle.visible: found || checked
+                                    iconName: "tv"
+                                    title: qsTr("Picture from a capture card")
+                                    subtitle: found ? qsTr("Your friends see and hear the card; their controllers still play through Remote Play")
+                                                    : qsTr("No capture card found on this computer. Plug one in, then open this page again.")
+                                    checked: !!Chiaki.settings.coplayCard
+                                    onToggled: Chiaki.settings.coplayCard = checked
+                                }
+
+                                C.Dropdown {
+                                    Layout.fillWidth: true
+                                    visible: !!Chiaki.settings.coplayCard && dialog.cardDevices.length > 0
+                                    Accessible.name: qsTr("Capture card")
+                                    model: dialog.cardDevices.map((d) => d.title)
+                                    currentIndex: dialog.cardIndex
+                                    onActivated: (index) => Chiaki.settings.coplayCardTarget = dialog.cardDevices[index]
                                 }
                             }
                         }

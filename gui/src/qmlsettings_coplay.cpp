@@ -90,6 +90,32 @@ void QmlSettings::setCoplayPcKeyMouse(bool on)
     emit coplayChanged();
 }
 
+bool QmlSettings::coplayCard() const
+{
+    return settings->GetCoPlayCard();
+}
+
+void QmlSettings::setCoplayCard(bool on)
+{
+    if (on == settings->GetCoPlayCard())
+        return;
+    settings->SetCoPlayCard(on);
+    emit coplayChanged();
+}
+
+QVariantMap QmlSettings::coplayCardTarget() const
+{
+    return settings->GetCoPlayCardTarget();
+}
+
+void QmlSettings::setCoplayCardTarget(const QVariantMap &target)
+{
+    if (target == settings->GetCoPlayCardTarget())
+        return;
+    settings->SetCoPlayCardTarget(target);
+    emit coplayChanged();
+}
+
 int QmlSettings::coplayPcHeight() const
 {
     return settings->GetCoPlayPcHeight();

@@ -2106,6 +2106,14 @@ QVariantList QmlBackend::pcTargets() const
     return list;
 }
 
+QVariantList QmlBackend::cardDevices() const
+{
+    QVariantList list;
+    for (const PcSource::Target &t : PcSource::Devices())
+        list.append(t.ToMap());
+    return list;
+}
+
 QString QmlBackend::pcUnsupported() const
 {
     return PcSource::Unsupported();

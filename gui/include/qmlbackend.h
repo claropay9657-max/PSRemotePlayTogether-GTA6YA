@@ -234,6 +234,8 @@ public:
     // This computer as the game source (pcsource.h)
     /** The windows and screens that can be shared, as PcSource::Target::ToMap(). */
     Q_INVOKABLE QVariantList pcTargets() const;
+    /** The capture devices alone, for a console's picture from a capture card (Host page). */
+    Q_INVOKABLE QVariantList cardDevices() const;
     /** Why this computer cannot share a game; empty if it can. */
     Q_INVOKABLE QString pcUnsupported() const;
     /** Why friends cannot play a game on this computer (no controller driver); empty if they can. */

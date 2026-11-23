@@ -213,6 +213,11 @@ class SdeckHapticsWorker;
 		int pc_portal_fd = -1;
 		quint32 pc_portal_node = 0;
 		int pc_video_kbps = 15000;
+		/**
+		 * Hosting a console whose HDMI goes through a capture card: the card (PcSource::Target::ToMap())
+		 * whose picture and sound the guests get instead of the console's; empty: none.
+		 */
+		QVariantMap coplay_card;
 
 	StreamSessionConnectInfo() {}
 	StreamSessionConnectInfo(
@@ -577,6 +582,12 @@ class StreamSession : public QObject
 		void CoPlayOnSharingStarted();
 		QString CoPlayInviteFor(const QString &host) const;
 		void CoPlayOnHaptics(uint8_t *buf, size_t buf_size);
+		// A console on a capture card: the guests get the card's picture and sound
+		/** Starts the card, before the console's session; nothing without one. */
+		void CoPlayStartCard();
+		void CoPlayStopCard();
+		/** The card could not start or stopped: the guests get the console's again, the host is told why. */
+		void CoPlayCardFailed(const QString &notice);
 		void CoPlayUpdatePlayers();
 		void CoPlayUpdateControllerKind();
 		void CoPlayStartMedia();

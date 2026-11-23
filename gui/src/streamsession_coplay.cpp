@@ -23,10 +23,12 @@
 #include <coplay/host.h>
 #include <coplay/invite.h>
 #include <coplay/socket.h>
+#include <coplay/video.h>
 
 #include "coplaymeet.h"
 #include "coplayrooms.h"
 #include "keymap.h"
+#include "pcsource.h"
 
 #include <QBuffer>
 #include <QClipboard>
@@ -185,6 +187,30 @@ struct CoPlayState
 	// Going live (livestream.h): we stream right now, and we ask the others to leave us out of theirs
 	bool live = false;
 	bool no_streams = false;
+
+	// A console on a capture card (docs/pc-source.md): the guests get the card's picture and
+	// sound instead of the console's, their controllers still go to the console
+	/** The card, PcSource::Target::ToMap(); empty: none. Set before any thread runs. */
+	QVariantMap card_target;
+	std::unique_ptr<PcCapture> card; // session's thread
+	bool card_failed = false;        // session's thread: the guests are back on the console for good
+	/** What the console's session gives the guests (CoPlayInit), for going back to it. */
+	coplay::StreamInfo console_stream;
+	/** The card's picture goes to the guests now, the console's does not. */
+	std::atomic<bool> card_live{false};
+	/**
+	 * And the card's sound, once it has some: without (no permission, no sound input of the
+	 * card's name) the guests hear the console.
+	 */
+	std::atomic<bool> card_sound{false};
+	/**
+	 * The three below, and a change of card_live or card_sound together with what the guests
+	 * are told about it: no frame of the console's slips in between.
+	 */
+	std::mutex card_mutex;
+	/** The console's parameter sets and sound format, kept while the card's go to the guests. */
+	std::vector<uint8_t> console_config;
+	coplay::AudioHeader console_audio;
 };
 
 /** What a player's flags say, for the player list. */
@@ -350,6 +376,18 @@ static QString TitleIdOrEmpty(const QString &id)
 	return pattern.match(id).hasMatch() ? id : QString();
 }
 
+/** The sound of a PcCapture (this computer, a capture card): Opus as a console sends it, 48 kHz stereo, 10 ms frames. */
+static coplay::AudioHeader PcAudioHeader()
+{
+	coplay::AudioHeader audio;
+	audio.valid = true;
+	audio.channels = PcCapture::kAudioChannels;
+	audio.bits = 16;
+	audio.rate = PcCapture::kAudioRate;
+	audio.frame_size = PcCapture::kAudioFrameSamples;
+	return audio;
+}
+
 static QString JoinPolicyName(int policy)
 {
 	switch(policy)
@@ -415,7 +453,13 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 		QMetaObject::invokeMethod(this, [this] { SendFeedbackState(); }, Qt::QueuedConnection);
 	};
 	callbacks.on_keyframe_needed = [this] {
-		QMetaObject::invokeMethod(this, [this] { RequestIDR(); }, Qt::QueuedConnection);
+		QMetaObject::invokeMethod(this, [this] {
+			// The guests see a capture card's picture: its next one is a key frame
+			if(coplay && coplay->card && coplay->card_live)
+				coplay->card->RequestKeyframe();
+			else
+				RequestIDR();
+		}, Qt::QueuedConnection);
 	};
 	callbacks.on_guests_changed = [this] {
 		QMetaObject::invokeMethod(this, [this] { CoPlayUpdatePlayers(); }, Qt::QueuedConnection);
@@ -515,16 +559,13 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 		info.dualsense = false;
 		info.source = connect_info.pc_target.value(QStringLiteral("xbox")).toBool()
 			? coplay::GameSource::XboxApp : coplay::GameSource::Computer;
-		// Opus as a console sends it (PcCapture: 48 kHz stereo, 10 ms frames)
-		coplay::AudioHeader audio;
-		audio.valid = true;
-		audio.channels = 2;
-		audio.bits = 16;
-		audio.rate = 48000;
-		audio.frame_size = 480;
-		coplay->host->SetAudioHeader(audio);
+		coplay->host->SetAudioHeader(PcAudioHeader());
 	}
 	coplay->host->SetStreamInfo(info);
+	coplay->console_stream = info;
+	// A console on a capture card: the guests get the card's picture and sound (CoPlayStartCard)
+	if(!pc_source && !asleep_room)
+		coplay->card_target = connect_info.coplay_card;
 
 	coplay->invite_secret = config.secret;
 	coplay->invite_port = config.port;
@@ -854,11 +895,12 @@ void StreamSession::CoPlayStopThreads()
 {
 	if(!coplay)
 		return;
-	// First what sends through them: the microphone (its audio thread) and the camera
+	// First what sends through them: the microphone (its audio thread), the camera and a capture card
 	if(coplay->voice)
 		coplay->voice->CloseMicrophone();
 	if(coplay->camera)
 		coplay->camera->Stop();
+	CoPlayStopCard();
 	// Both calls return only after the respective thread has ended, so that none of
 	// its callbacks runs while the rest of the session is taken apart
 	CoPlayStopHost();
@@ -1412,6 +1454,8 @@ void StreamSession::CoPlayOnEvent(ChiakiEvent *event)
 		case CHIAKI_EVENT_QUIT:
 			CoPlayStopHost();
 			QMetaObject::invokeMethod(this, [this] { CoPlayUpdatePlayers(); }, Qt::QueuedConnection);
+			// The capture card is let go with the console: a session that gets it back opens it again
+			QMetaObject::invokeMethod(this, [this] { CoPlayStopCard(); }, Qt::QueuedConnection);
 			break;
 		case CHIAKI_EVENT_RUMBLE:
 			host->SetRumble(event->rumble.left, event->rumble.right);
@@ -1447,7 +1491,21 @@ bool StreamSession::CoPlayVideoSampleCb(uint8_t *buf, size_t buf_size, int32_t f
 	self->last_video_ms = chiaki_time_now_monotonic_ms();
 	// Before decoding: the guests get the stream exactly as the console sent it
 	if(self->coplay && self->coplay->host)
-		self->coplay->host->PushVideo(buf, buf_size, frames_lost, frame_recovered);
+	{
+		CoPlayState *c = self->coplay;
+		if(c->card_target.isEmpty())
+			c->host->PushVideo(buf, buf_size, frames_lost, frame_recovered);
+		else
+		{
+			// Unless they get a capture card's picture instead. The console's parameter sets are
+			// kept for going back to its picture, which the guests cannot decode without them.
+			std::lock_guard<std::mutex> lock(c->card_mutex);
+			if(coplay::ClassifyFrame(c->console_stream.codec, buf, buf_size) == coplay::FrameKind::Config)
+				c->console_config.assign(buf, buf + buf_size);
+			if(!c->card_live)
+				c->host->PushVideo(buf, buf_size, frames_lost, frame_recovered);
+		}
+	}
 	// Controller only: the picture is for the guests, this computer shows none
 	if(self->local_video_off)
 		return true;
@@ -1470,7 +1528,11 @@ void StreamSession::CoPlayAudioHeaderCb(ChiakiAudioHeader *header, void *user)
 		h.rate = header->rate;
 		h.frame_size = header->frame_size;
 		h.unknown = header->unknown;
-		self->coplay->host->SetAudioHeader(h);
+		// Kept for going back to it while a capture card's sound goes to the guests
+		std::lock_guard<std::mutex> lock(self->coplay->card_mutex);
+		self->coplay->console_audio = h;
+		if(!(self->coplay->card_live && self->coplay->card_sound))
+			self->coplay->host->SetAudioHeader(h);
 	}
 	// Controller only: the sound is for the guests; no output device is opened here
 	if(self->local_audio_off)
@@ -1481,7 +1543,8 @@ void StreamSession::CoPlayAudioHeaderCb(ChiakiAudioHeader *header, void *user)
 void StreamSession::CoPlayAudioFrameCb(uint8_t *buf, size_t buf_size, void *user)
 {
 	auto self = static_cast<StreamSession *>(user);
-	if(self->coplay->host && self->coplay->hosting)
+	// Not while a capture card's sound goes to the guests
+	if(self->coplay->host && self->coplay->hosting && !(self->coplay->card_live && self->coplay->card_sound))
 		self->coplay->host->PushAudio(buf, buf_size);
 	if(self->local_audio_off)
 		return;
@@ -1492,6 +1555,123 @@ void StreamSession::CoPlayOnHaptics(uint8_t *buf, size_t buf_size)
 {
 	if(coplay && coplay->host && coplay->hosting)
 		coplay->host->PushHaptics(buf, buf_size);
+}
+
+// ------------------------------------------------------------------ a console on a capture card
+
+void StreamSession::CoPlayStartCard()
+{
+	if(!coplay || !coplay->host || coplay->card_target.isEmpty() || coplay->card || coplay->card_failed)
+		return;
+	const PcSource::Target chosen = PcSource::Target::FromMap(coplay->card_target);
+	const PcSource::Target target = chosen.kind == QLatin1String("device") ? PcSource::Find(chosen) : PcSource::Target();
+	if(!target.Valid())
+	{
+		CoPlayCardFailed(tr("The capture card \"%1\" is not connected. Your friends see and hear the console through Remote Play.")
+			.arg(chosen.title));
+		return;
+	}
+
+	// The picture the console's session would give the guests, from the card
+	PcCapture::Config config;
+	config.target = target;
+	config.width = coplay->console_stream.width;
+	config.height = coplay->console_stream.height;
+	config.fps = coplay->console_stream.fps;
+	config.video_kbps = PcSource::BitrateFor(config.width, config.height, config.fps);
+	PcCapture::Callbacks callbacks;
+	// On the capture's threads
+	callbacks.on_video = [this](const uint8_t *data, size_t size) {
+		std::lock_guard<std::mutex> lock(coplay->card_mutex);
+		if(coplay->card_live)
+			coplay->host->PushVideo(data, size, 0, false);
+	};
+	callbacks.on_audio = [this](const uint8_t *data, size_t size) {
+		if(!coplay->card_live)
+			return;
+		if(!coplay->card_sound)
+		{
+			// The card's first sound: from now on the guests hear the card instead of the console
+			std::lock_guard<std::mutex> lock(coplay->card_mutex);
+			if(!coplay->card_live)
+				return;
+			coplay->card_sound = true;
+			coplay->host->SetAudioHeader(PcAudioHeader());
+		}
+		if(coplay->hosting)
+			coplay->host->PushAudio(data, size);
+	};
+	callbacks.on_error = [this](const std::string &why) {
+		const QString text = QString::fromStdString(why);
+		QMetaObject::invokeMethod(this, [this, text]() {
+			CoPlayCardFailed(tr("The capture card stopped: %1. Your friends see and hear the console through Remote Play again.").arg(text));
+		}, Qt::QueuedConnection);
+	};
+	ChiakiLog *session_log = GetChiakiLog();
+	callbacks.on_log = [session_log](const std::string &line) {
+		CHIAKI_LOGI(session_log, "Capture card: %s", line.c_str());
+	};
+
+	// What the guests are told: the card's picture, H.264 as large as the console's (its sound
+	// once there is some). They keep the console's controller: theirs still go to it.
+	coplay::StreamInfo info = coplay->console_stream;
+	info.codec = coplay::VideoCodec::H264;
+	{
+		std::lock_guard<std::mutex> lock(coplay->card_mutex);
+		coplay->host->SetStreamInfo(info);
+		// Before the card starts: its first parameter sets go to the guests
+		coplay->card_sound = false;
+		coplay->card_live = true;
+	}
+	coplay->card = std::make_unique<PcCapture>(config, callbacks);
+	std::string error;
+	if(!coplay->card->Start(&error))
+	{
+		coplay->card.reset();
+		CoPlayCardFailed(tr("The capture card cannot be used: %1. Your friends see and hear the console through Remote Play.")
+			.arg(QString::fromStdString(error)));
+		return;
+	}
+	CHIAKI_LOGI(GetChiakiLog(), "Capture card: the friends get the picture and sound of \"%s\", their controllers go to the console",
+		qPrintable(target.title));
+}
+
+void StreamSession::CoPlayStopCard()
+{
+	if(!coplay || !coplay->card)
+		return;
+	coplay->card_live = false;
+	coplay->card->Stop();
+	coplay->card.reset();
+}
+
+void StreamSession::CoPlayCardFailed(const QString &notice)
+{
+	if(!coplay || coplay->card_failed)
+		return;
+	coplay->card_failed = true;
+	CHIAKI_LOGW(GetChiakiLog(), "Capture card: %s", qPrintable(notice));
+	if(coplay->host)
+	{
+		// The console's picture and sound to the guests again, with what they need to decode
+		// it: its format, its parameter sets, and (below) a key frame
+		std::lock_guard<std::mutex> lock(coplay->card_mutex);
+		coplay->card_live = false;
+		coplay->card_sound = false;
+		coplay->host->SetStreamInfo(coplay->console_stream);
+		if(coplay->console_audio.valid)
+			coplay->host->SetAudioHeader(coplay->console_audio);
+		if(!coplay->console_config.empty())
+			coplay->host->PushVideo(coplay->console_config.data(), coplay->console_config.size(), 0, false);
+	}
+	if(coplay->card)
+	{
+		coplay->card->Stop();
+		coplay->card.reset();
+	}
+	if(connected)
+		RequestIDR();
+	emit CoPlayNotice(notice);
 }
 
 // ------------------------------------------------------------------ guest

@@ -170,8 +170,9 @@ void QmlBackend::joinCoPlay(const QString &invite_text, const QString &name, boo
             info.video_profile.max_fps = welcome.stream.fps;
         info.video_profile.codec = static_cast<ChiakiCodec>(welcome.stream.codec);
         info.enable_dualsense = welcome.stream.dualsense;
-        // A guest is never a host at the same time
+        // A guest is never a host at the same time, nor shares a capture card
         info.coplay_host_enabled = false;
+        info.coplay_card.clear();
         info.coplay_client = client;
         info.coplay_client_config = client_config;
 

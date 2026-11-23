@@ -74,6 +74,12 @@ QString Note();
 QList<Target> Targets();
 
 /**
+ * Only the capture devices (capture cards, and cameras: the system cannot tell them apart),
+ * for a console whose picture the guests get from a capture card.
+ */
+QList<Target> Devices();
+
+/**
  * The picture the guests get of a window or screen: the shape of the window (an ultrawide
  * game stays ultrawide, 4:3 to 32:9), at most `height` lines high and never larger than the
  * window itself.

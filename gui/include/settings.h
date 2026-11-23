@@ -334,6 +334,14 @@ class Settings : public QObject
 		void SetCoPlayPcHeight(int h)			{ settings.setValue("coplay/pc_height", h); }
 		/** A game on this computer: friends may use mouse and keyboard in it (pcinput.h). */
 		bool GetCoPlayPcKeyMouse() const		{ return settings.value("coplay/pc_keymouse", false).toBool(); }
+		/**
+		 * Hosting a console whose HDMI goes through a capture card: friends get the card's picture
+		 * and sound, their controllers still go through Remote Play. The card, as PcSource::Target::ToMap().
+		 */
+		bool GetCoPlayCard() const				{ return settings.value("coplay/card", false).toBool(); }
+		void SetCoPlayCard(bool on)				{ settings.setValue("coplay/card", on); }
+		QVariantMap GetCoPlayCardTarget() const	{ return settings.value("coplay/card_target").toMap(); }
+		void SetCoPlayCardTarget(const QVariantMap &t)	{ settings.setValue("coplay/card_target", t); }
 		/** Hosting a console: the room stays while it sleeps, and friends may wake it. */
 		bool GetCoPlayKeepRoomAsleep() const	{ return settings.value("coplay/keep_room_asleep", false).toBool(); }
 		void SetCoPlayKeepRoomAsleep(bool on)	{ settings.setValue("coplay/keep_room_asleep", on); }

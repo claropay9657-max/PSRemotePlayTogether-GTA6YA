@@ -516,6 +516,11 @@ QList<PcSource::Target> PcSource::Targets()
 	return list;
 }
 
+QList<PcSource::Target> PcSource::Devices()
+{
+	return PcDevice::Targets();
+}
+
 PcSource::Game PcSource::DetectGame(const Target &target)
 {
 	Game game;

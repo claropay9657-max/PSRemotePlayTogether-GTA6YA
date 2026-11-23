@@ -355,6 +355,14 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	if(this->dpad_touch_shortcut4 > 0)
 		this->dpad_touch_shortcut4 = 1 << (this->dpad_touch_shortcut4 - 1);
 	this->coplay_host_enabled = settings->GetCoPlayHostEnabled();
+	// A console on a capture card (Host page): the guests get the card's picture, in H.264. The
+	// console sends H.264 too, so that the guests can go back to its picture without joining again
+	// if the card stops (an app's decoder stays with the codec it joined with).
+	if(this->coplay_host_enabled && settings->GetCoPlayCard() && !settings->GetCoPlayCardTarget().isEmpty())
+	{
+		this->coplay_card = settings->GetCoPlayCardTarget();
+		this->video_profile.codec = CHIAKI_CODEC_H264;
+	}
 	this->coplay_port = settings->GetCoPlayPort();
 	this->coplay_secret = settings->GetCoPlaySecret();
 	this->coplay_name = settings->GetCoPlayName();
@@ -954,6 +962,8 @@ void StreamSession::Start()
 		AsleepStart();
 		return;
 	}
+	// A console on a capture card: the card's picture goes to the guests from the first one on
+	CoPlayStartCard();
 	ChiakiErrorCode err = chiaki_session_start(&session);
 	if(err != CHIAKI_ERR_SUCCESS)
 	{
