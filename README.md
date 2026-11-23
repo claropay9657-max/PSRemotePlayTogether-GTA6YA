@@ -15,6 +15,7 @@ PS5, PS4, PC, Mac and Xbox · everybody on one player, or each their own on a PC
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-0078d4?style=for-the-badge)](#-download)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-10b981?style=for-the-badge)](./COPYING)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Crypto90/PSRemotePlayTogether/build.yml?branch=main&style=for-the-badge&logo=githubactions)](https://github.com/Crypto90/PSRemotePlayTogether/actions)
+[![Reddit](https://img.shields.io/badge/Community-r%2FPSRemotePlayTogether-ff4500?logo=reddit&logoColor=white&style=for-the-badge)](https://www.reddit.com/r/PSRemotePlayTogether/)
 [![Ko-Fi](https://img.shields.io/badge/Support-Buy%20Me%20A%20Coffee-ff5e5b?logo=kofi&style=for-the-badge)](https://ko-fi.com/crypto90)
 [![Powered by GamerNova.net](https://img.shields.io/badge/Powered%20by-GamerNova.net-8c52ff?style=for-the-badge)](https://gamernova.net/)
 
@@ -25,7 +26,8 @@ PS5, PS4, PC, Mac and Xbox · everybody on one player, or each their own on a PC
   <a href="#-key-features"><b>Features</b></a> •
   <a href="#-quick-start"><b>Quick start</b></a> •
   <a href="#-streaming-with-obs"><b>OBS</b></a> •
-  <a href="#-faq"><b>FAQ</b></a>
+  <a href="#-faq"><b>FAQ</b></a> •
+  <a href="#-community-and-help"><b>Community</b></a>
 </p>
 
 </div>
@@ -480,6 +482,14 @@ build/coplay/coplay-sim host sample.h264 --voice --cam a.jpg,b.jpg
 It prints an invite to join with. With `--meet` and `--web` it also takes guests from a web browser and prints the link for them; [docs/web-guests.md](docs/web-guests.md) has the two commands for trying that on one machine. `coplay-sim` without arguments lists all options. `coplay-sim stun` asks the same servers the app asks for the invite for friends elsewhere, and prints the address this computer has on the internet.
 
 </details>
+
+---
+
+## 💬 Community and help
+
+- **[r/PSRemotePlayTogether](https://www.reddit.com/r/PSRemotePlayTogether/)** on Reddit: questions, guides, news and people to play with. Every release is announced there.
+- **Found a bug?** Report it under [Issues](https://github.com/Crypto90/PSRemotePlayTogether/issues), with the app's version, your system and, if you can, a log (**Settings → Updates & logs → Log folder**; switch on **Hide personal details** first).
+- In the app, both are one click away: **Settings → Updates & logs → Community** and **Report a problem**.
 
 ---
 
