@@ -32,10 +32,12 @@ DialogView {
         }
         return list;
     }
-    /** Which console, by its place in consoles; one past the last is this computer. */
+    /** Which console, by its place in consoles; one past the last is this computer, two past it just talking. */
     property int consoleChoice: 0
-    readonly property bool pcChosen: consoleChoice >= consoles.length
-    readonly property var chosen: !pcChosen ? consoles[consoleChoice] : null
+    readonly property bool pcChosen: consoleChoice === consoles.length
+    /** No game: voice, webcams and chat only, to meet before playing or to talk while each plays their own. */
+    readonly property bool talkChosen: consoleChoice > consoles.length
+    readonly property var chosen: consoleChoice < consoles.length ? consoles[consoleChoice] : null
 
     // This computer as the game source: a window or a screen of it (pcsource.h)
     /** Why this computer cannot share a game; empty if it can. */
@@ -141,12 +143,12 @@ DialogView {
     readonly property int mixMode: !pcChosen && Chiaki.settings.coplayMixMode === 3 ? 0 : Chiaki.settings.coplayMixMode
     readonly property string controlName: controlNames[mixMode] || controlNames[0]
     /** What the game runs on, as the room list says it. */
-    readonly property string consoleName: pcChosen ? (pcTarget && pcTarget.xbox ? "Xbox" : qsTr("PC")) : chosen ? (chosen.ps5 ? "PS5" : "PS4") : ""
+    readonly property string consoleName: talkChosen ? "" : pcChosen ? (pcTarget && pcTarget.xbox ? "Xbox" : qsTr("PC")) : chosen ? (chosen.ps5 ? "PS5" : "PS4") : ""
     readonly property string guestsText: Chiaki.settings.coplayMaxGuests === 1 ? qsTr("1 friend") : qsTr("Up to %1 friends").arg(Chiaki.settings.coplayMaxGuests)
 
     /** One line about what Start is about to start. */
     readonly property string summary: {
-        if (!chosen && !(pcChosen && pcTarget))
+        if (!chosen && !(pcChosen && pcTarget) && !talkChosen)
             return "";
         let parts = [];
         if (publicRoom) {
@@ -157,7 +159,7 @@ DialogView {
             parts.push(qsTr("Private session"));
         }
         parts.push(guestsText);
-        parts.push(controlName);
+        parts.push(talkChosen ? qsTr("Just talk") : controlName);
         return parts.join("  ·  ");
     }
 
@@ -191,14 +193,18 @@ DialogView {
     }
 
     buttonText: resting ? qsTr("Wake up & start") : qsTr("Start")
-    buttonEnabled: (pcChosen ? !pcUnsupported && !pcPermission && !!pcTarget : !!chosen) && !(publicRoom && !roomsOn)
+    buttonEnabled: (talkChosen || (pcChosen ? !pcUnsupported && !pcPermission && !!pcTarget : !!chosen)) && !(publicRoom && !roomsOn)
     // Start is in the bar at the bottom of the page (it shows buttonText and buttonEnabled)
     buttonVisible: false
     onAccepted: {
-        if (!chosen && !(pcChosen && pcTarget))
+        if (!chosen && !(pcChosen && pcTarget) && !talkChosen)
             return;
         // Whatever was typed last counts, also without pressing Enter
         Chiaki.settings.coplayRoomTitle = titleField.text;
+        if (talkChosen) {
+            Chiaki.hostTalk();
+            return;
+        }
         if (pcChosen) {
             // A console's way to play that this computer does not have stays as it was
             Chiaki.settings.coplayMixMode = mixMode;
@@ -562,7 +568,7 @@ DialogView {
 
                             GridLayout {
                                 Layout.fillWidth: true
-                                columns: Math.max(1, Math.min(dialog.consoles.length + 1, Math.floor((page.mainWidth + 10) / 270)))
+                                columns: Math.max(1, Math.min(dialog.consoles.length + 2, Math.floor((page.mainWidth + 10) / 270)))
                                 columnSpacing: 10
                                 rowSpacing: 10
 
@@ -602,6 +608,19 @@ DialogView {
 
                                     IconTile {
                                         iconName: "monitor"
+                                    }
+                                }
+
+                                // No game at all: the players talk, see each other and write
+                                ChoiceCard {
+                                    chosen: dialog.talkChosen
+                                    tick: true
+                                    title: qsTr("Just talk")
+                                    subtitle: qsTr("Voice, webcams and chat, no game: to meet before playing")
+                                    onClicked: dialog.consoleChoice = dialog.consoles.length + 1
+
+                                    IconTile {
+                                        iconName: "chat"
                                     }
                                 }
                             }
@@ -1270,6 +1289,8 @@ DialogView {
                                 C.Card {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
+                                    // Who controls a game: there is none to talk about
+                                    visible: !dialog.talkChosen
                                     radius: 16
                                     implicitHeight: controlColumn.implicitHeight + 18
 
@@ -1326,7 +1347,7 @@ DialogView {
                                 }
 
                                 C.ToggleRow {
-                                    visible: !dialog.pcChosen
+                                    visible: !!dialog.chosen
                                     iconName: "moon"
                                     title: qsTr("Guests may sleep it")
                                     subtitle: qsTr("Console rests when they leave")
@@ -1336,7 +1357,7 @@ DialogView {
 
                                 // The room stays while the console sleeps, and friends wake it to play on
                                 C.ToggleRow {
-                                    visible: !dialog.pcChosen
+                                    visible: !!dialog.chosen
                                     iconName: "power"
                                     title: qsTr("Room stays while it sleeps")
                                     subtitle: qsTr("Friends can wake the console")
@@ -1347,7 +1368,7 @@ DialogView {
                                 // The same setting as "On this computer" (Settings › General), where picture and
                                 // sound can also be switched off one by one
                                 C.ToggleRow {
-                                    visible: !dialog.pcChosen
+                                    visible: !!dialog.chosen
                                     iconName: "tv"
                                     title: qsTr("I play on the TV")
                                     subtitle: qsTr("No picture or sound here")

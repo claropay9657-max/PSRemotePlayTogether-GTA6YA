@@ -79,6 +79,7 @@ static void Usage()
 		"                          the host then stops, as a real one would with its console asleep\n"
 		"      --cam A.jpg,B.jpg   the host has a webcam: these pictures in turn, 8 per second\n"
 		"      --no-streams        the host asks to be left out of the others' live streams\n"
+		"      --talk              no game, as the app's \"Just talk\": no picture, no sound\n"
 		"                          (voice, webcam and name)\n"
 		"      --meet URL|default  let friends in without a forwarded port: leave a note at this\n"
 		"                          meeting point (see server/meeting-point). Needs curl.\n"
@@ -150,6 +151,7 @@ struct Options
 	bool chat = false;
 	bool guests_may_sleep = false;
 	bool no_streams = false;
+	bool talk = false;
 	std::string room_title, rooms, lang = "en", game = "Simulator", policy = "open", title_id, cover, preview, face;
 	int admit_after = 3;
 	bool refuse = false;
@@ -198,6 +200,7 @@ static bool ParseOptions(int argc, char **argv, Options &o)
 		else if(a == "--chat") o.chat = true;
 		else if(a == "--guests-may-sleep") o.guests_may_sleep = true;
 		else if(a == "--no-streams") o.no_streams = true;
+		else if(a == "--talk") o.talk = true;
 		else if(a == "--public") { if(!value(o.room_title)) return false; }
 		else if(a == "--rooms") { if(!value(o.rooms)) return false; }
 		else if(a == "--lang") { if(!value(o.lang)) return false; }
@@ -665,6 +668,12 @@ static int RunHost(const Options &o)
 	info.fps = static_cast<uint8_t>(o.fps);
 	info.ps5 = true;
 	info.dualsense = true;
+	// No game: this computer as the source with no picture (StreamInfo::TalkOnly())
+	if(o.talk)
+	{
+		info = StreamInfo();
+		info.source = GameSource::Computer;
+	}
 	host.SetStreamInfo(info);
 
 	Invite invite;
@@ -750,8 +759,8 @@ static int RunHost(const Options &o)
 	uint64_t ticks_10ms = 0;
 	bool rumbling = false;
 
-	// the console sends the parameter sets once at the start
-	for(const StreamItem &it : items)
+	// the console sends the parameter sets once at the start (no game: nothing)
+	for(const StreamItem &it : (o.talk ? std::vector<StreamItem>() : items))
 	{
 		if(it.config)
 		{
@@ -978,7 +987,8 @@ static int RunHost(const Options &o)
 			host.SendChat(line, embed, {});
 		}
 
-		if(now >= next_frame)
+		// No game (--talk): no picture at all
+		if(!o.talk && now >= next_frame)
 		{
 			next_frame += frame_interval;
 			if(next_frame < now)

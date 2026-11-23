@@ -35,7 +35,8 @@ server only helps the two find each other.
 | Rumble | where the browser has it (Chrome, Edge, Safari) |
 | The game's haptics | as rumble; the strength is set in the stream menu |
 | Voice chat | yes, both ways |
-| Text chat | yes, with link previews and emoji |
+| Text chat | yes, with emoji; the previews of links the others post show, but a link posted from a browser gets none: a page cannot open other sites, and the host's app does not open links for browser guests on purpose (anybody in a public room could make it open addresses in the host's own network) |
+| Just talk (no game) | yes: the host's **Just talk** shows "Just talking" in the browser as in the app |
 | Webcams | the others' and the own |
 | Player pictures | shown, and a browser guest can choose one of its own |
 | The display on the game picture, the stream menu, chat, options | the app's, see below |

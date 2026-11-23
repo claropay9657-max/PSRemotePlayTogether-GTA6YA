@@ -1067,7 +1067,7 @@ function setPictureOn(on) {
   applyWant();
   showStageNote();
   syncVoice();
-  if (menu) menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+  if (menu) menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture(), VideoPlayer.supported());
   if (player) applyPicture();
 }
 
@@ -1407,9 +1407,20 @@ function showPlayers() {
 /** The console sleeps and the room stays: who may, wakes it. */
 let wakeAsked = false;
 function showAsleep(s) {
-  const asleep = !!s.stream.asleep;
+  // Nobody shares a game ("Just talk" in the app): the same screen, with the app's words for it
+  const talk = s.stream.source === 1 && !s.stream.width && !s.stream.height;
+  const asleep = !!s.stream.asleep && !talk;
   if (!asleep) wakeAsked = false;
-  ui.asleep.hidden = !asleep;
+  ui.asleep.hidden = !asleep && !talk;
+  $('asleep-moon').textContent = talk ? '💬' : '☾';
+  if (talk) {
+    menu.setAsleep({ asleep: false });
+    $('asleep-title').textContent = 'Just talking';
+    $('asleep-spin').hidden = true;
+    $('asleep-text').hidden = false;
+    $('asleep-text').textContent = `No game is shared. Voice chat, webcams and the chat work as in a game: ${menuKeys()} opens the stream menu.`;
+    return;
+  }
   if (!asleep) {
     menu.setAsleep({ asleep: false });
     return;
@@ -1897,7 +1908,7 @@ function syncMenu() {
   syncConnection();
   syncVoice();
   menu.setSound(prefs.volume, prefs.voiceVolume, Sound.supported());
-  menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+  menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture(), VideoPlayer.supported());
   syncController();
   menu.setPresets(hudSettings.presets, hudSettings.active);
   menu.setUnread(unread);
@@ -1958,7 +1969,7 @@ function setPicture(mode, zoom) {
   remember('psrpt.pictureMode', prefs.mode);
   remember('psrpt.zoom', prefs.zoom);
   applyPicture();
-  menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+  menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture(), VideoPlayer.supported());
 }
 
 function setTouch(on, auto) {
@@ -2084,7 +2095,7 @@ function start() {
     onStats: () => {
       prefs.stats = !prefs.stats;
       remember('psrpt.stats', prefs.stats ? '1' : '0');
-      menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+      menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture(), VideoPlayer.supported());
       showStats();
     },
     onTouch: () => setTouch(!touch.visible, false),
@@ -2440,7 +2451,7 @@ function start() {
     if (mouseTouches()) e.preventDefault();
   });
   document.addEventListener('fullscreenchange', () => {
-    if (menu.open) menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
+    if (menu.open) menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture(), VideoPlayer.supported());
   });
   window.addEventListener('resize', applyPicture);
   window.addEventListener('gamepadconnected', () => {

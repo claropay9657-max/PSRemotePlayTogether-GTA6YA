@@ -448,7 +448,9 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	memset(&session, 0, sizeof(session));
 	// A game on this computer has no console either: picture, sound and controllers stay here
 	pc_source = connect_info.pc_source && !connect_info.coplay_client;
-	asleep_room = connect_info.coplay_asleep && !connect_info.coplay_client && !pc_source;
+	// Just talk is a room without a console like that of a console that sleeps, with nothing to wake
+	asleep_room = (connect_info.coplay_asleep || connect_info.coplay_talk) && !connect_info.coplay_client && !pc_source;
+	talk_room = asleep_room && connect_info.coplay_talk;
 	if(pc_source)
 	{
 		pc_target = connect_info.pc_target;

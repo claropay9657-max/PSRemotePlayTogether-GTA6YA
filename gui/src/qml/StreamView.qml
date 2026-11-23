@@ -605,6 +605,48 @@ Item {
         }
     }
 
+    // Nobody shares a game ("Just talk" on the Host page): voices, webcams and the chat only
+    Rectangle {
+        anchors.fill: parent
+        visible: !!Chiaki.session && Chiaki.session.coplayTalkOnly
+        color: "#07060f"
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 48, 560)
+            spacing: 14
+
+            C.Icon {
+                Layout.alignment: Qt.AlignHCenter
+                iconName: "chat"
+                size: 56
+                color: "#c4b5fd"
+            }
+
+            Label {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                font.pixelSize: 26
+                font.bold: true
+                color: "white"
+                text: qsTr("Just talking")
+            }
+
+            Label {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                font.pixelSize: 17
+                color: "#d4d4e8"
+                text: {
+                    const menu = Chiaki.controllers.length ? Chiaki.settings.stringForStreamMenuShortcut() : (Qt.platform.os === "osx" ? "⌘O" : "Ctrl+O");
+                    return qsTr("No game is shared. Voice chat, webcams and the chat work as in a game: %1 opens the stream menu.").arg(menu);
+                }
+            }
+        }
+    }
+
     // The menu over the whole game picture: it slides its parts in and out by itself, and
     // says when it is gone (onHidden above)
     Item {

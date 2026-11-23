@@ -103,6 +103,8 @@ struct CoPlayState
 	std::atomic<bool> may_sleep{false};
 	/** The host's console sleeps and the room stays; and whether this guest may wake it, and asked. */
 	std::atomic<bool> console_asleep{false};
+	/** The host shares no game: the players only talk. */
+	std::atomic<bool> talk_only{false};
 	std::atomic<bool> may_wake{false};
 	bool wake_asked = false;
 	/** The host lets this guest use mouse and keyboard; and whether it does now. */
@@ -550,7 +552,13 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	info.fps = static_cast<uint8_t>(connect_info.video_profile.max_fps);
 	info.ps5 = ps5;
 	info.dualsense = connect_info.enable_dualsense;
-	info.console_asleep = asleep_room;
+	info.console_asleep = asleep_room && !talk_room;
+	if(talk_room)
+	{
+		// No game: this computer as the source with no picture (StreamInfo::TalkOnly())
+		info = coplay::StreamInfo();
+		info.source = coplay::GameSource::Computer;
+	}
 	if(pc_source)
 	{
 		// H.264 from this computer's encoder; no DualSense features, no touchpad
@@ -612,7 +620,9 @@ void StreamSession::CoPlayStartRoom(const StreamSessionConnectInfo &connect_info
 	room.lang = connect_info.coplay_room_lang;
 	room.game = connect_info.coplay_room_game;
 	room.title_id = TitleIdOrEmpty(connect_info.coplay_room_title_id);
-	room.console = pc_source ? (connect_info.pc_target.value(QStringLiteral("xbox")).toBool() ? QStringLiteral("xbox") : QStringLiteral("pc"))
+	// Just talk runs on nothing: the room says no console
+	room.console = talk_room ? QString()
+		: pc_source ? (connect_info.pc_target.value(QStringLiteral("xbox")).toBool() ? QStringLiteral("xbox") : QStringLiteral("pc"))
 		: chiaki_target_is_ps5(connect_info.target) ? QStringLiteral("ps5") : QStringLiteral("ps4");
 	room.host = coplay->host_name;
 	room.policy = JoinPolicyName(coplay->join_policy);
@@ -1088,14 +1098,21 @@ void StreamSession::SetCoPlayMixMode(int mode)
 bool StreamSession::GetCoPlayConsoleAsleep() const
 {
 	if(asleep_room)
-		return true;
+		return !talk_room;
 	return IsCoPlayGuest() && coplay->console_asleep;
+}
+
+bool StreamSession::GetCoPlayTalkOnly() const
+{
+	if(talk_room)
+		return true;
+	return IsCoPlayGuest() && coplay->talk_only;
 }
 
 bool StreamSession::GetCoPlayMayWake() const
 {
 	if(asleep_room)
-		return true;
+		return !talk_room;
 	return IsCoPlayGuest() && coplay->console_asleep && coplay->may_wake;
 }
 
@@ -1877,6 +1894,9 @@ void StreamSession::CoPlayStartGuest()
 
 		// The host's console sleeps, or woke
 		if(coplay->console_asleep.exchange(s.stream.console_asleep) != s.stream.console_asleep)
+			QMetaObject::invokeMethod(this, [this] { emit CoPlayChanged(); }, Qt::QueuedConnection);
+		// Or shares no game at all
+		if(coplay->talk_only.exchange(s.stream.TalkOnly()) != s.stream.TalkOnly())
 			QMetaObject::invokeMethod(this, [this] { emit CoPlayChanged(); }, Qt::QueuedConnection);
 
 		coplay->participants = s.participants;

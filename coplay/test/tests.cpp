@@ -269,6 +269,31 @@ TEST(session_state_carries_the_game_source_and_each_own_mode)
 	CHECK(ReadSessionState(r2, t) && t.stream.source == GameSource::Computer);
 }
 
+TEST(session_state_says_just_talk_in_words_older_apps_read)
+{
+	// No game: this computer as the source with no picture size, which an app that does not
+	// know "Just talk" reads as a session from a computer that sends no picture yet
+	SessionState s;
+	s.stream = StreamInfo();
+	s.stream.source = GameSource::Computer;
+	CHECK(s.stream.TalkOnly());
+	std::vector<uint8_t> buf;
+	ByteWriter w(buf);
+	WriteSessionState(w, s);
+	SessionState t;
+	ByteReader r(buf.data(), buf.size());
+	CHECK(ReadSessionState(r, t) && t.stream.TalkOnly());
+	// A game on a computer, a console, or a console's picture size alone are not
+	StreamInfo game;
+	game.source = GameSource::Computer;
+	game.width = 1920;
+	game.height = 1080;
+	CHECK(!game.TalkOnly());
+	StreamInfo console;
+	console.source = GameSource::Console;
+	CHECK(!console.TalkOnly());
+}
+
 TEST(largest_session_state_fits_one_packet)
 {
 	SessionState s;

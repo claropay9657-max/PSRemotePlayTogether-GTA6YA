@@ -998,13 +998,9 @@ export class StreamMenu {
    * A narrow window (a phone) has no room for the connection's numbers beside where one
    * plays: the numbers go, last first, rather than the words.
    */
+  /** As the app: the numbers stay, and where the line is too narrow its words end in "…" (CSS). */
   fitConnection() {
-    const chips = [this.chipDropped, this.chipLoss, this.chipRate];
-    for (const c of chips) c.classList.remove('squeezed');
-    for (const c of chips) {
-      if (this.where.scrollWidth <= this.where.clientWidth + 1) break;
-      if (!c.hidden) c.classList.add('squeezed');
-    }
+    for (const c of [this.chipDropped, this.chipLoss, this.chipRate]) c.classList.remove('squeezed');
   }
 
   /**
@@ -1206,8 +1202,13 @@ export class StreamMenu {
   }
 
   /** @param {'fit'|'zoom'|'stretch'} mode @param {number} zoom -1..4 */
-  setPicture(mode, zoom, full, stats, hasPicture) {
-    this.pictureGroup.hidden = !hasPicture;
+  /**
+   * @param {boolean} hasPicture this browser shows the picture now
+   * @param {boolean} [canPicture] it can show pictures at all: Fit, Zoom and Stretch stay, as in
+   *   the app, also while only the controller plays along
+   */
+  setPicture(mode, zoom, full, stats, hasPicture, canPicture = hasPicture) {
+    this.pictureGroup.hidden = !canPicture;
     this.fullButton.hidden = !hasPicture;
     this.statsButton.hidden = !hasPicture;
     this.moreGroup.hidden = !hasPicture && this.aimButton.hidden;

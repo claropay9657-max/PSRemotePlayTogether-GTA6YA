@@ -2240,6 +2240,44 @@ void QmlBackend::hostThisComputer(const QVariantMap &target_map)
     startThisComputer(target, nullptr, -1, 0);
 }
 
+void QmlBackend::hostTalk()
+{
+    if (session) {
+        qCWarning(chiakiGui) << "Another session is already active";
+        return;
+    }
+    settings->SetCoPlayHostEnabled(true);
+    if (settings->GetCoPlayPublic()) {
+        coplay::Secret secret;
+        if (!coplay::SecretFromString(settings->GetCoPlayPublicSecret().toStdString(), secret))
+            settings->SetCoPlayPublicSecret(QString::fromStdString(coplay::SecretToString(coplay::GenerateSecret())));
+    }
+    window->setWindowAdjustable(false);
+    resume_session = false;
+    // No console to wake and nothing to capture: the room opens at once
+    wakeup_nickname.clear();
+    StreamSessionConnectInfo info(
+            settings,
+            CHIAKI_TARGET_PS5_1,
+            QStringLiteral("127.0.0.1"),
+            QString(),
+            QByteArray(),
+            QByteArray(),
+            QString(),
+            QString(),
+            false,
+            false,
+            false,
+            false);
+    info.coplay_talk = true;
+    info.coplay_card.clear();
+    info.enable_dualsense = false;
+    info.coplay_room_game = QString();
+    info.coplay_room_title_id = QString();
+    qCInfo(chiakiGui) << "Play Together: just talking, no game";
+    createSession(info);
+}
+
 void QmlBackend::startThisComputer(const PcSource::Target &target, std::shared_ptr<PcPortal> portal, int portal_fd, quint32 portal_node)
 {
     settings->SetCoPlayHostEnabled(true);

@@ -260,6 +260,8 @@ public:
     Q_INVOKABLE QVariantMap pcPicture(const QVariantMap &target, int height) const;
     /** Host: share a window or a screen of this computer, as set up on the Host page. */
     Q_INVOKABLE void hostThisComputer(const QVariantMap &target);
+    /** A session without a game: the players only talk, see each other and write ("Just talk"). */
+    Q_INVOKABLE void hostTalk();
     Q_INVOKABLE void stopSession(bool sleep);
     /** Version of the chiaki-ng this app is built on; the app's own is the application version. */
     QString chiakiVersion() const { return QStringLiteral(CHIAKI_VERSION); }

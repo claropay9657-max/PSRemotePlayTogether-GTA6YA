@@ -418,6 +418,13 @@ struct StreamInfo
 	/** The console sleeps and the room stays: no picture until somebody wakes it. */
 	bool console_asleep = false;
 
+	/**
+	 * Nobody shares a game: the players only talk, see each other and write ("Just talk").
+	 * Said without a new kind of source, which older apps would not read: this computer as the
+	 * source, with no picture size.
+	 */
+	bool TalkOnly() const { return source == GameSource::Computer && width == 0 && height == 0; }
+
 	bool operator==(const StreamInfo &o) const
 	{
 		return codec == o.codec && width == o.width && height == o.height && fps == o.fps && ps5 == o.ps5

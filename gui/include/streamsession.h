@@ -203,6 +203,8 @@ class SdeckHapticsWorker;
 		 * may wake the console (QmlBackend::enterAsleepRoom()).
 		 */
 		bool coplay_asleep = false;
+		/** Hosting no game at all: the players only talk, see each other and write ("Just talk"). */
+		bool coplay_talk = false;
 		// This computer as the game source instead of a console (pcsource.h, docs/pc-source.md):
 		// a window or a screen of it, shared with the guests, who play on virtual controllers
 		bool pc_source = false;
@@ -287,6 +289,8 @@ class StreamSession : public QObject
 	Q_PROPERTY(bool coplayConsoleAsleep READ GetCoPlayConsoleAsleep NOTIFY CoPlayChanged)
 	/** This player may wake it: the host always, a guest where the host lets guests. */
 	Q_PROPERTY(bool coplayMayWake READ GetCoPlayMayWake NOTIFY CoPlayChanged)
+	/** No game is shared: the players only talk (the host's "Just talk"). */
+	Q_PROPERTY(bool coplayTalkOnly READ GetCoPlayTalkOnly NOTIFY CoPlayChanged)
 	/** Asked to wake it, and waiting for the console. */
 	Q_PROPERTY(bool coplayWaking READ GetCoPlayWaking NOTIFY CoPlayChanged)
 	// This computer shows no picture / plays no sound of the console in this session: the host plays
@@ -491,6 +495,8 @@ class StreamSession : public QObject
 		// This computer as the game source (streamsession_pc.cpp)
 		bool pc_source = false;
 		bool asleep_room = false;
+		/** The room has no game at all ("Just talk"): an asleep room without a console to wake. */
+		bool talk_room = false;
 		bool asleep_finished = false;
 		bool keep_guests = false;
 		void AsleepStart();
@@ -656,6 +662,7 @@ class StreamSession : public QObject
 		/** The guests wait when this session ends, for the one that comes next (asleep room, waking). */
 		void SetKeepGuests(bool keep) { keep_guests = keep; }
 		bool GetCoPlayConsoleAsleep() const;
+		bool GetCoPlayTalkOnly() const;
 		bool GetCoPlayMayWake() const;
 		bool GetCoPlayWaking() const;
 		/** Wakes the sleeping console: a guest asks the host, the host does it. */
