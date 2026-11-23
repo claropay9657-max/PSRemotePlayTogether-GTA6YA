@@ -22,7 +22,6 @@ const SLOT_COLORS = ['#b18cff', '#00f2ff', '#34d399', '#f472b6', '#fbbf24', '#60
 const RUMBLE = [[0, 'Rumble off'], [0.5, 'Rumble weak'], [1, 'Rumble normal'], [2, 'Rumble strong']];
 
 /** What this browser sends of its webcam, by the index the page keeps. */
-const CAM_SIZES = ['Small (320 × 180)', 'Medium (480 × 270)', 'Large (640 × 360)'];
 
 /**
  * The app's line icons (gui/res/ui), as stroke width and drawing; the last few
@@ -51,6 +50,7 @@ const ICONS = {
   stats: [2, '<path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/>'],
   keyboard: [2, '<rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>'],
   close: [2.4, '<path d="M6 6l12 12M18 6 6 18"/>'],
+  moon: [2, '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'],
   info: [2, '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>'],
   play: [0, '<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>'],
   touch: [2, '<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>'],
@@ -134,6 +134,7 @@ export class StreamMenu {
     this.tiles = new Map();
     /** The last messages, newest last. */
     this.messages = [];
+    this.pendingLines = new Map();
     /** The open list: {el, owner, where, fill, kind, slot}. */
     this.popup = null;
     this.voice = { voice: false, voiceOn: false, micMuted: false, deafened: false, cam: false, camOn: false, camSize: 1, pictureOff: false, pictureSwitch: false, keyMouse: false, keyMouseOn: false, noStreams: false };
@@ -223,9 +224,17 @@ export class StreamMenu {
     this.roomTitle = el('div', 'mroom-title', 'Play Together');
     this.roomLine = el('div', 'mroom-line');
     roomHead.append(this.roomTitle, this.roomLine);
-    this.roomNote = el('div', 'mroom-note', 'Controller only: your controller plays along, rumble too');
-    this.roomNote.hidden = true;
-    room.append(roomHead, this.roomNote);
+    // The console sleeps and the room stays: who may, wakes it from here, as in the app
+    this.asleepRow = el('div', 'masleep');
+    this.asleepText = el('span', 'masleep-text');
+    this.wakeButton = button('mwake', 'Wake the console', () => h.onWake());
+    this.asleepRow.append(icon('moon', 22, 'masleep-icon'), this.asleepText, this.wakeButton);
+    this.asleepRow.hidden = true;
+    // A guest the host lets play with mouse and keyboard, and picture and sound or the controller
+    // only: the app's two switches, with their lines
+    this.keyMouseRow = this.switchRow('Mouse and keyboard', () => h.onKeyMouse());
+    this.pictureRow = this.switchRow('Picture and sound', () => h.onPicture());
+    room.append(roomHead, this.asleepRow, this.keyMouseRow, this.pictureRow);
 
     // Everybody who is here
     this.playersBox = el('div', 'mplayers');
@@ -242,22 +251,14 @@ export class StreamMenu {
     this.camButton = this.ownSwitch(() => h.onCam());
     this.leaveVoiceButton = this.ownSwitch(() => h.onVoice(false));
     this.leaveVoiceButton.setAttribute('aria-label', 'Leave voice chat');
-    // Whether players who go live from the app may show us in their streams
-    this.streamsButton = this.ownSwitch(() => h.onNoStreams());
-    // Picture and sound here, or the controller only: any time, as in the app
-    this.pictureButton = this.ownSwitch(() => h.onPicture());
-    // Mouse and keyboard for the game on the host's computer, where the host allows it
-    this.keyMouseButton = this.ownSwitch(() => h.onKeyMouse());
-    this.own.append(this.voiceButton, this.micButton, this.soundButton, this.camButton, this.leaveVoiceButton, this.streamsButton,
-      this.pictureButton, this.keyMouseButton);
+    this.own.append(this.voiceButton, this.micButton, this.soundButton, this.camButton, this.leaveVoiceButton);
 
-    // While the webcam runs: what this browser sends of it
+    // The rest of voice and webcam (the others' volume, the webcam's size, being left out of
+    // streams) is in the window of that name, as in the app's settings
     this.camRow = el('div', 'mcamsize');
-    this.camSizeButton = this.dockButton({ text: CAM_SIZES[1], chevron: true });
-    this.camSizeButton.addEventListener('click', () => this.openMenu(this.camSizeButton, 'below', (m) => this.camSizeMenu(m)));
-    this.camSizeButton.setAttribute('aria-label', 'What my webcam sends');
-    this.camRow.append(el('div', 'mlabel', 'My webcam sends'), this.camSizeButton);
-    this.camRow.hidden = true;
+    this.voiceSettings = button('mpill', '', () => h.onVoiceSettings());
+    this.voiceSettings.append(icon('sliders', 15), el('span', '', 'Voice & webcam…'));
+    this.camRow.append(this.voiceSettings);
 
     // The chat: the last messages, newest at the bottom, and a field to write in
     this.chat = el('div', 'mchat');
@@ -267,7 +268,11 @@ export class StreamMenu {
     this.openBig = button('mpill', '', () => h.onChat());
     this.openBig.append(icon('chat', 15), el('span', '', 'Open big'));
     this.openBig.setAttribute('aria-label', 'Open the chat');
-    chatHead.append(el('div', 'mlabel', 'Chat'), this.unreadPill, el('div', 'mspace'), this.openBig);
+    // The key for the big chat, as the app shows its own; Ctrl+T is the browser's, so Alt+T here
+    const chatKey = el('span', 'mchat-key', /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌥T' : 'Alt+T');
+    chatKey.setAttribute('aria-hidden', 'true');
+    this.openBig.setAttribute('aria-keyshortcuts', 'Alt+T');
+    chatHead.append(el('div', 'mlabel', 'Chat'), this.unreadPill, el('div', 'mspace'), chatKey, this.openBig);
     this.chatList = el('div', 'mchat-list');
     this.chatEmpty = el('div', 'mchat-empty', 'No messages yet. Say hi!');
     this.chatLines = el('div', 'mchat-lines');
@@ -317,13 +322,6 @@ export class StreamMenu {
       this.volumeText);
     this.soundGroup.title = 'Game volume';
 
-    // The voices of the voice chat, while one is in it
-    this.voicesGroup = el('div', 'mgroup tight');
-    this.voiceVolume = bar(0, 100, 1, (v) => h.onVoiceVolume(v));
-    this.voiceVolumeText = el('span', 'mvalue');
-    this.voicesGroup.append(icon('headphones', 17, 'mgroup-icon'), this.voiceVolume, this.voiceVolumeText);
-    this.voicesGroup.title = 'Voices';
-    this.voicesGroup.hidden = true;
 
     // Picture: fit, zoom or stretch
     this.pictureGroup = el('div', 'mgroup');
@@ -370,8 +368,8 @@ export class StreamMenu {
 
     // Thin upright lines between the parts, while the dock is on one line
     this.lines = [el('div', 'mline'), el('div', 'mline'), el('div', 'mline')];
-    this.sections = [[this.soundGroup, this.voicesGroup], [this.pictureGroup, this.zoomGroup], [this.padGroup], [this.moreGroup]];
-    this.dock.append(this.soundGroup, this.voicesGroup, this.lines[0], this.pictureGroup, this.zoomGroup, this.lines[1],
+    this.sections = [[this.soundGroup], [this.pictureGroup, this.zoomGroup], [this.padGroup], [this.moreGroup]];
+    this.dock.append(this.soundGroup, this.lines[0], this.pictureGroup, this.zoomGroup, this.lines[1],
       this.padGroup, this.lines[2], this.moreGroup);
 
     r.append(this.dim, this.top, this.panel, this.dock);
@@ -399,6 +397,28 @@ export class StreamMenu {
   }
 
   /** One of one's own switches: an icon over a word. */
+  /** One of the app's switch rows: what it is, a line saying what happens, and the switch. */
+  switchRow(title, onToggle) {
+    const r = el('label', 'mtoggle');
+    const text = el('span', 'mtoggle-text');
+    const line = el('small', '');
+    text.append(el('b', '', title), line);
+    const input = el('input', 'switch');
+    input.type = 'checkbox';
+    input.setAttribute('role', 'switch');
+    input.setAttribute('aria-label', title);
+    input.addEventListener('change', () => onToggle());
+    r.append(text, input);
+    r.input = input;
+    r.set = (on, words) => {
+      input.checked = on;
+      line.textContent = words;
+      input.setAttribute('aria-description', words);
+    };
+    r.hidden = true;
+    return r;
+  }
+
   ownSwitch(onClick) {
     const b = button('mown-btn', '', onClick);
     b.drawn = '';
@@ -825,10 +845,17 @@ export class StreamMenu {
     const name = nameOf(p);
     const head = el('div', 'mmenu-head');
     const text = el('div', 'mmenu-who');
-    let state = p.canControl ? 'Plays along' : 'Watching';
-    if (p.host) state = 'Host';
-    else if (p.onlyHost) state = 'Watching · only the host plays';
-    else if (p.web) state = p.canControl ? 'From a web browser · plays along' : 'From a web browser · watching';
+    // The app's line under the name, in the app's order of checks
+    const noPad = p.controller === 0 ? ' · no controller connected' : '';
+    let state;
+    if (p.eachOwn && p.host) state = 'Host · player 1';
+    else if (p.host) state = 'Host';
+    else if (p.eachOwn) {
+      state = p.player > 0 ? (p.mayControl ? `Player ${p.player}` : `Player ${p.player} · watching`)
+        : 'Watching · no controller of their own free';
+    } else if (p.onlyHost) state = 'Watching · only the host plays';
+    else if (p.web) state = p.canControl ? 'From a web browser · plays along' + noPad : 'From a web browser · watching';
+    else state = p.canControl ? 'Plays along' + noPad : 'Watching';
     text.append(el('div', 'mmenu-name', name), el('div', 'mmenu-state', state));
     head.append(face('mmenu-face', p), text);
     m.append(head);
@@ -874,12 +901,6 @@ export class StreamMenu {
     this.entry(m, { icon: 'sliders', text: 'Options…', onClick: () => this.h.onOptions() });
   }
 
-  camSizeMenu(m) {
-    CAM_SIZES.forEach((label, i) => {
-      this.entry(m, { text: label, radio: true, chosen: i === this.voice.camSize, onClick: () => this.h.onCamSize(i) });
-    });
-  }
-
   // ------------------------------------------------------------ the chat
 
   send() {
@@ -910,7 +931,13 @@ export class StreamMenu {
   /** @param {{slot: number, name: string, text: string, embed: object|null}} m */
   addChat(m) {
     this.messages.push(m);
-    this.chatLines.append(this.chatLine(m));
+    const line = this.chatLine(m);
+    // One's own on its way: dimmed until the host has it, as in the app
+    if (m.pending) {
+      line.classList.add('pending');
+      this.pendingLines.set(m.id, { line, m });
+    }
+    this.chatLines.append(line);
     while (this.messages.length > 30) {
       this.messages.shift();
       this.chatLines.firstElementChild.remove();
@@ -918,7 +945,24 @@ export class StreamMenu {
     this.chatEmpty.hidden = true;
   }
 
+  /** One's own message arrived (it shows anew, as everybody's), or the host never answered. */
+  chatSettled(id, failed) {
+    const p = this.pendingLines.get(id);
+    if (!p) return;
+    this.pendingLines.delete(id);
+    if (failed) {
+      p.line.classList.remove('pending');
+      p.line.append(el('span', 'mchat-failed', ' · not sent'));
+      return;
+    }
+    const i = this.messages.indexOf(p.m);
+    if (i >= 0) this.messages.splice(i, 1);
+    p.line.remove();
+    this.chatEmpty.hidden = this.messages.length > 0;
+  }
+
   clearChat() {
+    this.pendingLines.clear();
     this.messages = [];
     this.chatLines.replaceChildren();
     this.chatEmpty.hidden = false;
@@ -979,27 +1023,15 @@ export class StreamMenu {
     this.soundButton.set(v.deafened ? 'speaker-off' : 'headphones', v.deafened ? 'Voices off' : 'Voices on', v.deafened ? 'bad' : '');
     this.camButton.set('camera', v.camOn ? 'Webcam on' : 'Webcam off', v.camOn ? 'good' : '');
     this.leaveVoiceButton.set('leave', 'Leave voice', 'dim');
-    this.streamsButton.set('broadcast', v.noStreams ? 'Not in streams' : 'In streams', v.noStreams ? 'bad' : '');
-    this.streamsButton.setAttribute('aria-label', v.noStreams
-      ? 'Left out of live streams: players who go live do not show your voice, webcam or name'
-      : 'Players who go live may show your voice, webcam and name');
-    this.keyMouseButton.hidden = !v.keyMouse;
-    // The app's switch "Mouse and keyboard", with its lines (a click on the picture catches the mouse here)
-    this.keyMouseButton.set('keyboard', 'Mouse and keyboard', v.keyMouseOn ? 'good' : '');
-    this.keyMouseButton.setAttribute('aria-label', v.keyMouseOn
-      ? 'Mouse and keyboard, on: they go to the game when you click the picture. Esc lets them go'
-      : 'Mouse and keyboard, off: the host lets you play with them too');
-    this.pictureButton.hidden = !v.pictureSwitch;
-    // The app's switch "Picture and sound", with its lines
-    this.pictureButton.set(v.pictureOff ? 'gamepad' : 'eye', 'Picture and sound', v.pictureOff ? 'dim' : 'good');
-    this.pictureButton.setAttribute('aria-label', v.pictureOff
-      ? 'Picture and sound, off. Controller only: your controller plays along, rumble too'
-      : 'Picture and sound, on: the game on this computer too, as the host sends it');
-    this.camRow.hidden = !v.cam || !v.camOn;
-    this.camSizeButton.label.textContent = CAM_SIZES[v.camSize] || CAM_SIZES[1];
-    this.roomNote.hidden = !v.pictureOff;
-    this.voicesGroup.hidden = !this.hasSound || !v.voiceOn;
-    if (this.popup && this.popup.owner === this.camSizeButton) this.refreshPopup();
+    // The app's switch "Mouse and keyboard" (a click on the picture catches the mouse here, Esc lets it go)
+    this.keyMouseRow.hidden = !v.keyMouse;
+    this.keyMouseRow.set(!!v.keyMouseOn, v.keyMouseOn ? `They go to the game: click the picture. Esc or ${this.menuKey || 'Ctrl+O'} lets go.`
+      : 'The host lets you play with them too');
+    // The app's switch "Picture and sound"
+    this.pictureRow.hidden = !v.pictureSwitch;
+    this.pictureRow.set(!v.pictureOff, v.pictureOff ? 'Controller only: your controller plays along, rumble too'
+      : 'The game on this computer too, as the host sends it');
+    this.camRow.hidden = !v.voice && !v.cam;
     this.layoutSoon();
     this.recoverSoon();
   }
@@ -1151,12 +1183,26 @@ export class StreamMenu {
   setSound(volume, voices, hasSound) {
     this.hasSound = hasSound;
     this.soundGroup.hidden = !hasSound;
-    this.voicesGroup.hidden = !hasSound || !this.voice.voiceOn;
     this.volume.set(volume);
     this.volumeText.textContent = Math.round(volume) + ' %';
-    this.voiceVolume.set(voices);
-    this.voiceVolumeText.textContent = Math.round(voices) + ' %';
     this.layoutSoon();
+  }
+
+  /**
+   * The console sleeps and the room stays, as the app's panel says it.
+   * @param {{asleep: boolean, mayWake: boolean, waking: boolean}} s
+   */
+  setAsleep(s) {
+    this.asleepRow.hidden = !s.asleep;
+    this.asleepText.textContent = s.waking ? 'Waking the console…'
+      : s.mayWake ? 'The console is asleep. Wake it to play on.' : 'The console is asleep. The host can wake it.';
+    this.wakeButton.hidden = !s.mayWake || s.waking;
+    this.layoutSoon();
+  }
+
+  /** What opens the menu, for the lines that name it. */
+  setMenuKey(text) {
+    this.menuKey = text;
   }
 
   /** @param {'fit'|'zoom'|'stretch'} mode @param {number} zoom -1..4 */

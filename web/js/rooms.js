@@ -111,11 +111,20 @@ export function consoleName(kind) {
   return { ps5: 'PS5', ps4: 'PS4', pc: 'PC', xbox: 'Xbox' }[kind] || '';
 }
 
+/** The app's orders of the list: most players, most free places, newest, open longest. */
+const ORDERS = [
+  (a, b) => b.players - a.players,
+  (a, b) => (b.max - b.players) - (a.max - a.players),
+  (a, b) => a.since - b.since,
+  (a, b) => b.since - a.since,
+];
+
 /**
- * The rooms a search shows: every word in the title, the game, the host or the
- * language, in the chosen language, the ones a browser can join first.
+ * The rooms a search shows: every word in the title, the game, the host or the language, in
+ * the chosen language and order (`sort`, as the app's). Full rooms last, as in the app; before
+ * that, the ones a browser can join, which only a browser has to ask.
  */
-export function filterRooms(rooms, { search = '', lang = '', system = '', hideFull = false, openOnly = false, twitchOnly = false } = {}) {
+export function filterRooms(rooms, { search = '', lang = '', system = '', hideFull = false, openOnly = false, twitchOnly = false, sort = 0 } = {}) {
   const words = search.toLowerCase().split(/\s+/).filter((w) => w);
   return rooms
     .filter((r) => {
@@ -128,7 +137,8 @@ export function filterRooms(rooms, { search = '', lang = '', system = '', hideFu
       return words.every((w) => hay.includes(w));
     })
     .sort((a, b) => {
-      const can = (r) => (r.web && r.compatible && !r.full ? 0 : 1);
-      return can(a) - can(b) || b.players - a.players || b.since - a.since;
+      const can = (r) => (r.web && r.compatible ? 0 : 1);
+      const by = ORDERS[sort] || ORDERS[0];
+      return (a.full === b.full ? 0 : a.full ? 1 : -1) || can(a) - can(b) || by(a, b);
     });
 }

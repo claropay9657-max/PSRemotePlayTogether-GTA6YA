@@ -839,10 +839,84 @@ h3 {
   align-items: start;
 }
 
-.rooms-aside {
+/* Beside the list: finding a room, and who joins (the app's "You join as") */
+.rooms-side {
   position: sticky;
   top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rooms-aside,
+.you-card {
   padding: 16px;
+}
+
+.you-card .who {
+  gap: 12px;
+}
+
+:where(.front) .you-card button.avatar {
+  width: 48px;
+  height: 48px;
+  font-size: 21px;
+}
+
+.you-card .toggle {
+  margin-top: 12px;
+}
+
+.you-noname {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.you-card .status-line {
+  margin-top: 12px;
+}
+
+.you-card .problem {
+  margin: 12px 0 0;
+}
+
+.row.you-more {
+  margin-top: 12px;
+}
+
+/* The order of the rooms: a row with a round mark each, as the app's */
+.order {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.choice:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.choice:has(input:checked) {
+  background: rgba(140, 82, 255, 0.16);
+}
+
+.choice input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #a77bff;
 }
 
 .find {
@@ -1440,7 +1514,7 @@ button.pill-link {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .rooms-aside {
+  .rooms-side {
     position: static;
   }
 
@@ -1450,17 +1524,12 @@ button.pill-link {
   }
 }
 
+/* As the app: above the list, finding a room and who joins side by side */
 @media (min-width: 600px) and (max-width: 899px) {
-  .find {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
-    align-items: end;
-  }
-
-  .filters {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 2px 24px;
+  .rooms-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
   }
 }
 

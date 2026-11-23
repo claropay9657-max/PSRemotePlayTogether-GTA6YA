@@ -6,6 +6,9 @@
 // four elements with a switch, a place and a size each, the same looks, the
 // same notes, the same arrange mode. What it looks like is in css/game.css.
 
+
+/** The app's move arrows (gui/res/twitch/move.svg) on the title of an element while arranging. */
+const MOVE_ICON = '<svg width="12" height="12" viewBox="0 0 120 120" aria-hidden="true" focusable="false"><path d="M60 10 V110 M10 60 H110 M60 10 L40 30 M60 10 L80 30 M60 110 L40 90 M60 110 L80 90 M10 60 L30 40 M10 60 L30 80 M110 60 L90 40 M110 60 L90 80" stroke="#04262a" stroke-width="12" fill="none" stroke-linecap="round"/></svg>';
 import { button, el } from './dom.js';
 
 // ------------------------------------------------------------------ one controller
@@ -300,7 +303,10 @@ export class Hud {
       frame: el('div', 'hud-frame'),
       tools: el('div', 'hud-tools'),
     };
-    e.titleEl = el('div', 'hud-tool-title', title);
+    // The app's title pill: the move arrows and the element's name
+    e.titleEl = el('div', 'hud-tool-title');
+    e.titleEl.innerHTML = MOVE_ICON;
+    e.titleEl.append(el('span', '', title));
     e.toggle = button('hud-tool', 'Hide');
     const smaller = button('hud-tool', '−');
     const larger = button('hud-tool', '+');
@@ -369,16 +375,14 @@ export class Hud {
     this.settings.set(e.key + '_scale', Math.max(40, Math.min(250, Math.round(this.sizeOf(e) * 100) + step)));
   }
 
+  /** The app's bar while arranging: one line, Reset and Done, low on the picture. */
   buildCard() {
     const card = el('div', 'hud-card');
     card.hidden = true;
-    const title = el('div', 'hud-card-title', 'Arrange the display');
-    this.cardText = el('div', 'hud-card-text');
-    const buttons = el('div', 'hud-card-buttons');
-    const reset = button('gbtn flat', 'Reset places and sizes', () => this.settings.resetPlacement());
-    const done = button('gbtn highlighted', 'Done', () => this.setEditing(false));
-    buttons.append(reset, done);
-    card.append(title, this.cardText, buttons);
+    const reset = button('hud-card-reset', 'Reset', () => this.settings.resetPlacement());
+    reset.title = 'Everything back to its first place and size';
+    const done = button('hud-card-done', 'Done', () => this.setEditing(false));
+    card.append(el('span', 'hud-card-title', 'Arranging – drag anything where you want it'), reset, done);
     return card;
   }
 
@@ -462,8 +466,6 @@ export class Hud {
     this.root.classList.toggle('glass', cfg.style === 'glass');
     this.root.classList.toggle('solid', cfg.style === 'solid');
     this.padViews.clear();
-    this.cardText.textContent = 'Drag an element to where you want it. The buttons above it show or hide it and '
-      + `change its size (the mouse wheel does too). Everything is saved in the preset “${this.settings.presets[this.settings.active] || ''}”.`;
 
     this.buildPlayers();
     this.buildCams();

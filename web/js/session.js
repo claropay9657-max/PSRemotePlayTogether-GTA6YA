@@ -671,7 +671,11 @@ export class Session {
     }
 
     for (const [id, m] of this.chatOut) {
-      if (now - m.firstMs > CHAT_GIVE_UP_MS) this.chatOut.delete(id);
+      if (now - m.firstMs > CHAT_GIVE_UP_MS) {
+        this.chatOut.delete(id);
+        // Said so on the message, as the app does
+        if (this.h.onChatFailed) this.h.onChatFailed(id);
+      }
       else if (now - m.lastMs >= CHAT_RESEND_MS) {
         m.lastMs = now;
         this.send(m.payload);

@@ -30,7 +30,7 @@ server only helps the two find each other.
 | Controller | yes, through the Gamepad API |
 | Keyboard and mouse as a controller | yes, as in the app: **Keyboard & mouse** is the app's settings page of that name, row for row (the mouse aims with the same speeds, acceleration curve, dead zone and smoothing; every key and mouse button can be set; **Try it here**), **Mouse aims** is in the stream menu and F8 catches the mouse and lets it go. The same conversion as the app's, checked against it. Esc stays the browser's: it always gives the mouse back |
 | The mouse as the touchpad | yes, as in the app: dragging on the picture swipes, another mouse button presses it |
-| Trying microphone, speakers and webcam before joining | yes: **Voice & webcam** on the card for joining, with the app's microphone meter and mark, its chime (left, right, both) and the webcam's picture as the others get it |
+| Voice & webcam settings | yes: **Voice & webcam** under "You join as" and in the stream menu is the app's settings page of that name: taking part in the voice chat, starting muted, the others' volume (up to 200 %), the microphone meter and mark, the chime (left, right, both), the webcam's size and picture, the others' webcams, and "Leave me out of their streams" |
 | Without a controller, on a phone or tablet | controls on the screen; the picture is the touchpad |
 | Rumble | where the browser has it (Chrome, Edge, Safari) |
 | The game's haptics | as rumble; the strength is set in the stream menu |
@@ -171,7 +171,8 @@ and a web page may talk to it as long as it answers with
 - **The page asks for nothing it does not need:** no cookies, no tracking, no
   third-party scripts, fonts or pictures. A content security policy only
   allows its own files and the request to the meeting point. The microphone is
-  only asked for when the guest ticks "Join the voice chat".
+  only asked for when the guest switches on "Take part in the voice chat"
+  (Voice & webcam) or joins the voice chat in the stream menu.
 - **The host stays in control.** Browser guests can be muted, set to watching
   and removed like everybody else, "Make a new invite" locks all old links
   out, and **Browsers allowed** on the Host page switches

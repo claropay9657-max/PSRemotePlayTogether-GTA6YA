@@ -64,7 +64,7 @@
       <form id="landing-form" class="address">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
         <input id="landing-invite" type="text" autocomplete="off" spellcheck="false" placeholder="Paste your link or invite" aria-label="Link or invite">
-        <button class="primary" type="submit">Continue</button>
+        <button class="primary" type="submit">Join</button>
       </form>
       <p id="landing-error" class="problem" role="alert" hidden></p>
       <ol class="steps">
@@ -74,33 +74,96 @@
       </ol>
     </section>
 
+    <!-- An invite from a link: ready to join. Who joins and how is beside the rooms below, as on
+         the app's Join page, where the invite stands in the address bar -->
+    <section id="card-join" class="card solo invite" aria-labelledby="join-title" hidden>
+      <div class="head">
+        <div id="join-tile" class="tile" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
+        </div>
+        <div id="join-cover" hidden></div>
+        <div class="head-text">
+          <h2 id="join-title">You are invited to play</h2>
+          <p id="join-sub" class="head-sub" hidden></p>
+          <div id="join-badges" class="badges" hidden></div>
+        </div>
+      </div>
+      <p class="intro">You get your friend's game picture and sound, and your controller plays along in their game.</p>
+      <p id="join-error" class="problem" role="alert" hidden></p>
+      <div class="row end">
+        <button id="join-back" class="ghost" type="button">Back</button>
+        <span class="row-gap" aria-hidden="true"></span>
+        <button id="join-button" class="brand big" type="button">Join</button>
+      </div>
+    </section>
+
     <!-- Or somebody's public room: finding one beside the list, as on the app's Join page -->
     <section id="card-rooms" class="rooms" aria-labelledby="rooms-title" hidden>
-      <div class="card rooms-aside">
-        <h3 class="label">Find a room</h3>
-        <div class="find">
-          <div class="search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <input id="rooms-search" type="search" autocomplete="off" spellcheck="false" placeholder="Title, game or host" aria-label="Search the public rooms">
+      <div class="rooms-side">
+        <div class="card rooms-aside">
+          <h3 class="label">Find a room</h3>
+          <div class="find">
+            <div class="search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="rooms-search" type="search" autocomplete="off" spellcheck="false" placeholder="Title, game or host" aria-label="Search the public rooms">
+            </div>
+            <div class="field">
+              <label class="field-label" for="rooms-lang">Language</label>
+              <select id="rooms-lang"></select>
+            </div>
+            <div class="field">
+              <label class="field-label" for="rooms-console">Console</label>
+              <select id="rooms-console">
+                <option value="">All consoles</option>
+                <option value="ps5">PS5</option>
+                <option value="ps4">PS4</option>
+                <option value="pc">PC</option>
+                <option value="xbox">Xbox</option>
+              </select>
+            </div>
+            <div class="field">
+              <span class="field-label" id="rooms-order-label">Order</span>
+              <div class="order" role="radiogroup" aria-labelledby="rooms-order-label">
+                <label class="choice"><input type="radio" name="rooms-order" value="0" checked><span>Most players</span></label>
+                <label class="choice"><input type="radio" name="rooms-order" value="1"><span>Most free places</span></label>
+                <label class="choice"><input type="radio" name="rooms-order" value="2"><span>Newest</span></label>
+                <label class="choice"><input type="radio" name="rooms-order" value="3"><span>Open longest</span></label>
+              </div>
+            </div>
+            <div class="filters">
+              <label class="check"><input id="rooms-hide-full" type="checkbox"><span>Hide full rooms</span></label>
+              <label class="check"><input id="rooms-open-only" type="checkbox"><span>Hide rooms that ask to join</span></label>
+              <label class="check"><input id="rooms-twitch-only" type="checkbox"><span>Only rooms streaming on Twitch</span></label>
+            </div>
           </div>
-          <div class="field">
-            <label class="field-label" for="rooms-lang">Language</label>
-            <select id="rooms-lang"></select>
+        </div>
+        <!-- Who joins, and how: the app's "You join as", with what a browser needs besides -->
+        <div class="card you-card" aria-labelledby="you-title">
+          <h3 id="you-title" class="label">You join as</h3>
+          <div class="who">
+            <button id="join-avatar" class="avatar" type="button" title="Choose your picture" aria-label="Choose your picture"></button>
+            <div class="who-fields">
+              <input id="join-name" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" placeholder="Your name, for the other players" aria-label="Your name">
+              <div class="row">
+                <button id="join-avatar-choose" class="ghost small" type="button">Choose picture…</button>
+                <button id="join-avatar-remove" class="ghost small" type="button" hidden>Remove</button>
+                <input id="join-avatar-file" type="file" accept="image/*" hidden>
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <label class="field-label" for="rooms-console">Console</label>
-            <select id="rooms-console">
-              <option value="">All consoles</option>
-              <option value="ps5">PS5</option>
-              <option value="ps4">PS4</option>
-              <option value="pc">PC</option>
-              <option value="xbox">Xbox</option>
-            </select>
+          <p id="join-noname" class="you-noname" hidden>You have no name yet: the others will see "Guest".</p>
+          <label class="toggle">
+            <span class="toggle-text"><b>With my controller only</b><small>No picture or sound: I sit in front of the same TV</small></span>
+            <input id="join-controller-only" type="checkbox" role="switch">
+          </label>
+          <div id="pad-status" class="status-line" role="status">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="pad-status-text">Press any button on your controller so that the browser sees it.</span>
           </div>
-          <div class="filters">
-            <label class="check"><input id="rooms-hide-full" type="checkbox"><span>Hide full rooms</span></label>
-            <label class="check"><input id="rooms-open-only" type="checkbox"><span>Hide rooms that ask to join</span></label>
-            <label class="check"><input id="rooms-twitch-only" type="checkbox"><span>Only rooms streaming on Twitch</span></label>
+          <p id="join-warning" class="problem warn" hidden></p>
+          <div class="row you-more">
+            <button id="join-voice-check" class="ghost small" type="button">Voice &amp; webcam…</button>
+            <button id="join-keys" class="ghost small" type="button">Keyboard &amp; mouse…</button>
           </div>
         </div>
       </div>
@@ -129,65 +192,6 @@
       </div>
     </section>
 
-    <!-- An invite: ready to join -->
-    <section id="card-join" class="card solo" aria-labelledby="join-title" hidden>
-      <div class="head">
-        <div id="join-tile" class="tile" aria-hidden="true">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
-        </div>
-        <div id="join-cover" hidden></div>
-        <div class="head-text">
-          <h2 id="join-title">You are invited to play</h2>
-          <p id="join-sub" class="head-sub" hidden></p>
-          <div id="join-badges" class="badges" hidden></div>
-        </div>
-      </div>
-      <p class="intro">You get your friend's game picture and sound, and your controller plays along in their game.</p>
-      <form id="join-form">
-        <h3 class="label join-label">You join as</h3>
-        <div class="who">
-          <button id="join-avatar" class="avatar" type="button" title="Choose your picture" aria-label="Choose your picture"></button>
-          <div class="who-fields">
-            <label class="field">
-              <span>Your name</span>
-              <input id="join-name" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" placeholder="Shown to the other players">
-            </label>
-            <div class="row">
-              <button id="join-avatar-choose" class="ghost small" type="button">Choose picture</button>
-              <button id="join-avatar-remove" class="ghost small" type="button" hidden>Remove</button>
-              <input id="join-avatar-file" type="file" accept="image/*" hidden>
-            </div>
-          </div>
-        </div>
-        <div class="toggles">
-          <label class="toggle">
-            <span class="toggle-text"><b>Take part in the voice chat</b><small>The browser asks for your microphone; use headphones.</small></span>
-            <input id="join-voice" type="checkbox" role="switch">
-          </label>
-          <label class="toggle sub">
-            <span class="toggle-text"><b>Start with my microphone muted</b><small>While you play, the stream menu mutes and unmutes you.</small></span>
-            <input id="join-muted" type="checkbox" role="switch">
-          </label>
-          <label class="toggle">
-            <span class="toggle-text"><b>With my controller only</b><small>No picture or sound: I sit in front of the same TV</small></span>
-            <input id="join-controller-only" type="checkbox" role="switch">
-          </label>
-        </div>
-        <div id="pad-status" class="status-line" role="status">
-          <span class="dot" aria-hidden="true"></span>
-          <span id="pad-status-text">Press any button on your controller so that the browser sees it.</span>
-        </div>
-        <p id="join-warning" class="problem warn" hidden></p>
-        <div class="row end">
-          <button id="join-back" class="ghost" type="button">Back</button>
-          <span class="row-gap" aria-hidden="true"></span>
-          <button id="join-voice-check" class="ghost" type="button">Voice &amp; webcam</button>
-          <button id="join-keys" class="ghost" type="button">Keyboard &amp; mouse</button>
-          <button id="join-button" class="brand big" type="submit">Join</button>
-        </div>
-      </form>
-    </section>
-
     <!-- On the way in: waiting at the host's door, as on the room being joined in the app -->
     <section id="card-connecting" class="card solo joining" aria-labelledby="connecting-title" hidden>
       <div class="head">
@@ -204,7 +208,7 @@
         <span class="spin" aria-hidden="true"></span>
         <div class="wait-text" role="status">
           <b id="connecting-text">Looking for the host…</b>
-          <span>The connection goes straight from your browser to your friend's computer.</span>
+          <span id="connecting-sub">The connection goes straight from your browser to your friend's computer.</span>
         </div>
         <button id="connecting-cancel" class="ghost small" type="button">Cancel</button>
       </div>
@@ -250,8 +254,9 @@
   <div id="asleep" class="asleep" hidden>
     <div class="asleep-moon" aria-hidden="true">☾</div>
     <div id="asleep-title" class="asleep-title">The console is asleep</div>
+    <!-- As in the app: the console is woken from the stream menu -->
+    <div id="asleep-spin" class="banner-spin" aria-hidden="true" hidden></div>
     <div id="asleep-text" class="asleep-text"></div>
-    <button id="asleep-wake" class="primary" type="button" hidden>Wake the console</button>
   </div>
 
   <div id="touch" class="touch" hidden></div>

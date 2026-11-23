@@ -459,8 +459,13 @@ FocusScope {
                         if (Chiaki.reconnecting)
                             return Chiaki.reconnectStatus;
                         const where = Chiaki.settings.streamerMode ? qsTr("hidden") : streamMenu.session.host;
-                        if (streamMenu.guest)
-                            return streamMenu.connected ? qsTr("Playing at %1").arg(where) : qsTr("Joining %1…").arg(where);
+                        if (streamMenu.guest) {
+                            // A guest plays at a friend's: their name says more than an address (and is
+                            // the same on the page for browsers, which has no address to show)
+                            const host = (streamMenu.session.coplayPlayers || []).find((p) => p.host);
+                            const at = host && host.name ? host.name : where;
+                            return streamMenu.connected ? qsTr("Playing at %1").arg(at) : qsTr("Joining %1…").arg(at);
+                        }
                         if (streamMenu.hosting && streamMenu.connected)
                             return qsTr("Hosting on %1").arg(where);
                         return streamMenu.connected ? qsTr("Connected to %1").arg(where) : qsTr("Connecting to %1…").arg(where);

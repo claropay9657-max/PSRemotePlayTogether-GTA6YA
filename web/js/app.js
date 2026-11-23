@@ -143,7 +143,7 @@ const cams = new Map(); // slot -> what is collected of that player's webcam
 const camShown = new Map(); // slot -> the pictures on screen, to give their memory back
 let statsLast = { at: 0, bytes: 0, shown: 0, fragments: 0, nacks: 0 };
 let numbers = { mbps: '0.0', fps: 0, loss: 0 };
-const prefs = { volume: 100, voiceVolume: 100, haptics: 1, camSize: 1, mode: 'fit', zoom: 0, stats: false, noStreams: false };
+const prefs = { volume: 100, voiceVolume: 100, haptics: 1, camSize: 1, mode: 'fit', zoom: 0, stats: false, noStreams: false, showCams: true };
 
 // ------------------------------------------------------------------ small helpers
 
@@ -153,9 +153,10 @@ function show(card) {
   for (const c of [ui.landing, ui.join, ui.connecting, ui.message]) c.hidden = c !== card;
   ui.front.hidden = false;
   ui.stage.hidden = true;
-  // The public rooms go with the card for a link: two ways to find a session
-  ui.rooms.hidden = card !== ui.landing;
-  if (card === ui.landing) {
+  // The rooms and "You join as" go with the door for a link and with an invite's card, as on the
+  // app's Join page; while joining and after, they wait
+  ui.rooms.hidden = card !== ui.landing && card !== ui.join;
+  if (!ui.rooms.hidden) {
     startRooms();
     startRecent();
   } else {
@@ -284,7 +285,7 @@ function joinRecent(entry) {
   } catch (e) {
     // only for this visit, then
   }
-  showJoin();
+  join();
 }
 
 // ------------------------------------------------------------------ public rooms
@@ -552,6 +553,7 @@ function renderRooms() {
     hideFull: $('rooms-hide-full').checked,
     openOnly: $('rooms-open-only').checked,
     twitchOnly: $('rooms-twitch-only').checked,
+    sort: Number((document.querySelector('input[name="rooms-order"]:checked') || { value: 0 }).value),
   };
   // Nothing new: the cards stay. Leaving the search field says "change" once more, and a list
   // drawn anew under the pointer would swallow the click on one of its buttons.
@@ -597,7 +599,7 @@ function joinRoom(room) {
   } catch (e) {
     // only for this visit, then
   }
-  showJoin();
+  join();
 }
 
 /**
@@ -799,22 +801,33 @@ function fillHead(prefix) {
   }
 }
 
-function showJoin() {
+/**
+ * An invite from a link, ready to join: what it is, and Join. Who joins and how is beside the
+ * rooms, as on the app's Join page. `error` is why the last try did not work, shown here as the
+ * app shows it under the invite.
+ */
+function showJoin(error = '') {
   if (!invite) {
     show(ui.landing);
     return;
   }
   if (!invite.room && !invite.recent) invite.recent = recent.find((e) => e.key === base64UrlEncode(invite.secret)) || null;
   fillHead('join');
+  const problem = $('join-error');
+  problem.textContent = error;
+  problem.hidden = !error;
+  show(ui.join);
+  $('join-button').focus();
+}
+
+/** "You join as": the name, the picture, controller only, and what this browser cannot do. */
+function fillYou() {
   $('join-name').value = recall('psrpt.name');
-  $('join-voice').checked = recall('psrpt.voice') === '1';
-  $('join-muted').checked = recall('psrpt.muted') === '1';
   $('join-controller-only').checked = recall('psrpt.controllerOnly') === '1';
   const warning = $('join-warning');
   const problems = [];
   if (typeof RTCPeerConnection !== 'function') {
     problems.push('This browser has no WebRTC, which the connection to the host needs. A current Chrome, Edge, Firefox or Safari has it.');
-    $('join-button').disabled = true;
   } else if (!VideoPlayer.supported()) {
     problems.push('This browser cannot show the picture (it lacks WebCodecs). You can still join with your controller only, for example when you sit in front of the same TV. For picture and sound use a current Chrome, Edge, Firefox or Safari.');
   } else if (!Sound.supported()) {
@@ -825,15 +838,12 @@ function showJoin() {
   }
   warning.hidden = problems.length === 0;
   warning.textContent = problems.join(' ');
-  syncJoinOptions();
   showAvatar();
-  show(ui.join);
-  $('join-name').focus();
+  syncNoName();
 }
 
-function syncJoinOptions() {
-  $('join-voice').disabled = !Sound.supported();
-  $('join-muted').closest('label').hidden = !$('join-voice').checked || $('join-voice').disabled;
+function syncNoName() {
+  $('join-noname').hidden = $('join-name').value.trim().length > 0;
 }
 
 // ------------------------------------------------------------------ joining
@@ -845,7 +855,8 @@ function hasPicture() {
 
 /** What the host is asked to send. */
 function wantFlags() {
-  let want = P.WANT_CAMS;
+  // The others' webcams, unless this player does not want to see them (Voice & webcam)
+  let want = prefs.showCams ? P.WANT_CAMS : 0;
   // Controller only: no picture and no sound, but still rumble, voices and webcams, as in the app
   if (hasPicture()) {
     want |= P.WANT_VIDEO;
@@ -896,6 +907,7 @@ function makeSession() {
     },
     onInputs,
     onChat,
+    onChatFailed: chatFailed,
     onBlob,
     onCamFragment,
     onClosed,
@@ -909,10 +921,17 @@ function makeSession() {
 }
 
 /** What happens on the way in; for a room from the list the host has a name. */
+/**
+ * What happens while joining, in the app's two lines: looking for the host, or waiting at its
+ * door; the page's own steps under it, small.
+ */
 function connectingStatus(text) {
   const host = invite && invite.room ? invite.room.host : '';
-  $('connecting-text').textContent = host && text === 'Waiting for the host to let you in…'
-    ? `Waiting for ${host} to let you in…` : text;
+  const waiting = text === 'Waiting for the host to let you in…';
+  $('connecting-text').textContent = waiting ? (host ? `Waiting for ${host} to let you in…` : text) : 'Looking for the host…';
+  $('connecting-sub').textContent = waiting
+    ? (host ? `${host} sees your name.` : 'The host sees your name.')
+    : `${text} The connection goes straight from your browser to your friend's computer.`;
 }
 
 /** The microphone, for a player who is in the voice chat. */
@@ -928,17 +947,20 @@ async function join() {
     show(ui.landing);
     return;
   }
+  if (typeof RTCPeerConnection !== 'function') {
+    showJoin('This browser has no WebRTC, which the connection to the host needs. A current Chrome, Edge, Firefox or Safari has it.');
+    return;
+  }
   remember('psrpt.name', $('join-name').value.trim());
   controllerOnly = $('join-controller-only').checked;
-  voiceOn = $('join-voice').checked && !$('join-voice').disabled;
-  micMuted = voiceOn && $('join-muted').checked;
-  remember('psrpt.voice', $('join-voice').checked ? '1' : '0');
-  remember('psrpt.muted', $('join-muted').checked ? '1' : '0');
+  // Voice & webcam says whether to take part and how to start, as the app's settings
+  voiceOn = recall('psrpt.voice') === '1' && Sound.supported();
+  micMuted = voiceOn && recall('psrpt.muted') === '1';
   remember('psrpt.controllerOnly', controllerOnly ? '1' : '0');
   leaving = false;
   reconnecting = '';
   fillHead('connecting');
-  $('connecting-text').textContent = 'Getting ready…';
+  connectingStatus('Getting ready…');
   $('connecting-hint').textContent = `Press ${pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY} to open stream menu`;
   show(ui.connecting);
   // The Join button is gone: the keys go on to the way out, as in the app
@@ -957,8 +979,9 @@ async function join() {
     if (mine !== session) return; // cancelled, or another attempt has taken over
     session = null;
     sound.stopMic();
+    // As in the app: why, under the invite; Join again is the way to try again
     if (e instanceof JoinError && e.kind === 'cancelled') showJoin();
-    else message('That did not work', e && e.message ? e.message : String(e));
+    else showJoin(e && e.message ? e.message : String(e));
     return;
   }
   if (mine !== session) {
@@ -1057,7 +1080,7 @@ function showStageNote() {
   const why = controllerOnly ? 'Controller only: no picture and sound here. Your controller plays along.'
     : 'This browser cannot show the picture. Your controller plays along.';
   const back = controllerOnly ? '\nTo get picture and sound: stream menu → Picture and sound.' : '';
-  $('stage-note-text').textContent = `${why}\nPress ${pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY} for the stream menu.${back}`;
+  $('stage-note-text').textContent = `${why}\nPress ${menuKeys()} for the stream menu.${back}`;
 }
 
 function leaveStage() {
@@ -1348,6 +1371,9 @@ function playersNow() {
     watching: !p.host && (!p.canControl || s.mixMode === P.MIX_HOST_ONLY),
     keyMouse: (p.flags & P.PARTICIPANT_KEY_MOUSE) !== 0,
     onlyHost: !p.host && s.mixMode === P.MIX_HOST_ONLY,
+    // Each their own controller: whether the host lets this one play at all, for the player menu's line
+    eachOwn: s.mixMode === P.MIX_EACH_OWN,
+    mayControl: !!p.canControl,
     inControl: p.inControl,
     voice: (p.media & P.MEDIA_VOICE) !== 0,
     muted: (p.media & P.MEDIA_MUTED) !== 0,
@@ -1384,13 +1410,31 @@ function showAsleep(s) {
   const asleep = !!s.stream.asleep;
   if (!asleep) wakeAsked = false;
   ui.asleep.hidden = !asleep;
-  if (!asleep) return;
+  if (!asleep) {
+    menu.setAsleep({ asleep: false });
+    return;
+  }
   const own = s.participants.find((p) => p.slot === s.yourSlot);
   const mayWake = !!own && (own.flags & P.PARTICIPANT_MAY_WAKE) !== 0;
+  menu.setAsleep({ asleep, mayWake, waking: wakeAsked });
+  // The app's words: woken from the stream menu, a spinner while it wakes
   $('asleep-title').textContent = wakeAsked ? 'Waking the console…' : 'The console is asleep';
-  $('asleep-text').textContent = wakeAsked ? 'Everybody comes back on their own once it plays.'
-    : mayWake ? 'The room stays. Wake the console to play on.' : 'The room stays. The host can wake the console.';
-  $('asleep-wake').hidden = !mayWake || wakeAsked;
+  $('asleep-spin').hidden = !wakeAsked;
+  $('asleep-text').hidden = wakeAsked;
+  $('asleep-text').textContent = mayWake ? `The room stays. To play on, wake the console: ${menuKeys()} opens the stream menu.`
+    : 'The room stays. The host can wake the console.';
+}
+
+/** What opens the stream menu here: the controller's buttons while one is connected, else the keys. */
+function menuKeys() {
+  return pad && pad.kind ? 'L1+R1+L3+R3' : MENU_KEY;
+}
+
+function wakeConsole() {
+  if (!session) return;
+  session.requestWake();
+  wakeAsked = true;
+  if (lastState) showAsleep(lastState);
 }
 
 /** Whether the host lets this player use mouse and keyboard; switched off when it stops. */
@@ -1619,9 +1663,50 @@ function chatEmpty() {
   return empty;
 }
 
+/** One's own messages on their way: shown at once, dimmed, as in the app (id -> its entry). */
+const pendingChat = new Map();
+
+function addPendingChat(id, text) {
+  const entry = el('div', 'cmsg pending');
+  const body = el('div', 'cmsg-body');
+  const words = el('div', 'cmsg-text');
+  appendWithLinks(words, text);
+  const status = el('div', 'cmsg-status', 'Sending…');
+  body.append(words, status);
+  entry.append(el('div', 'cmsg-avatar'), body);
+  const empty = ui.chatList.querySelector('.chat-empty');
+  if (empty) empty.remove();
+  ui.chatList.append(entry);
+  ui.chatList.scrollTop = ui.chatList.scrollHeight;
+  const s = lastState;
+  const own = s ? s.participants.find((p) => p.slot === s.yourSlot) : null;
+  menu.addChat({ slot: s ? s.yourSlot : 0, name: own ? own.name : 'You', text, embed: null, pending: true, id });
+  pendingChat.set(id, { entry, status });
+}
+
+/** The host has it: the message shows as everybody's does. */
+function chatArrived(id) {
+  const p = pendingChat.get(id);
+  if (!p) return;
+  pendingChat.delete(id);
+  p.entry.remove();
+  menu.chatSettled(id, false);
+}
+
+function chatFailed(id) {
+  const p = pendingChat.get(id);
+  if (!p) return;
+  pendingChat.delete(id);
+  p.entry.classList.remove('pending');
+  p.entry.classList.add('failed');
+  p.status.textContent = 'Not sent — the host did not answer';
+  menu.chatSettled(id, true);
+}
+
 function onChat(m) {
   const s = lastState;
   const mine = !!s && m.slot === s.yourSlot && mySent.has(m.upId);
+  if (mine) chatArrived(m.upId);
   const who = s ? s.participants.find((p) => p.slot === m.slot) : null;
   const name = m.name || `Player ${m.slot + 1}`;
   // A run of messages by the same player shows the name once
@@ -1795,6 +1880,8 @@ function controllerNote() {
 }
 
 function syncController() {
+  menu.setMenuKey(menuKeys());
+  $('menu-handle-key').textContent = menuKeys();
   menu.setController({
     touch: !!(touch && touch.visible),
     haptics: prefs.haptics,
@@ -1837,7 +1924,8 @@ function setVolume(volume) {
 }
 
 function setVoiceVolume(volume) {
-  prefs.voiceVolume = Math.max(0, Math.min(100, Math.round(volume)));
+  // As in the app: up to 200 %, for friends who are hard to hear
+  prefs.voiceVolume = Math.max(0, Math.min(200, Math.round(volume)));
   sound.setVoiceVolume(prefs.voiceVolume / 100);
   remember('psrpt.voiceVolume', prefs.voiceVolume);
   menu.setSound(prefs.volume, prefs.voiceVolume, Sound.supported());
@@ -1927,6 +2015,7 @@ function start() {
   prefs.haptics = Number(recall('psrpt.haptics', '1'));
   prefs.camSize = Number(recall('psrpt.camSize', '1'));
   prefs.noStreams = recall('psrpt.noStreams') === '1';
+  prefs.showCams = recall('psrpt.cams', '1') !== '0';
   prefs.mode = ['fit', 'zoom', 'stretch'].includes(recall('psrpt.pictureMode')) ? recall('psrpt.pictureMode') : 'fit';
   prefs.zoom = Number(recall('psrpt.zoom', '-1'));
   if (!Number.isFinite(prefs.zoom)) prefs.zoom = -1;
@@ -1956,7 +2045,10 @@ function start() {
       const clean = withEmoji(text.trim());
       if (!clean || !session) return false;
       const id = session.sendChat(clean);
-      if (id) mySent.add(id);
+      if (id) {
+        mySent.add(id);
+        addPendingChat(id, clean);
+      }
       return !!id;
     },
     onVoice: setVoice,
@@ -1971,24 +2063,18 @@ function start() {
       syncVoice();
     },
     onCam: () => (camera.on ? stopCamera() : startCamera()),
+    onWake: wakeConsole,
+    onVoiceSettings: () => {
+      menu.close();
+      voiceDialog.show();
+    },
     onPicture: () => setPictureOn(controllerOnly),
     onKeyMouse: () => toggleKeyMouse(),
-    onNoStreams: () => {
-      prefs.noStreams = !prefs.noStreams;
-      remember('psrpt.noStreams', prefs.noStreams ? '1' : '0');
-      syncVoice();
-    },
-    onCamSize: (index) => {
-      prefs.camSize = index;
-      remember('psrpt.camSize', index);
-      if (camera.on) startCamera();
-    },
     onMutePlayer: (slot, muted) => {
       sound.setPlayerMuted(slot, muted);
       showPlayers();
     },
     onVolume: setVolume,
-    onVoiceVolume: setVoiceVolume,
     onPictureMode: (mode) => setPicture(mode, prefs.zoom),
     onZoom: (zoom) => setPicture('zoom', zoom),
     onFullscreen: () => {
@@ -2072,6 +2158,7 @@ function start() {
     $(id).addEventListener('input', renderRooms);
     $(id).addEventListener('change', renderRooms);
   }
+  for (const radio of document.querySelectorAll('input[name="rooms-order"]')) radio.addEventListener('change', renderRooms);
   $('rooms-refresh').addEventListener('click', refreshRooms);
 
   $('landing-form').addEventListener('submit', (e) => {
@@ -2091,13 +2178,11 @@ function start() {
     } catch (err) {
       // only for this visit, then
     }
-    showJoin();
-  });
-
-  $('join-form').addEventListener('submit', (e) => {
-    e.preventDefault();
+    // As the app's Join next to the invite: straight in
     join();
   });
+
+  $('join-button').addEventListener('click', () => join());
   // Back to where a link is pasted, the recent sessions and the public rooms, as the app's Back
   $('join-back').addEventListener('click', () => {
     invite = null;
@@ -2117,10 +2202,12 @@ function start() {
     invite = next;
     showJoin();
   });
-  $('join-voice').addEventListener('change', syncJoinOptions);
   $('join-name').addEventListener('input', () => {
     if (!avatar) showAvatar();
+    syncNoName();
   });
+  // Kept as it is typed, so that every way of joining takes it
+  $('join-name').addEventListener('change', () => remember('psrpt.name', $('join-name').value.trim()));
   const pickAvatar = () => $('join-avatar-file').click();
   $('join-avatar').addEventListener('click', pickAvatar);
   $('join-avatar-choose').addEventListener('click', pickAvatar);
@@ -2149,8 +2236,10 @@ function start() {
 
   // The controller the browser sees, before joining and in the menu
   setInterval(() => {
+    // The Menu button on the picture names the controller's buttons once one is seen, as the app's hints do
+    if (!ui.stage.hidden && $('menu-handle-key').textContent !== menuKeys()) $('menu-handle-key').textContent = menuKeys();
     if (menu.open) syncController();
-    if (ui.join.hidden) return;
+    if (ui.rooms.hidden) return;
     pad.read();
     const line = $('pad-status');
     line.classList.toggle('ok', !!pad.kind);
@@ -2174,6 +2263,7 @@ function start() {
     const id = session.sendChat(text);
     if (id) {
       mySent.add(id);
+      addPendingChat(id, text);
       ui.chatInput.value = '';
       $('chat-send').disabled = true;
     }
@@ -2248,21 +2338,44 @@ function start() {
       if (menu) syncVoice();
     },
     playing: () => !!session,
+    prefs: () => ({
+      voice: recall('psrpt.voice') === '1',
+      startMuted: recall('psrpt.muted') === '1',
+      voiceVolume: prefs.voiceVolume,
+      showCams: prefs.showCams,
+      noStreams: prefs.noStreams,
+      canVoice: Sound.supported(),
+    }),
+    onPref: (name, value) => {
+      if (name === 'voice') remember('psrpt.voice', value ? '1' : '0');
+      else if (name === 'startMuted') remember('psrpt.muted', value ? '1' : '0');
+      else if (name === 'voiceVolume') setVoiceVolume(value);
+      else if (name === 'showCams') {
+        prefs.showCams = !!value;
+        remember('psrpt.cams', value ? '1' : '0');
+        applyWant();
+      } else if (name === 'noStreams') {
+        prefs.noStreams = !!value;
+        remember('psrpt.noStreams', value ? '1' : '0');
+        syncVoice();
+      }
+    },
   });
   $('join-voice-check').addEventListener('click', () => voiceDialog.show());
   $('voice-close').addEventListener('click', () => voice.close());
   $('keys-close').addEventListener('click', () => keys.close());
 
-  $('asleep-wake').addEventListener('click', () => {
-    if (!session) return;
-    session.requestWake();
-    wakeAsked = true;
-    if (lastState) showAsleep(lastState);
-  });
 
   // ------------------------------------------------ keys and the mouse
   window.addEventListener('keydown', (e) => {
     if (ui.stage.hidden) return;
+    // The chat: the app has Ctrl+T / ⌘T, which a browser keeps for a new tab; here it is Alt+T / ⌥T
+    if (e.code === 'KeyT' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      if (menu.open) menu.close();
+      openChat(ui.chat.hidden);
+      return;
+    }
     // The stream menu: the app's own shortcut
     if (e.code === 'KeyO' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
       e.preventDefault();
@@ -2379,6 +2492,7 @@ function start() {
   offerInstall();
 
   recent = readRecent(recall(RECENT_KEY), LOCAL);
+  fillYou();
   invite = readInvite();
   if (invite) showJoin();
   else show(ui.landing);

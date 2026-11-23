@@ -401,7 +401,7 @@ Three looks: transparent without boxes (the default), glass boxes, dark boxes. A
 
 **Voice chat and webcam.** **Settings → Voice & webcam** has the settings: take part in the voice chat, start muted, which webcam and how large its picture is. Microphone and speakers are the ones from **Settings → Sound & Wi-Fi**. You never hear your own voice in the app, only the others. Use headphones: without them the others hear themselves through your microphone.
 
-**Text chat.** Press **Ctrl+T** (**⌘T** on macOS), or choose **Chat** in the stream menu. The chat opens beside the game and takes the keyboard while it is open; Escape gives it back to the game. Anybody who joins later sees the last 30 messages.
+**Text chat.** Press **Ctrl+T** (**⌘T** on macOS; in a web browser **Alt+T** / **⌥T**, since the browser keeps Ctrl+T for a new tab), or choose **Chat** in the stream menu. The chat opens beside the game and takes the keyboard while it is open; Escape gives it back to the game. Anybody who joins later sees the last 30 messages.
 
 - Links can be clicked. For the first link in your own message, your app looks at the page once and sends a small preview along, so your friends' apps never contact a site they did not choose. This can be switched off under **Settings → Voice & webcam**.
 - Emoji come from the picker, from shortcodes such as `:fire:`, `:gg:`, `:thumbsup:`, and from `:)`, `:D`, `<3`, `xD`.

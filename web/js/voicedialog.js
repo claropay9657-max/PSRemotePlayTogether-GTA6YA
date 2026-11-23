@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 //
-// Voice & webcam: what the app's settings page of that name (gui/src/qml/settings/
-// VoicePage.qml) has for trying one's devices before a session, with the same rows and
-// words: the microphone test with its mark, the speaker test, the webcam's picture size and
-// the picture itself as the others would get it. Nothing of it is sent anywhere.
+// Voice & webcam: the app's settings page of that name (gui/src/qml/settings/VoicePage.qml),
+// with the same rows and words: taking part in the voice chat, starting muted, the others'
+// volume, the microphone test with its mark, the speaker test, the webcam's picture size, the
+// picture itself as the others would get it, and whether the others' webcams show. Nothing
+// of the tests is sent anywhere. "Leave me out of their streams" is on the app's Live
+// streaming page, which a browser does not have: it is here, under its own heading.
 //
-// What the app sets up on that page and the page already has elsewhere stays where it is:
-// taking part in the voice chat is on the card for joining, the rest is in the stream menu.
+// Before joining and during a session alike (the stream menu opens it).
 
 import { DeviceCheck, MIC_GATE } from './devicecheck.js';
 import { el } from './dom.js';
 import { icon } from './menu.js';
-import { group, pill, row, segmented } from './setparts.js';
+import { group, pill, row, segmented, slider, toggle } from './setparts.js';
 
 const CAMERA_LINES = ['320 × 180, about 0.4 Mbit/s', '480 × 270, about 1 Mbit/s', '640 × 360, about 2.5 Mbit/s'];
 const SIDES = ['', 'Playing on the left…', 'Playing on the right…', 'Playing on both…'];
@@ -24,6 +25,8 @@ export class VoiceDialog {
    * @param {() => number} h.cameraSize the webcam's picture size, an index into CAMERA_SIZES
    * @param {(index: number) => void} h.onCameraSize
    * @param {() => boolean} h.playing a session is running: it has the devices
+   * @param {() => {voice: boolean, startMuted: boolean, voiceVolume: number, showCams: boolean, noStreams: boolean, canVoice: boolean}} h.prefs
+   * @param {(name: string, value: boolean|number) => void} h.onPref one of those changed
    */
   constructor(dialog, body, h) {
     this.dialog = dialog;
@@ -75,7 +78,21 @@ export class VoiceDialog {
     const tip = el('div', 'set-tip');
     tip.append(icon('info', 15), el('span', '', 'Use headphones. If a friend hears themselves, their voice is coming out of your speakers into your microphone.'));
 
+    // Whether to take part, how to start, and how loud the others are, as the app's first rows
+    const prefs = this.h.prefs();
+    this.voiceSwitch = toggle('Take part in the voice chat', prefs.voice, (on) => {
+      this.h.onPref('voice', on);
+      this.refresh();
+    });
+    this.voiceRow = row({ title: 'Take part in the voice chat', subtitle: 'The browser asks for your microphone when you join.', textMin: 180, switch: this.voiceSwitch });
+    this.mutedSwitch = toggle('Start with my microphone muted', prefs.startMuted, (on) => this.h.onPref('startMuted', on));
+    this.mutedRow = row({ title: 'Start with my microphone muted', subtitle: 'While you play, the stream menu mutes and unmutes you.', textMin: 180, switch: this.mutedSwitch });
+    this.volumeSlider = slider('Volume of the others', { min: 0, max: 200, step: 5, value: prefs.voiceVolume, width: 190, valueWidth: 48, format: (v) => `${Math.round(v)} %` },
+      (v) => this.h.onPref('voiceVolume', v));
+    this.volumeRow = row({ title: 'Volume of the others', textMin: 140, controls: [this.volumeSlider] });
+
     const voice = group('Voice chat', [
+      this.voiceRow, this.mutedRow, this.volumeRow,
       row({ title: 'Microphone and speakers', subtitle: 'The ones your browser uses: choose them in the browser, or in your system\'s sound settings.', controls: [] }),
       devices, this.micRow, this.speakerRow, tip,
     ]);
@@ -99,15 +116,34 @@ export class VoiceDialog {
     const frame = el('div', 'set-preview-frame');
     frame.append(this.previewImage, this.previewWait);
     this.preview.append(frame);
-    const webcam = group('Webcam', [this.sizeRow, this.cameraRow, this.preview]);
+    this.camsSwitch = toggle('Show the other players\' webcams', prefs.showCams, (on) => this.h.onPref('showCams', on));
+    const camsRow = row({ title: 'Show the other players\' webcams', textMin: 180, switch: this.camsSwitch });
+    const webcam = group('Webcam', [this.sizeRow, this.cameraRow, this.preview, camsRow]);
 
-    this.body.replaceChildren(voice, webcam);
+    this.streamsSwitch = toggle('Leave me out of their streams', prefs.noStreams, (on) => this.h.onPref('noStreams', on));
+    const streams = group('When others go live', [row({
+      title: 'Leave me out of their streams',
+      subtitle: 'Your voice, webcam and name stay out of what the other players stream. Players with an older version of the app do not know this yet.',
+      textMin: 180,
+      switch: this.streamsSwitch,
+    })]);
+
+    this.body.replaceChildren(voice, webcam, streams);
     this.refresh();
   }
 
   refresh() {
     const check = this.check;
     const playing = this.h.playing();
+    const prefs = this.h.prefs();
+    this.voiceSwitch.checked = prefs.voice;
+    this.voiceRow.setEnabled(prefs.canVoice);
+    this.mutedRow.setEnabled(prefs.canVoice && prefs.voice);
+    this.volumeRow.setEnabled(prefs.canVoice && prefs.voice);
+    this.mutedSwitch.checked = prefs.startMuted;
+    this.volumeSlider.set(prefs.voiceVolume);
+    this.camsSwitch.checked = prefs.showCams;
+    this.streamsSwitch.checked = prefs.noStreams;
     if (playing && (check.micTesting || check.speakerTesting || check.cameraTesting)) {
       check.stopAll();
       return;
