@@ -71,9 +71,13 @@ void StreamSession::PcStart()
 	pc_target = target.ToMap();
 
 	// The guests' controllers on this computer. Without the driver they can still watch.
-	pc_pads = std::make_unique<VirtualPads>();
+	// What is plugged into a capture device cannot take controllers from here: nobody's
+	// controller is plugged in for it.
+	pc_pads = target.kind == QLatin1String("device") ? nullptr : std::make_unique<VirtualPads>();
 	std::string pads_error;
-	if(pc_pads->Open(&pads_error))
+	if(!pc_pads)
+		pc_pads_problem.clear();
+	else if(pc_pads->Open(&pads_error))
 	{
 		pc_pads_problem.clear();
 		pc_pads->on_rumble = [this](int index, uint8_t left, uint8_t right) { PcOnRumble(index, left, right); };

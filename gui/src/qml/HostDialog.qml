@@ -83,6 +83,8 @@ DialogView {
             return qsTr("Whole screen · %1 × %2").arg(t.width).arg(t.height);
         if (t.kind === "test")
             return qsTr("Moving test picture and a beep, for trying it out");
+        if (t.kind === "device")
+            return qsTr("Capture device or camera · up to %1 × %2").arg(t.width).arg(t.height);
         if (t.kind === "portal")
             return t.handle === "1" ? qsTr("Shared again without asking · %1 × %2").arg(t.width).arg(t.height)
                                     : qsTr("Your system asks which one when you start");
@@ -650,11 +652,22 @@ DialogView {
 
                                                 IconTile {
                                                     iconName: modelData.kind === "screen" || modelData.kind === "portal" ? "monitor"
+                                                              : modelData.kind === "device" ? "tv"
                                                               : modelData.game ? "gamepad" : "layers"
                                                     iconColor: modelData.game ? "#9ef7ff" : "#d9d5f2"
                                                 }
                                             }
                                         }
+                                    }
+
+                                    // A capture card: what it can and cannot do, before it is shared
+                                    Label {
+                                        Layout.fillWidth: true
+                                        visible: !!dialog.pcTarget && dialog.pcTarget.kind === "device"
+                                        wrapMode: Text.WordWrap
+                                        color: C.Theme.textSoft
+                                        font.pixelSize: 13
+                                        text: qsTr("A capture device brings the picture and sound of what is plugged into it, a console or another computer. Your friends watch and hear it with you; their controllers cannot reach what is plugged into the card.")
                                     }
 
                                     // How sharp: the window's own shape, as high as chosen

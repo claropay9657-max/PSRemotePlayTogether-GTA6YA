@@ -120,6 +120,7 @@ set(SOURCE_FILES
 	include/pcsource.h
 	include/pcsource_p.h
 	src/pcsource.cpp
+	src/pcdevice.cpp
 	include/pcscale.h
 	src/pcscale.cpp
 	include/keymap.h

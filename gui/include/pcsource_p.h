@@ -61,6 +61,20 @@ QString TitleAsName(const QString &title);
 
 } // namespace PcSource
 
+/** Capture devices: capture cards, and whatever else the system lists as a camera (pcdevice.cpp). */
+namespace PcDevice {
+/** Whether this build can use them (Qt Multimedia). */
+bool Supported();
+QList<PcSource::Target> Targets();
+/** The device again, by its id, else by its name. */
+PcSource::Target Find(const PcSource::Target &chosen);
+/** Its pictures, scaled into NV12 or I420; *description says what the device sends, for the log. */
+std::unique_ptr<PcFrameSource> OpenVideo(const PcCapture::Config &config, AVPixelFormat format, std::string *error,
+	std::string *description);
+/** The sound input of the same name (a capture card's sound), as 16-bit stereo at 48 kHz. */
+std::unique_ptr<PcSoundSource> OpenSound(const PcCapture::Config &config, PcSamples samples, PcSoundInfo *info, std::string *error);
+} // namespace PcDevice
+
 #if defined(__linux__)
 namespace PcLinux {
 QString Unsupported();

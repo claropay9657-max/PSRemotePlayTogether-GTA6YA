@@ -94,7 +94,7 @@ PcSource::Target PcSource::Target::FromMap(const QVariantMap &m)
 	Target t;
 	t.kind = m.value(QStringLiteral("kind")).toString();
 	if(t.kind != QLatin1String("window") && t.kind != QLatin1String("screen") && t.kind != QLatin1String("portal")
-		&& t.kind != QLatin1String("test"))
+		&& t.kind != QLatin1String("test") && t.kind != QLatin1String("device"))
 		return Target();
 	t.handle = m.value(QStringLiteral("handle")).toString().toULongLong();
 	t.title = m.value(QStringLiteral("title")).toString();
@@ -511,6 +511,8 @@ QList<PcSource::Target> PcSource::Targets()
 #elif defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT
 	list.append(PcMac::Targets());
 #endif
+	// Capture cards (and cameras: the system cannot tell them apart) last
+	list.append(PcDevice::Targets());
 	return list;
 }
 
@@ -522,6 +524,9 @@ PcSource::Game PcSource::DetectGame(const Target &target)
 		game.title = QCoreApplication::translate("PcSource", "Test picture");
 		return game;
 	}
+	// What is plugged into a capture device, this computer cannot tell
+	if(target.kind == QLatin1String("device"))
+		return game;
 #if defined(__linux__) && PSRPT_PC_PIPEWIRE
 	return PcLinux::DetectGame(target);
 #elif defined(__APPLE__) && PSRPT_PC_SCREENCAPTUREKIT
@@ -604,6 +609,8 @@ PcSource::Target PcSource::Find(const Target &chosen)
 {
 	if(chosen.kind == QLatin1String("test"))
 		return TestSourceWanted() ? TestTarget() : Target();
+	if(chosen.kind == QLatin1String("device"))
+		return PcDevice::Find(chosen);
 	// The system asks, or shares what it was told last time: nothing to look for here
 	if(chosen.kind == QLatin1String("portal"))
 		return chosen;
@@ -1166,6 +1173,19 @@ struct PcCapture::Private
 			source = std::make_unique<TestSource>(config.width, config.height, config.fps, input);
 			return true;
 		}
+		if(config.target.kind == QLatin1String("device"))
+		{
+			if(on_card)
+			{
+				*error = "a capture device gives pictures in memory";
+				return false;
+			}
+			std::string what;
+			source = PcDevice::OpenVideo(config, input, error, &what);
+			if(source && !what.empty())
+				Log("the device sends " + what);
+			return source != nullptr;
+		}
 #if PSRPT_PC_CAPTURE_FILTERS
 		if(input != AV_PIX_FMT_NV12)
 		{
@@ -1509,6 +1529,28 @@ struct PcCapture::Private
 				due += std::chrono::milliseconds(10);
 				std::this_thread::sleep_until(due);
 			}
+			return;
+		}
+		if(config.target.kind == QLatin1String("device"))
+		{
+			// The device's own sound input; its system thread hands the samples over
+			std::string why;
+			PcSoundInfo info;
+			auto push = [&packer](const int16_t *samples, size_t frames) { packer.Push(samples, frames); };
+			std::unique_ptr<PcSoundSource> device_sound = PcDevice::OpenSound(config, push, &info, &why);
+			if(!device_sound)
+			{
+				Log("no sound: " + why);
+				return;
+			}
+			{
+				std::lock_guard<std::mutex> lock(info_mutex);
+				sound_source = info.what;
+			}
+			Log("sound: " + info.what);
+			while(running)
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			device_sound.reset();
 			return;
 		}
 #ifdef _WIN32

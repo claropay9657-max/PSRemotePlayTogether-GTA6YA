@@ -221,3 +221,30 @@ portal (GNOME, KDE), VAAPI and NVENC, real games, the full AppImage (built by CI
 
 Tested on a Mac without the permission: the list of windows and screens, the texts, the game
 check. **Not tested yet:** the capture itself, which needs the permission.
+
+### Capture devices (built 2026-11-23)
+
+A capture card is a third kind next to windows and screens (`kind: "device"`). Every system lists
+a capture card as a camera and its sound as a microphone of the same name, so one source covers
+Windows, Linux and macOS: `gui/src/pcdevice.cpp`, through Qt Multimedia as the players' webcams
+(`coplaycamera.cpp`). Cameras are in the list too, since the system cannot tell them apart.
+
+- **Picture:** the device's format closest to the chosen height at the chosen frame rate
+  (uncompressed before MJPEG), turned into RGB by Qt and scaled into NV12 or I420 by `PcScaler`
+  (BT.709, video range), then the same encoders as a window's. The device's objects live on a
+  thread of their own with an event loop.
+- **Sound:** the sound input named like the device (or one whose name contains the other's);
+  16-bit stereo at 48 kHz goes through as it is, anything else is converted and resampled.
+- **Controllers:** none are plugged in for a device: what is plugged into the card cannot take
+  them from this computer, so the friends watch and hear. The Host page says so.
+- **Permissions:** on a Mac the camera and the microphone (asked once; sharing again after the
+  answer).
+
+Tested: the colour conversion in both layouts and the sound conversion (16-bit stereo, mono
+float, 44.1 kHz) in a test program. **Not tested:** a real capture card on any system, the
+device thread with AVFoundation, Media Foundation and V4L2, and which name each card gives its
+sound. The shell on the development Mac cannot list devices (CoreAudio is out of its reach).
+
+**Later, if wanted:** a PlayStation on the card with the friends' controllers through Remote
+Play: a console session for the controllers only, and the card's picture to the guests instead
+of the console's (`CoPlayVideoSampleCb`).
