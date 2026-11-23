@@ -848,7 +848,7 @@ export class StreamMenu {
     if (c.dualsense) {
       this.entry(m, { icon: 'gamepad', text: 'DualSense…', chosen: c.dualsenseOn, onClick: () => this.h.onDualSense() });
     }
-    this.entry(m, { icon: 'keyboard', text: 'Keyboard controls…', onClick: () => this.h.onKeys() });
+    this.entry(m, { icon: 'keyboard', text: 'Keyboard and mouse…', onClick: () => this.h.onKeys() });
   }
 
   /** What is shown on the game picture: the saved arrangements, arranging, the options. */

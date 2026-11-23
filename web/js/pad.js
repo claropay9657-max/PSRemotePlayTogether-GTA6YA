@@ -2,11 +2,12 @@
 //
 // The player's controller: what the browser's Gamepad API reports, turned into
 // the controller state the host expects. A DualSense can add its touchpad and
-// motion sensors (dualsense.js), the keyboard and the controls on the screen
-// (touch.js) can stand in for a controller. The other way round, what the game
-// sends back becomes rumble.
+// motion sensors (dualsense.js), the keyboard and the mouse (keypad.js) and the
+// controls on the screen (touch.js) can stand in for a controller. The other way
+// round, what the game sends back becomes rumble.
 
 import * as P from './proto.js';
+import { Converter, LAYOUTS, keyInput } from './keypad.js';
 
 /** Where the buttons of a "standard" gamepad go. */
 const STANDARD_BUTTONS = [
@@ -27,36 +28,6 @@ const STANDARD_BUTTONS = [
   [16, P.BTN.Ps],
   [17, P.BTN.Touchpad],
 ];
-
-/** The keyboard as a controller, by the place of the key (not the letter printed on it). */
-export const KEYBOARD_MAP = [
-  ['KeyW', 'Left stick up'], ['KeyA', 'Left stick left'], ['KeyS', 'Left stick down'], ['KeyD', 'Left stick right'],
-  ['ArrowUp', 'D-pad up'], ['ArrowLeft', 'D-pad left'], ['ArrowDown', 'D-pad down'], ['ArrowRight', 'D-pad right'],
-  ['KeyK', '✕ Cross'], ['KeyL', '○ Circle'], ['KeyJ', '□ Square'], ['KeyI', '△ Triangle'],
-  ['KeyQ', 'L1'], ['KeyE', 'R1'], ['KeyZ', 'L2'], ['KeyC', 'R2'],
-  ['KeyF', 'L3'], ['KeyG', 'R3'],
-  ['KeyT', 'Right stick up'], ['KeyV', 'Right stick down'], ['KeyR', 'Right stick left'], ['KeyY', 'Right stick right'],
-  ['Enter', 'Options'], ['Backspace', 'Create'], ['KeyP', 'PS'], ['KeyM', 'Touchpad'],
-];
-
-const KEY_BUTTONS = {
-  ArrowUp: P.BTN.DpadUp,
-  ArrowDown: P.BTN.DpadDown,
-  ArrowLeft: P.BTN.DpadLeft,
-  ArrowRight: P.BTN.DpadRight,
-  KeyK: P.BTN.Cross,
-  KeyL: P.BTN.Circle,
-  KeyJ: P.BTN.Square,
-  KeyI: P.BTN.Triangle,
-  KeyQ: P.BTN.L1,
-  KeyE: P.BTN.R1,
-  KeyF: P.BTN.L3,
-  KeyG: P.BTN.R3,
-  Enter: P.BTN.Options,
-  Backspace: P.BTN.Share,
-  KeyP: P.BTN.Ps,
-  KeyM: P.BTN.Touchpad,
-};
 
 /** The console's haptics arrive as 10 ms of sound; this many are taken together for one rumble. */
 const HAPTICS_PER_RUMBLE = 3;
@@ -91,7 +62,9 @@ export class Pad {
   /** @param {function(): boolean} typing whether the player is writing somewhere right now */
   constructor(typing) {
     this.typing = typing || (() => false);
-    this.keys = new Set();
+    // The keyboard and the mouse as a controller; the keys the page always had until the player sets others
+    this.keypad = new Converter();
+    this.keypad.setBindings(LAYOUTS.classic);
     this.keyboardOn = true;
     this.keyboardUsed = false;
     this.kind = P.CONTROLLER_NONE;
@@ -110,26 +83,30 @@ export class Pad {
     this.applied = { strong: 0, weak: 0, at: 0 };
     this.onKeyDown = (e) => this.key(e, true);
     this.onKeyUp = (e) => this.key(e, false);
-    this.onBlur = () => this.keys.clear();
+    this.onBlur = () => this.keypad.releaseAll();
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
   }
 
   key(e, down) {
-    if (!this.keyboardOn || this.typing()) {
-      if (!down) this.keys.delete(e.code);
+    const input = keyInput(e);
+    // A key always comes up, whatever happened since it went down
+    if (!down) {
+      if (this.keypad.press(input, false)) e.preventDefault();
       return;
     }
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const known = KEYBOARD_MAP.some((k) => k[0] === e.code);
-    if (!known) return;
-    // The page must not scroll or go back while somebody plays
+    if (!this.keyboardOn || this.typing()) return;
+    // A key together with ⌘ or Ctrl is the browser's own, unless Ctrl itself is a key to play with
+    const modifier = /^(Control|Meta|Alt|Shift)/.test(e.code);
+    const ctrlPlays = this.keypad.bound('k:ControlLeft') || this.keypad.bound('k:ControlRight');
+    if (!modifier && (e.metaKey || (e.ctrlKey && !ctrlPlays))) return;
+    if (!this.keypad.bound(input)) return;
+    // The page must not scroll, go back or move the focus while somebody plays
     e.preventDefault();
-    if (down) {
-      this.keys.add(e.code);
-      this.keyboardUsed = true;
-    } else this.keys.delete(e.code);
+    if (e.repeat) return;
+    this.keypad.press(input, true);
+    this.keyboardUsed = true;
   }
 
   gamepads() {
@@ -193,26 +170,18 @@ export class Pad {
     this.label = label;
     this.battery = battery;
 
-    if (this.keys.size) {
-      for (const code of this.keys) {
-        const bit = KEY_BUTTONS[code];
-        if (bit) pad.buttons |= bit;
-      }
-      const axis = (minus, plus) => (this.keys.has(plus) ? 32767 : 0) + (this.keys.has(minus) ? -32768 : 0);
-      const kx = axis('KeyA', 'KeyD');
-      const ky = axis('KeyW', 'KeyS');
-      if (kx || ky) {
-        pad.lx = Math.max(-32768, Math.min(32767, kx));
-        pad.ly = Math.max(-32768, Math.min(32767, ky));
-      }
-      const krx = axis('KeyR', 'KeyY');
-      const kry = axis('KeyT', 'KeyV');
-      if (krx || kry) {
-        pad.rx = Math.max(-32768, Math.min(32767, krx));
-        pad.ry = Math.max(-32768, Math.min(32767, kry));
-      }
-      if (this.keys.has('KeyZ')) pad.l2 = 255;
-      if (this.keys.has('KeyC')) pad.r2 = 255;
+    // The keyboard and the mouse: their buttons count with the controller's, their sticks instead of its own
+    const keys = this.keypad.state(performance.now());
+    pad.buttons |= keys.buttons;
+    pad.l2 = Math.max(pad.l2, keys.l2);
+    pad.r2 = Math.max(pad.r2, keys.r2);
+    if (keys.lx || keys.ly) {
+      pad.lx = keys.lx;
+      pad.ly = keys.ly;
+    }
+    if (keys.rx || keys.ry) {
+      pad.rx = keys.rx;
+      pad.ry = keys.ry;
     }
 
     if (this.touch) this.touch.apply(pad);

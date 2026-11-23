@@ -172,7 +172,7 @@
         </div>
         <p id="join-warning" class="problem warn" hidden></p>
         <div class="row end">
-          <button id="join-keys" class="ghost" type="button">Keyboard controls</button>
+          <button id="join-keys" class="ghost" type="button">Keyboard and mouse</button>
           <button id="join-button" class="brand big" type="submit">Join</button>
         </div>
       </form>
@@ -294,11 +294,12 @@
   </div>
 </div>
 
-<!-- ============================================================ keyboard help -->
-<dialog id="keys" class="dialog">
-  <h2>Keyboard controls</h2>
-  <p class="dim">A controller is the way to play: plug it in or pair it, then press any button. Without one, these keys stand in. They go by the key's place on the keyboard.</p>
-  <div id="keys-list" class="keys-list"></div>
+<!-- ============================================================ keyboard and mouse -->
+<!-- What is in it is built by js/keysdialog.js -->
+<dialog id="keys" class="dialog keys">
+  <h2>Keyboard and mouse</h2>
+  <p class="dim">A controller is the way to play: plug it in or pair it, then press any button. Without one, the keyboard and the mouse stand in. Keys go by their place on the keyboard, whatever is printed on them.</p>
+  <div id="keys-body" class="keys-body"></div>
   <div class="row end">
     <button id="keys-close" class="primary" type="button">Close</button>
   </div>

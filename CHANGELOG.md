@@ -5,6 +5,7 @@ becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh
 
 ## Unreleased
 
+- **New: play with mouse and keyboard in a web browser too.** What the app got in 0.5.1 is now on the page: under **Keyboard and mouse** (before joining, and in the stream menu under Controller) choose **Mouse and WASD** and the mouse aims; click the picture to catch the mouse, Esc gives it back. Every key and mouse button can be changed there, up to three for each button of the controller, and the speed, acceleration, dead zone and smoothing of the mouse are set the same way as in the app. The page works out exactly the same controller as the app does.
 - **New: an installer for Windows.** Next to the zip there is now a `setup.exe`: it puts the app into your own programs, with an entry in the Start menu and in Windows' list of installed apps, and asks for no administrator. The app still updates itself from inside, and takes its uninstaller along when it does. The zip stays for whoever wants the app in a folder of their choice.
 - **The page for web browsers can sit on the home screen like an app.** On a phone or tablet, Chrome and Edge offer **Install this page** at the foot of the page; on an iPhone or iPad it is **Share → Add to Home Screen**. It then opens full screen, without the browser's bars. This is in the page itself, so it is there without an update of the app.
 

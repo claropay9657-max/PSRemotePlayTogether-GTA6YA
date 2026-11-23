@@ -14,7 +14,9 @@ import { Hud } from './hud.js';
 import { parseInvite } from './meet.js';
 import { StreamMenu } from './menu.js';
 import { OverlayOptions } from './options.js';
-import { KEYBOARD_MAP, Pad, controllerName } from './pad.js';
+import { KeysDialog } from './keysdialog.js';
+import { MouseAim } from './mouseaim.js';
+import { Pad, controllerName } from './pad.js';
 import { HUD_KEYS, HUD_PRESETS, PresetSettings } from './presets.js';
 import * as P from './proto.js';
 import { DEFAULT_ROOMS_URL, LANGUAGES, consoleName, fetchRooms, filterRooms, languageName } from './rooms.js';
@@ -89,6 +91,9 @@ let player = null;
 /** Mouse and keyboard for a game on the host's computer, when the host lets this player. */
 let keyMouse = null;
 let keyMouseAllowed = false;
+/** The mouse as a stick of the player's controller (mouseaim.js), and the window where that is set up. */
+let mouseAim = null;
+let keysDialog = null;
 let pad = null;
 let touch = null;
 let hud = null;
@@ -832,6 +837,7 @@ function enterStage() {
   };
   showStageNote();
 
+  syncMouseAim(true);
   clearInterval(padTimer);
   padTimer = setInterval(padTick, 4);
   clearInterval(slowTimer);
@@ -894,6 +900,7 @@ function showStageNote() {
 
 function leaveStage() {
   if (keyMouse) keyMouse.setOn(false);
+  if (mouseAim) mouseAim.setOn(false);
   ui.asleep.hidden = true;
   wakeAsked = false;
   keyMouseAllowed = false;
@@ -1021,8 +1028,21 @@ async function rejoin(text) {
 
 // ------------------------------------------------------------------ while playing
 
+/**
+ * The mouse can be caught for aiming while a game is on the screen and the player has switched
+ * that on (Keyboard and mouse). `say`: tell the player how, if it is.
+ */
+function syncMouseAim(say) {
+  if (!mouseAim) return;
+  const was = mouseAim.on;
+  mouseAim.setOn(!!session && !ui.stage.hidden && pad.keypad.options.aim && MouseAim.supported());
+  if (mouseAim.on && (say || !was)) notice('Click the picture and the mouse aims. Esc gives the mouse back.');
+}
+
 function padTick() {
   if (!session || !pad) return;
+  // A menu, the chat or a window of the page needs the mouse back
+  if (mouseAim && mouseAim.caught && typing()) mouseAim.letGo();
   const state = pad.read();
   session.setController(pad.shownKind, pad.battery);
   // The same buttons as in the app open and close the stream menu
@@ -1767,9 +1787,7 @@ function start() {
     },
     onKeys: () => {
       menu.close();
-      const keys = $('keys');
-      if (keys.showModal) keys.showModal();
-      else keys.setAttribute('open', '');
+      keysDialog.show();
     },
     onPreset: (index) => hudSettings.setActive(index),
     onArrange: () => {
@@ -1785,7 +1803,7 @@ function start() {
   menu.onOpenChange = (open) => {
     if (open) {
       // Nothing held keeps being held while the menu has the keys
-      pad.keys.clear();
+      pad.keypad.releaseAll();
       if (touch) touch.releaseAll();
       syncMenu();
       updateTalking();
@@ -1932,13 +1950,25 @@ function start() {
     notice('Webcam: the camera went away.');
   };
 
+  // What the player set for the keyboard and the mouse, kept in this browser
+  try {
+    const kept = JSON.parse(recall('psrpt.keypad') || 'null');
+    if (kept && kept.bindings) pad.keypad.setBindings(kept.bindings);
+    if (kept && kept.options) pad.keypad.setOptions(kept.options);
+  } catch (e) {
+    // as the page comes
+  }
+  // Not while a menu or the chat is open, and not while the mouse goes to a game on the host's computer
+  mouseAim = new MouseAim(ui.stage, pad.keypad, () => !typing() && !(keyMouse && keyMouse.on));
   const keys = $('keys');
-  $('keys-list').replaceChildren(...KEYBOARD_MAP.map(([code, what]) => {
-    const row = el('div');
-    row.append(el('kbd', '', keyLabel(code)), el('span', '', what));
-    return row;
-  }));
-  $('join-keys').addEventListener('click', () => (keys.showModal ? keys.showModal() : keys.setAttribute('open', '')));
+  keysDialog = new KeysDialog(keys, $('keys-body'), pad.keypad, {
+    canAim: MouseAim.supported(),
+    onChange: () => {
+      remember('psrpt.keypad', JSON.stringify({ bindings: pad.keypad.getBindings(), options: pad.keypad.options }));
+      syncMouseAim(false);
+    },
+  });
+  $('join-keys').addEventListener('click', () => keysDialog.show());
   $('keys-close').addEventListener('click', () => keys.close());
 
   $('asleep-wake').addEventListener('click', () => {
@@ -1985,7 +2015,11 @@ function start() {
   for (const type of ['pointerdown', 'keydown']) {
     window.addEventListener(type, () => sound.wake(), { passive: true });
   }
-  ui.screen.addEventListener('dblclick', () => menu.h.onFullscreen());
+  ui.screen.addEventListener('dblclick', () => {
+    // Two quick shots are not a wish for full screen
+    if (mouseAim && mouseAim.caught) return;
+    menu.h.onFullscreen();
+  });
   document.addEventListener('fullscreenchange', () => {
     if (menu.open) menu.setPicture(prefs.mode, prefs.zoom, !!document.fullscreenElement, prefs.stats, hasPicture());
   });

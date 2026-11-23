@@ -27,7 +27,8 @@ server only helps the two find each other.
 | In a browser | |
 | --- | --- |
 | Game picture and sound | yes (WebCodecs; H.264, and H.265 where the browser has it) |
-| Controller | yes, through the Gamepad API; the keyboard can stand in |
+| Controller | yes, through the Gamepad API |
+| Keyboard and mouse as a controller | yes, as in the app: the mouse aims, every key and mouse button can be set (**Keyboard and mouse**). The same conversion as the app's, checked against it |
 | Without a controller, on a phone or tablet | controls on the screen; the picture is the touchpad |
 | Rumble | where the browser has it (Chrome, Edge, Safari) |
 | The game's haptics | as rumble; the strength is set in the stream menu |
@@ -198,6 +199,7 @@ nothing to install.
 | `js/meet.js` | the notes and the meeting point |
 | `js/session.js` | the connection and the protocol |
 | `js/video.js` | putting frames back together, decoding, drawing |
+| `js/keypad.js`, `js/mouseaim.js`, `js/keysdialog.js` | keyboard and mouse as a controller: the conversion (a port of `gui/src/keymousepad.cpp`), catching the mouse, the window where it is set up |
 | `js/audio.js`, `js/audio-worklet.js` | game sound, voices, the microphone |
 | `js/pad.js` | controller and keyboard |
 | `js/touch.js` | controls on the screen |
