@@ -1865,7 +1865,9 @@ TEST(net_each_player_on_a_controller_of_their_own)
 	CHECK(b.Connect());
 	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
 	h.host->SetMixMode(MixMode::EachOwn);
-	CHECK(WaitFor([&] { return a.LastState().mix_mode == MixMode::EachOwn; }, 1000));
+	// Both have to have heard it: the second one's state may still be on its way when the first one's is here
+	CHECK(WaitFor([&] { return a.LastState().mix_mode == MixMode::EachOwn && b.LastState().mix_mode == MixMode::EachOwn
+		&& a.LastState().your_slot != 0 && b.LastState().your_slot != 0; }, 2000));
 	uint8_t slot_a = a.LastState().your_slot, slot_b = b.LastState().your_slot;
 	CHECK(slot_a != slot_b && slot_a != 0 && slot_b != 0);
 
