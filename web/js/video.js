@@ -345,9 +345,58 @@ export function codecStrings(codec, config) {
 }
 
 /**
- * Decodes the frames and draws them. Each frame is shown as soon as it is
- * decoded; when frames arrive faster than the screen can show them, the
- * older ones are skipped.
+ * Which decoded frame the screen shows at each of its refreshes.
+ *
+ * Frames come over the network a little unevenly: two within one refresh of the
+ * screen, then none in the next. Shown as they come, the first of the two would
+ * never be seen and the second would stay for two refreshes, which the eye reads
+ * as a stutter, however fast the connection is. So one frame may wait for the
+ * next refresh (`hold`): the picture then moves evenly, and that frame is seen
+ * one refresh later than it could have been (17 ms on most screens).
+ *
+ * More than that never waits. What piles up beyond it (a burst after a gap, a
+ * screen that is slower than the stream) is skipped, oldest first, so the
+ * picture never falls further behind than `hold` refreshes.
+ */
+export class FramePacer {
+  /** @param {number} hold how many frames may wait behind the one shown next; 0: none, the newest always wins */
+  constructor(hold = 1) {
+    this.hold = hold;
+    this.waiting = [];
+  }
+
+  /**
+   * A frame has been decoded.
+   * @returns {object[]} frames that will not be shown any more
+   */
+  offer(frame) {
+    this.waiting.push(frame);
+    const skipped = [];
+    while (this.waiting.length > this.hold + 1) skipped.push(this.waiting.shift());
+    return skipped;
+  }
+
+  /** The frame for this refresh of the screen, or null if none waits. */
+  take() {
+    return this.waiting.length ? this.waiting.shift() : null;
+  }
+
+  get length() {
+    return this.waiting.length;
+  }
+
+  /** @returns {object[]} everything that waited */
+  clear() {
+    const all = this.waiting;
+    this.waiting = [];
+    return all;
+  }
+}
+
+/**
+ * Decodes the frames and draws them. A frame is shown at the screen's next
+ * refresh after it was decoded; which one, when more than one is ready, is the
+ * FramePacer's business.
  */
 export class VideoPlayer {
   /**
@@ -364,7 +413,7 @@ export class VideoPlayer {
     this.codecName = '';
     this.configured = false;
     this.needKey = true;
-    this.pendingFrame = null;
+    this.pacer = new FramePacer();
     this.rafId = 0;
     this.timestamp = 0;
     this.unsupported = '';
@@ -454,19 +503,19 @@ export class VideoPlayer {
 
   onFrame(frame) {
     this.stats.decoded++;
-    if (this.pendingFrame) {
-      this.pendingFrame.close();
+    for (const old of this.pacer.offer(frame)) {
+      old.close();
       this.stats.skipped++;
     }
-    this.pendingFrame = frame;
     if (!this.rafId) this.rafId = requestAnimationFrame(() => this.draw());
   }
 
   draw() {
     this.rafId = 0;
-    const frame = this.pendingFrame;
-    this.pendingFrame = null;
+    const frame = this.pacer.take();
     if (!frame) return;
+    // One that waited is shown at the next refresh
+    if (this.pacer.length) this.rafId = requestAnimationFrame(() => this.draw());
     const w = frame.displayWidth;
     const h = frame.displayHeight;
     if (this.canvas.width !== w || this.canvas.height !== h) {
@@ -507,8 +556,7 @@ export class VideoPlayer {
     this.closeDecoder();
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.rafId = 0;
-    if (this.pendingFrame) this.pendingFrame.close();
-    this.pendingFrame = null;
+    for (const frame of this.pacer.clear()) frame.close();
     this.configured = false;
   }
 }

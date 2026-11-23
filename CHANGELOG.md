@@ -3,6 +3,10 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
+## Unreleased
+
+- **A smoother picture in a web browser.** Frames reach a browser a little unevenly: two within one refresh of the screen, then none. The page showed only the newer of the two, so in an unlucky rhythm every fourth frame was never seen, which looks like a stutter however fast the connection is. Now one frame may wait for the next refresh and every frame is shown, at most 17 ms later. This is in the page itself, so it reaches everybody who joins in a browser without an update of the app.
+
 ## 0.5.1
 
 - **New: play with mouse and keyboard, as in a game on a computer.** Switch on **The mouse aims** (Settings → Keyboard & mouse, or **Mouse aims** in the stream menu): moving the mouse moves the right stick, WASD walks, the left button fires and the right one aims. The app makes an ordinary controller of it on your own computer, so it works with a PS5 or PS4, an Xbox and a game on a computer, for the host and for every friend who plays in the app. While you play, the mouse is caught: F8 lets it go and catches it again, and the stream menu lets it go too.
