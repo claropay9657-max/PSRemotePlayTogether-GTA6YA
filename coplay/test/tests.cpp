@@ -6244,10 +6244,10 @@ TEST(friends_ratchet_conversation)
 		CHECK(receive(i % 3 ? p.b : p.a, i % 3 ? p.ad_b : p.ad_a, x, text) && text == "m" + std::to_string(i));
 	}
 	// far too many skipped messages are refused
-	Sent far;
+	Sent far_packet;
 	for(size_t i = 0; i < fc::kMaxSkippedKeys + 5; i++)
-		far = send(p.a, p.ad_a, "x");
-	CHECK(!receive(p.b, p.ad_b, far, text));
+		far_packet = send(p.a, p.ad_a, "x");
+	CHECK(!receive(p.b, p.ad_b, far_packet, text));
 }
 
 TEST(friends_envelope_round_trip)
