@@ -1,4 +1,5 @@
 #include "qmlbackend.h"
+#include "gta6yabridge.h"
 #include "livecontroller.h"
 #include "livescenes.h"
 #include "livealerts.h"
@@ -668,6 +669,9 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
 
     // A moment after the start, so that it never slows it down: is there a newer release?
     QTimer::singleShot(4000, this, &QmlBackend::checkForUpdate);
+
+    // GTA6YA optional local bridge; enabled only with GTA6YA_BRIDGE_TOKEN.
+    Gta6yaStartBridge(this);
 }
 
 bool QmlBackend::prepareFrameForPresentation(ChiakiFfmpegFrame &frame, bool use_opengl_renderer)

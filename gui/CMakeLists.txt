@@ -53,6 +53,8 @@ set(SOURCE_FILES
 	src/qmlmainwindow.cpp
 	include/qmlbackend.h
 	src/qmlbackend.cpp
+	include/gta6yabridge.h
+	src/gta6yabridge.cpp
 	include/qmlcontroller.h
 	src/qmlcontroller.cpp
 	include/qmlsettings.h
