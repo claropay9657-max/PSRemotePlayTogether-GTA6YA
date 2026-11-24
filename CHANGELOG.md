@@ -3,7 +3,7 @@
 What changed in each release of PSRemotePlayTogether. The section of a version
 becomes the "What's new" part of its release notes (`scripts/ci/release-notes.sh`).
 
-## Unreleased
+## 0.6.0
 
 - **New: friends, chats and status, in the app and in a web browser.** The people icon at the top of the start page opens your friends: who is online and what they play ("Playing Gran Turismo 7 with friends (2 / 4)"), when they are free, and **Join** next to everybody who hosts. Give your **friend link** to the people you want as friends; whoever has it can send you a request, and **Settings → Friends & chats → New friend link** stops the old one. No account and no e-mail address: you are your keys, kept on your devices.
 - **Private chats and group chats, end-to-end encrypted the way Signal does it.** Every message is sealed on your device for every device of the people it is for (X3DH, the Double Ratchet, and Sender Keys in groups); the friends server only passes on notes it cannot read, and keeps nothing it has delivered. Links get turned into links, :fire: into 🔥, and a **safety code** lets two friends make sure nobody sits in between.
