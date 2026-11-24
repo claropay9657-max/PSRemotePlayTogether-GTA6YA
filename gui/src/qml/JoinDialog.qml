@@ -27,6 +27,9 @@ FocusScope {
     property string joiningRoom: ""
     /** The key of the session being joined again from the recent ones; empty otherwise. */
     property string joiningRecent: ""
+    /** An invite to join at once when the page opens: a friend's session (Main.qml joinFriendRoom). */
+    property string startInvite: ""
+    property string startTitle: ""
     /** The room's own card says that we wait; otherwise it is said under the invite. */
     readonly property bool joiningShown: joiningRoom.length > 0 && rooms.shown.some((r) => r.invite === joiningRoom)
     readonly property bool canJoinInvite: !joining && inviteField.text.trim().length > 0
@@ -206,6 +209,11 @@ FocusScope {
     Component.onCompleted: {
         if (page !== 1)
             Chiaki.settings.coplayRefreshRooms();
+        // A friend's session: the invite shows in the field, and joining starts at once
+        if (startInvite.length > 0) {
+            inviteField.text = startInvite;
+            Qt.callLater(() => dialog.join(startInvite, startTitle));
+        }
     }
 
     Connections {

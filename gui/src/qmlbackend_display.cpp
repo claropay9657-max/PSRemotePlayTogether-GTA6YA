@@ -4,6 +4,13 @@
 // ("hud") and the OBS overlay. Both are groups of live settings with presets.
 
 #include "qmlbackend.h"
+#include "friends.h"
+#include <QApplication>
+#include <QBuffer>
+#include <QDate>
+#include <QFileDialog>
+#include <QImage>
+#include <QStandardPaths>
 #include "livecontroller.h"
 #include "livescenes.h"
 #include "livealerts.h"
@@ -208,6 +215,117 @@ QObject *QmlBackend::updaterObject() const
 QObject *QmlBackend::introSoundObject() const
 {
     return intro_sound;
+}
+
+QObject *QmlBackend::friendsObject() const
+{
+    return friends_client;
+}
+
+QString QmlBackend::friendsSaveBackup(const QString &passphrase)
+{
+    if (!friends_client || !friends_client->Enabled())
+        return tr("Friends are switched off.");
+    if (passphrase.size() < 8)
+        return tr("The passphrase needs at least 8 characters.");
+    const QString start = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+        + QStringLiteral("/PSRemotePlayTogether friends %1.psrpt-backup").arg(QDate::currentDate().toString(Qt::ISODate));
+    const QString path = QFileDialog::getSaveFileName(QApplication::focusWidget(), tr("Save the friends backup"), start,
+        tr("Friends backup (*.psrpt-backup)"), nullptr, QFileDialog::DontUseNativeDialog);
+    if (path.isEmpty())
+        return QStringLiteral("cancel");
+    return friends_client->saveBackup(path, passphrase) ? QString() : tr("The backup could not be saved there.");
+}
+
+QString QmlBackend::friendsRestoreBackup(const QString &passphrase)
+{
+    if (!friends_client)
+        return tr("Friends are not available.");
+    const QString path = QFileDialog::getOpenFileName(QApplication::focusWidget(), tr("Open a friends backup"),
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), tr("Friends backup (*.psrpt-backup);;All files (*)"),
+        nullptr, QFileDialog::DontUseNativeDialog);
+    if (path.isEmpty())
+        return QStringLiteral("cancel");
+    return friends_client->restoreBackup(path, passphrase) ? QString()
+        : tr("This backup does not open with that passphrase, or it is no friends backup.");
+}
+
+void QmlBackend::updateFriendsActivity()
+{
+    if (!friends_client)
+        return;
+    if (!session) {
+        friends_client->SetActivity(QString(), QVariantMap());
+        return;
+    }
+    // The game: what the console of the session says it runs, or the room's, or this computer
+    QString game;
+    QString console = session_info.host.isEmpty() ? QString() : tr("PS5");
+    for (const auto &host : discovery_manager.GetHosts()) {
+        if (host.host_addr == session_info.host && host.state == CHIAKI_DISCOVERY_HOST_STATE_READY) {
+            game = host.running_app_name;
+            console = host.ps5 ? tr("PS5") : tr("PS4");
+            break;
+        }
+    }
+    if (game.isEmpty())
+        game = session->GetCoPlayRoomGame();
+    if (session->IsPcSource())
+        console = tr("this computer");
+
+    QString activity;
+    QVariantMap room;
+    if (session->IsCoPlayHosting()) {
+        const int players = static_cast<int>(session->GetCoPlayPlayers().size());
+        const int max = session->GetCoPlayMaxGuests() + 1;
+        const QString title = session->GetCoPlayRoomTitle().isEmpty()
+            ? tr("%1's session").arg(settings->GetCoPlayName().isEmpty() ? tr("A friend") : settings->GetCoPlayName())
+            : session->GetCoPlayRoomTitle();
+        if (session->GetCoPlayTalkOnly())
+            activity = tr("Just talking (%1 / %2)").arg(players).arg(max);
+        else if (!game.isEmpty())
+            activity = tr("Playing %1 with friends (%2 / %3)").arg(game).arg(players).arg(max);
+        else
+            activity = tr("Hosting %1 (%2 / %3 players)").arg(title).arg(players).arg(max);
+        // Friends may join while there is room and the session is not locked: the same card as
+        // an invite in a chat
+        if (!session->GetCoPlayLocked() && players < max && !session->GetCoPlayInvite().isEmpty()) {
+            room = session->GetCoPlayInviteCard();
+            if (room.value(QStringLiteral("game")).toString().isEmpty())
+                room[QStringLiteral("game")] = game;
+        }
+    } else if (session->IsCoPlayGuest()) {
+        activity = game.isEmpty() ? tr("In a session with friends") : tr("Playing %1 with friends").arg(game);
+    } else {
+        activity = game.isEmpty() ? tr("Playing on %1").arg(console) : tr("Playing %1 on %2").arg(game, console);
+    }
+    friends_client->SetActivity(activity, room);
+}
+
+void QmlBackend::updateFriendsProfile()
+{
+    if (!friends_client)
+        return;
+    // One switch for the previews of links in every chat (Settings, Voice & webcam)
+    friends_client->SetLinkPreviews(settings->GetCoPlayChatPreviews());
+    // A small picture: the card goes into every request and has to stay small
+    QByteArray small;
+    QImage image(settings->GetCoPlayAvatar());
+    if (!settings->GetCoPlayAvatar().isEmpty() && !image.isNull()) {
+        image = image.scaled(72, 72, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation)
+                    .convertToFormat(QImage::Format_RGB32);
+        for (int quality = 85; quality >= 35; quality -= 10) {
+            small.clear();
+            QBuffer buffer(&small);
+            buffer.open(QIODevice::WriteOnly);
+            image.save(&buffer, "JPEG", quality);
+            if (small.size() <= 4 * 1024)
+                break;
+        }
+        if (small.size() > 4 * 1024)
+            small.clear();
+    }
+    friends_client->SetProfile(settings->GetCoPlayName(), small);
 }
 
 QObject *QmlBackend::overlayLayoutSettings() const

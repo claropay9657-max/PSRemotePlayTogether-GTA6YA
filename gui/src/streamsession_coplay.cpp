@@ -143,6 +143,8 @@ struct CoPlayState
 	bool is_public = false;
 	CoPlayRoomAnnouncer *room = nullptr; // a child of the session
 	CoPlayRoomAnnouncer::Room room_info;
+	/** What the game runs on, as rooms say it: "ps5", "ps4", "pc", "xbox", or empty for just talking. */
+	QString console;
 	/** The players' pictures as the list takes them (64x64 JPEG), by picture id; made once each. */
 	QHash<QString, QByteArray> room_faces;
 	QString room_problem;
@@ -478,6 +480,9 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	callbacks.on_chat_image = [this](const coplay::BlobRef &ref) {
 		QMetaObject::invokeMethod(this, [this, ref] { CoPlayOnChatImage(ref); }, Qt::QueuedConnection);
 	};
+	callbacks.on_chat_marks = [this]() {
+		QMetaObject::invokeMethod(this, [this] { CoPlayOnChatMarks(); }, Qt::QueuedConnection);
+	};
 	ChiakiLog *session_log = GetChiakiLog();
 	callbacks.on_log = [session_log](const std::string &line) {
 		CHIAKI_LOGI(session_log, "Play Together: %s", line.c_str());
@@ -545,6 +550,17 @@ void StreamSession::CoPlayInit(const StreamSessionConnectInfo &connect_info)
 	coplay->mix_mode = static_cast<int>(coplay->host->GetMixMode());
 
 	bool ps5 = chiaki_target_is_ps5(connect_info.target);
+	// What an invite to a friend shows (also without a public room): the title, the game and its picture
+	coplay->console = talk_room ? QString()
+		: pc_source ? (connect_info.pc_target.value(QStringLiteral("xbox")).toBool() ? QStringLiteral("xbox") : QStringLiteral("pc"))
+		: ps5 ? QStringLiteral("ps5") : QStringLiteral("ps4");
+	{
+		const QString title = connect_info.coplay_room_title.simplified();
+		coplay->room_info.title = title.isEmpty() ? tr("%1's session").arg(coplay->host_name) : title;
+		coplay->room_info.game = connect_info.coplay_room_game;
+		coplay->room_info.title_id = TitleIdOrEmpty(connect_info.coplay_room_title_id);
+	}
+	CoPlayFindCover();
 	coplay::StreamInfo info;
 	info.codec = ps5 ? static_cast<coplay::VideoCodec>(connect_info.video_profile.codec) : coplay::VideoCodec::H264;
 	info.width = static_cast<uint16_t>(connect_info.video_profile.width);
@@ -709,7 +725,8 @@ void StreamSession::CoPlayUpdateRoom()
 void StreamSession::SetCoPlayRoomGame(const QString &game, const QString &title_id)
 {
 	const QString id = TitleIdOrEmpty(title_id);
-	if(!coplay || !coplay->room || (coplay->room_info.game == game && coplay->room_info.title_id == id))
+	// Hosting: the public room's card and the invites to friends show the game
+	if(!coplay || !coplay->host || (coplay->room_info.game == game && coplay->room_info.title_id == id))
 		return;
 	const bool other_game = coplay->room_info.title_id != id;
 	coplay->room_info.game = game;
@@ -758,18 +775,72 @@ QString StreamSession::CoPlayRoomTwitch()
 /** The game's picture for the list, from Sony's catalog (no login), once it is known. */
 void StreamSession::CoPlayFindCover()
 {
-	if(!coplay || !coplay->room || coplay->room_info.title_id.isEmpty())
+	if(!coplay || !coplay->host || coplay->room_info.title_id.isEmpty())
 		return;
 	const QString id = coplay->room_info.title_id;
 	CoPlayRooms::FindCover(id, this, [this, id](const QString &cover) {
-		if(!coplay || !coplay->room || coplay->room_info.title_id != id)
+		if(!coplay || !coplay->host || coplay->room_info.title_id != id)
 			return;
 		CHIAKI_LOGI(GetChiakiLog(), "Play Together: Sony's catalog has %s for %s", cover.isEmpty() ? "no picture" : "a picture", qPrintable(id));
 		if(coplay->room_info.cover == cover)
 			return;
 		coplay->room_info.cover = cover;
 		CoPlayUpdateRoom();
+		emit CoPlayChanged();
 	});
+}
+
+void StreamSession::CoPlaySendChatRead(uint32_t seq)
+{
+	if(IsCoPlayHosting())
+		coplay->host->SetChatRead(seq);
+	else if(IsCoPlayGuest() && coplay->client)
+		coplay->client->SetChatRead(seq);
+}
+
+void StreamSession::CoPlaySendReaction(uint32_t seq, const std::string &emoji, bool on)
+{
+	if(IsCoPlayHosting())
+		coplay->host->React(seq, emoji, on);
+	else if(IsCoPlayGuest() && coplay->client)
+		coplay->client->React(seq, emoji, on);
+}
+
+void StreamSession::CoPlaySendDelete(uint32_t seq)
+{
+	if(IsCoPlayHosting())
+		coplay->host->DeleteChat(seq);
+	else if(IsCoPlayGuest() && coplay->client)
+		coplay->client->DeleteChat(seq);
+}
+
+coplay::ChatMarks StreamSession::CoPlayFetchChatMarks()
+{
+	if(IsCoPlayHosting())
+		return coplay->host->GetChatMarks();
+	if(IsCoPlayGuest() && coplay->client)
+		return coplay->client->GetChatMarks();
+	return coplay::ChatMarks();
+}
+
+QVariantMap StreamSession::GetCoPlayInviteCard() const
+{
+	QVariantMap card;
+	if(!IsCoPlayHosting())
+		return card;
+	card[QStringLiteral("invite")] = GetCoPlayInvite();
+	card[QStringLiteral("web")] = GetCoPlayInviteWeb();
+	card[QStringLiteral("title")] = coplay->room_info.title.isEmpty() ? tr("%1's session").arg(coplay->host_name) : coplay->room_info.title;
+	card[QStringLiteral("host")] = coplay->host_name;
+	card[QStringLiteral("game")] = coplay->room_info.game;
+	card[QStringLiteral("cover")] = coplay->room_info.cover;
+	card[QStringLiteral("console")] = coplay->console;
+	card[QStringLiteral("policy")] = JoinPolicyName(coplay->join_policy);
+	card[QStringLiteral("control")] = ControlName(static_cast<coplay::MixMode>(GetCoPlayMixMode()));
+	card[QStringLiteral("players")] = static_cast<int>(GetCoPlayPlayers().size());
+	card[QStringLiteral("max")] = GetCoPlayMaxGuests() + 1;
+	card[QStringLiteral("talk")] = talk_room;
+	return card;
 }
 
 bool StreamSession::GetCoPlayPublic() const
@@ -1976,6 +2047,9 @@ void StreamSession::CoPlayStartGuest()
 	};
 	callbacks.on_chat_image = [this](const coplay::BlobRef &ref) {
 		QMetaObject::invokeMethod(this, [this, ref] { CoPlayOnChatImage(ref); }, Qt::QueuedConnection);
+	};
+	callbacks.on_chat_marks = [this]() {
+		QMetaObject::invokeMethod(this, [this] { CoPlayOnChatMarks(); }, Qt::QueuedConnection);
 	};
 	callbacks.on_disconnected = [this](coplay::DisconnectReason reason) {
 		// On the receiving thread, which ends as soon as this returns

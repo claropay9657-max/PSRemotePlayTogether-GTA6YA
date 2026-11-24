@@ -473,13 +473,14 @@ static const uint32_t kChatGiveUpMs = 20000;
 static const size_t kChatSeenSize = 256;
 static const size_t kMaxChatImages = 24;
 
-uint32_t Client::SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image)
+uint32_t Client::SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image, uint32_t reply)
 {
 	if(!connected || lost)
 		return 0;
 	ChatMessage m;
 	m.text = TruncateUtf8(text, kMaxChatText);
 	m.embed = embed;
+	m.reply = reply;
 	if(m.text.empty() && !m.embed.Valid())
 		return 0;
 	m.embed.image = BlobRef();
@@ -519,6 +520,140 @@ BlobData Client::ChatImage(const BlobHash &hash)
 	return chat_blobs.Get(hash);
 }
 
+void Client::SetChatRead(uint32_t seq)
+{
+	if(!connected || lost || seq == 0)
+		return;
+	{
+		std::lock_guard<std::mutex> lock(chat_mutex);
+		if(seq <= read_wanted)
+			return;
+		read_wanted = seq;
+		read_sent_ms = read_first_ms = NowMs();
+	}
+	std::vector<uint8_t> payload;
+	ByteWriter w(payload);
+	w.U32(seq);
+	Send(PacketType::ChatSeen, payload);
+}
+
+void Client::React(uint32_t seq, const std::string &emoji, bool on)
+{
+	if(!connected || lost || seq == 0 || !ValidReaction(emoji))
+		return;
+	PendingReaction p;
+	p.reaction.seq = seq;
+	p.reaction.on = on;
+	p.reaction.emoji = emoji;
+	p.first_ms = p.last_ms = NowMs();
+	{
+		std::lock_guard<std::mutex> lock(chat_mutex);
+		// The newest wish for that reaction is the one that counts
+		reactions_out.erase(std::remove_if(reactions_out.begin(), reactions_out.end(),
+			[&](const PendingReaction &o) { return o.reaction.seq == seq && o.reaction.emoji == emoji; }), reactions_out.end());
+		reactions_out.push_back(p);
+	}
+	std::vector<uint8_t> payload;
+	ByteWriter w(payload);
+	WriteChatReaction(w, p.reaction);
+	Send(PacketType::ChatReactUp, payload);
+}
+
+void Client::DeleteChat(uint32_t seq)
+{
+	if(!connected || lost || seq == 0)
+		return;
+	{
+		std::lock_guard<std::mutex> lock(chat_mutex);
+		if(marks.deleted.count(seq))
+			return;
+		PendingDelete p;
+		p.seq = seq;
+		p.first_ms = p.last_ms = NowMs();
+		deletes_out.erase(std::remove_if(deletes_out.begin(), deletes_out.end(), [seq](const PendingDelete &o) { return o.seq == seq; }),
+			deletes_out.end());
+		deletes_out.push_back(p);
+	}
+	std::vector<uint8_t> payload;
+	ByteWriter w(payload);
+	w.U32(seq);
+	Send(PacketType::ChatDeleteUp, payload);
+}
+
+ChatMarks Client::GetChatMarks()
+{
+	std::lock_guard<std::mutex> lock(chat_mutex);
+	return marks;
+}
+
+void Client::ResendMarks(uint64_t now_ms)
+{
+	std::vector<std::vector<uint8_t>> reactions;
+	std::vector<uint32_t> deletes;
+	uint32_t read = 0;
+	{
+		std::lock_guard<std::mutex> lock(chat_mutex);
+		// Deleting, until the host's mark shows it (or given up like a message)
+		for(auto it = deletes_out.begin(); it != deletes_out.end();)
+		{
+			if(ElapsedMs(now_ms, it->first_ms) > kChatGiveUpMs)
+			{
+				it = deletes_out.erase(it);
+				continue;
+			}
+			if(ElapsedMs(now_ms, it->last_ms) >= kChatResendMs)
+			{
+				it->last_ms = now_ms;
+				deletes.push_back(it->seq);
+			}
+			++it;
+		}
+		for(auto it = reactions_out.begin(); it != reactions_out.end();)
+		{
+			if(ElapsedMs(now_ms, it->first_ms) > kChatGiveUpMs)
+			{
+				it = reactions_out.erase(it);
+				continue;
+			}
+			if(ElapsedMs(now_ms, it->last_ms) >= kChatResendMs)
+			{
+				it->last_ms = now_ms;
+				std::vector<uint8_t> payload;
+				ByteWriter w(payload);
+				WriteChatReaction(w, it->reaction);
+				reactions.push_back(payload);
+			}
+			++it;
+		}
+		// Our read mark, until the host's marks show it (a host without read marks never does:
+		// given up like a message, and told again with the next one read)
+		const auto at = marks.read.find(welcome.slot);
+		const bool shown = at != marks.read.end() && at->second >= read_wanted;
+		if(read_wanted && !shown && ElapsedMs(now_ms, read_first_ms) <= kChatGiveUpMs
+			&& ElapsedMs(now_ms, read_sent_ms) >= kChatResendMs * 3)
+		{
+			read_sent_ms = now_ms;
+			read = read_wanted;
+		}
+	}
+	for(const auto &payload : reactions)
+		Send(PacketType::ChatReactUp, payload);
+	for(uint32_t seq : deletes)
+	{
+		std::vector<uint8_t> payload;
+		ByteWriter w(payload);
+		w.U32(seq);
+		Send(PacketType::ChatDeleteUp, payload);
+	}
+	if(read)
+	{
+		std::vector<uint8_t> payload;
+		ByteWriter w(payload);
+		w.U32(read);
+		Send(PacketType::ChatSeen, payload);
+	}
+}
+
 void Client::ResendChats(uint64_t now_ms)
 {
 	if(now_ms - last_chat_resend_ms < kChatResendMs / 4)
@@ -545,6 +680,7 @@ void Client::ResendChats(uint64_t now_ms)
 	}
 	for(const auto &payload : due)
 		Send(PacketType::ChatUp, payload);
+	ResendMarks(now_ms);
 }
 
 void Client::SendCamFrame(const uint8_t *data, size_t size)
@@ -738,6 +874,47 @@ void Client::HandlePacket(const uint8_t *data, size_t size, const Address &from,
 				callbacks.on_chat_image(ref);
 			else if(complete && !chat_image && callbacks.on_avatar)
 				callbacks.on_avatar(ref);
+			break;
+		}
+		case PacketType::ChatMark: {
+			ChatMark m;
+			if(!ReadChatMark(r, m))
+				break;
+			// Always acknowledged: the earlier answer may have been lost
+			std::vector<uint8_t> ack;
+			ByteWriter w(ack);
+			w.U32(m.mark);
+			Send(PacketType::ChatMarkAck, ack);
+			bool changed = false;
+			{
+				std::lock_guard<std::mutex> lock(chat_mutex);
+				// A mark older than one applied for the same thing changes nothing
+				const std::string key = m.kind == ChatMarkKind::Read ? "r" + std::to_string(m.slot)
+					: m.kind == ChatMarkKind::Deleted ? "d" + std::to_string(m.seq)
+					: "x" + std::to_string(m.slot) + ":" + std::to_string(m.seq) + ":" + m.emoji;
+				uint32_t &applied = mark_applied[key];
+				if(m.mark > applied)
+				{
+					applied = m.mark;
+					changed = ApplyChatMark(marks, m);
+				}
+				// Our own reaction, as the host has it now as we want it: no need to send it again.
+				// A mark the other way is an older wish (taking it back got lost) or a refusal over
+				// the limits: sent again, until it shows or is given up
+				// Deleted: no need to ask again
+				if(m.kind == ChatMarkKind::Deleted)
+					deletes_out.erase(std::remove_if(deletes_out.begin(), deletes_out.end(),
+						[&](const PendingDelete &o) { return o.seq == m.seq; }), deletes_out.end());
+				if(m.kind == ChatMarkKind::Reaction && m.slot == welcome.slot)
+				{
+					reactions_out.erase(std::remove_if(reactions_out.begin(), reactions_out.end(),
+						[&](const PendingReaction &o) {
+							return o.reaction.seq == m.seq && o.reaction.emoji == m.emoji && o.reaction.on == m.on;
+						}), reactions_out.end());
+				}
+			}
+			if(changed && callbacks.on_chat_marks)
+				callbacks.on_chat_marks();
 			break;
 		}
 		case PacketType::Chat: {

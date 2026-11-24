@@ -28,6 +28,7 @@ QQC.Dialog {
 
     header: Text {
         visible: text.length > 0
+        textFormat: Text.PlainText
         text: card.title
         leftPadding: 24
         rightPadding: 24

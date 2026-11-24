@@ -199,6 +199,8 @@ Section "Uninstall"
   SetShellVarContext current
   Delete "$SMPROGRAMS\${APP}.lnk"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
+  ; Starting with the computer (Settings, General) ends with the app
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "PSRemotePlayTogether"
 
   ; The app's folder, and only if the app is in it. Settings, invites and logs are not in
   ; here and stay: installing again finds them.

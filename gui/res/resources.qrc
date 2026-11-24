@@ -123,6 +123,9 @@
     <file alias="ui/remove-person.svg">ui/remove-person.svg</file>
     <file alias="ui/search.svg">ui/search.svg</file>
     <file alias="ui/send.svg">ui/send.svg</file>
+    <file alias="ui/reply.svg">ui/reply.svg</file>
+    <file alias="ui/bell.svg">ui/bell.svg</file>
+    <file alias="ui/bell-off.svg">ui/bell-off.svg</file>
     <file alias="ui/shield.svg">ui/shield.svg</file>
     <file alias="ui/sliders.svg">ui/sliders.svg</file>
     <file alias="ui/monitor.svg">ui/monitor.svg</file>

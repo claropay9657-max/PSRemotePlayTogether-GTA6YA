@@ -5,6 +5,7 @@
 
 #include <streamsession.h>
 #include <coplaylinkpreview.h>
+#include <chattext.h>
 
 #include <coplay/client.h>
 #include <coplay/host.h>
@@ -21,9 +22,15 @@ struct CoPlayChatState
 {
 	QVariantList messages; // oldest first
 	int unread = 0;
+	/** Unread messages that mention this player. */
+	int mentions = 0;
 	int next_local = 0;
 	bool previews = true;
 	QHash<QString, QString> image_urls; // picture id -> data: URL
+	/** Who read how far, and the reactions, as the session last said. */
+	coplay::ChatMarks marks;
+	/** How far this player's read mark went out. */
+	uint32_t read_sent = 0;
 };
 
 /** Messages kept for the list; older ones scroll away for good. */
@@ -44,60 +51,16 @@ static QString JpegUrl(const coplay::BlobData &data)
 	return QStringLiteral("data:image/jpeg;base64,") + QString::fromLatin1(raw.toBase64());
 }
 
-/** The text as rich text for a Text item: escaped, links clickable, line breaks kept. */
-static QString ChatHtml(const QString &text)
+// The text as rich text (with the players' names drawn as mentions) and the emoji shortcodes:
+// chattext.h, shared with the friends' chats
+static QString ChatHtml(const QString &text, const QStringList &names)
 {
-	static const QRegularExpression link(QStringLiteral("https?://[^\\s<>\"']+"), QRegularExpression::CaseInsensitiveOption);
-	QString out;
-	qsizetype last = 0;
-	auto it = link.globalMatch(text);
-	while(it.hasNext())
-	{
-		QRegularExpressionMatch m = it.next();
-		QString url = m.captured(0);
-		while(!url.isEmpty() && QStringLiteral(".,;:!?)]}").contains(url.back()))
-			url.chop(1);
-		out += text.mid(last, m.capturedStart(0) - last).toHtmlEscaped();
-		out += QStringLiteral("<a href=\"%1\">%2</a>").arg(url.toHtmlEscaped(), url.toHtmlEscaped());
-		last = m.capturedStart(0) + url.size();
-	}
-	out += text.mid(last).toHtmlEscaped();
-	out.replace(QLatin1Char('\n'), QStringLiteral("<br>"));
-	return out;
+	return chattext::Html(text, names);
 }
 
-/** :shortcodes: and a few faces typed as text become emoji. */
-static QString WithEmoji(QString text)
+static QString WithEmoji(const QString &text)
 {
-	static const QList<QPair<QString, QString>> codes = {
-		{ QStringLiteral(":smile:"), QStringLiteral("😄") }, { QStringLiteral(":joy:"), QStringLiteral("😂") },
-		{ QStringLiteral(":wink:"), QStringLiteral("😉") }, { QStringLiteral(":heart:"), QStringLiteral("❤️") },
-		{ QStringLiteral(":fire:"), QStringLiteral("🔥") }, { QStringLiteral(":thumbsup:"), QStringLiteral("👍") },
-		{ QStringLiteral(":+1:"), QStringLiteral("👍") }, { QStringLiteral(":thumbsdown:"), QStringLiteral("👎") },
-		{ QStringLiteral(":clap:"), QStringLiteral("👏") }, { QStringLiteral(":gg:"), QStringLiteral("🎮") },
-		{ QStringLiteral(":skull:"), QStringLiteral("💀") }, { QStringLiteral(":eyes:"), QStringLiteral("👀") },
-		{ QStringLiteral(":cry:"), QStringLiteral("😢") }, { QStringLiteral(":rage:"), QStringLiteral("😡") },
-		{ QStringLiteral(":party:"), QStringLiteral("🥳") }, { QStringLiteral(":trophy:"), QStringLiteral("🏆") },
-		{ QStringLiteral(":100:"), QStringLiteral("💯") }, { QStringLiteral(":rocket:"), QStringLiteral("🚀") },
-		{ QStringLiteral(":ok:"), QStringLiteral("👌") }, { QStringLiteral(":wave:"), QStringLiteral("👋") },
-		{ QStringLiteral(":thinking:"), QStringLiteral("🤔") }, { QStringLiteral(":sweat:"), QStringLiteral("😅") },
-		{ QStringLiteral(":cool:"), QStringLiteral("😎") }, { QStringLiteral(":pray:"), QStringLiteral("🙏") },
-	};
-	for(const auto &c : codes)
-		text.replace(c.first, c.second, Qt::CaseInsensitive);
-	// Faces only where they stand on their own, so that links and times stay as they are
-	static const QList<QPair<QRegularExpression, QString>> faces = {
-		{ QRegularExpression(QStringLiteral("(^|\\s):-?\\)(?=\\s|$)")), QStringLiteral("\\1🙂") },
-		{ QRegularExpression(QStringLiteral("(^|\\s):-?D(?=\\s|$)")), QStringLiteral("\\1😄") },
-		{ QRegularExpression(QStringLiteral("(^|\\s);-?\\)(?=\\s|$)")), QStringLiteral("\\1😉") },
-		{ QRegularExpression(QStringLiteral("(^|\\s):-?\\((?=\\s|$)")), QStringLiteral("\\1🙁") },
-		{ QRegularExpression(QStringLiteral("(^|\\s):-?[pP](?=\\s|$)")), QStringLiteral("\\1😛") },
-		{ QRegularExpression(QStringLiteral("(^|\\s)<3(?=\\s|$)")), QStringLiteral("\\1❤️") },
-		{ QRegularExpression(QStringLiteral("(^|\\s)[xX]D(?=\\s|$)")), QStringLiteral("\\1😆") },
-	};
-	for(const auto &f : faces)
-		text.replace(f.first, f.second);
-	return text;
+	return chattext::WithEmoji(text);
 }
 
 void StreamSession::CoPlayChatInit(bool previews)
@@ -127,7 +90,7 @@ QJsonArray StreamSession::OverlayChat() const
 	for(int i = start; i < coplay_chat->messages.size(); i++)
 	{
 		QVariantMap e = coplay_chat->messages[i].toMap();
-		if(e.value("pending").toBool() || e.value("failed").toBool())
+		if(e.value("pending").toBool() || e.value("failed").toBool() || e.value("deleted").toBool())
 			continue;
 		QJsonObject m;
 		m["key"] = e.value("key").toString();
@@ -152,12 +115,146 @@ int StreamSession::GetCoPlayChatUnread() const
 	return coplay_chat ? coplay_chat->unread : 0;
 }
 
+bool StreamSession::GetCoPlayChatMentioned() const
+{
+	return coplay_chat && coplay_chat->unread > 0 && coplay_chat->mentions > 0;
+}
+
+QStringList StreamSession::CoPlayNames() const
+{
+	QStringList names;
+	for(const QVariant &v : GetCoPlayPlayers())
+	{
+		const QString name = v.toMap().value(QStringLiteral("name")).toString();
+		if(!name.isEmpty())
+			names.append(name);
+	}
+	return names;
+}
+
+void StreamSession::CoPlayChatMarkDeleted(QVariantMap &e) const
+{
+	e["deleted"] = true;
+	e["text"] = QString();
+	e["html"] = QString();
+	e["mentionsMe"] = false;
+	e.remove("embed");
+	e.remove("reply");
+}
+
+void StreamSession::coplayDeleteChat(qint64 seq)
+{
+	if(!coplay_chat || !IsCoPlayActive() || seq <= 0)
+		return;
+	// Only an own message, by the host's number
+	for(const QVariant &v : std::as_const(coplay_chat->messages))
+	{
+		const QVariantMap e = v.toMap();
+		if(e.value("seq").toLongLong() == seq && e.value("you").toBool() && !e.value("deleted").toBool())
+		{
+			CoPlaySendDelete(static_cast<uint32_t>(seq));
+			return;
+		}
+	}
+}
+
 void StreamSession::coplayMarkChatRead()
 {
-	if(!coplay_chat || !coplay_chat->unread)
+	if(!coplay_chat)
+		return;
+	// The read mark: up to the newest message everybody has (pending ones have no number yet)
+	uint32_t newest = 0;
+	for(const QVariant &v : std::as_const(coplay_chat->messages))
+		newest = std::max(newest, static_cast<uint32_t>(v.toMap().value(QStringLiteral("seq")).toLongLong()));
+	if(newest > coplay_chat->read_sent && IsCoPlayActive())
+	{
+		coplay_chat->read_sent = newest;
+		CoPlaySendChatRead(newest);
+	}
+	if(!coplay_chat->unread)
 		return;
 	coplay_chat->unread = 0;
+	coplay_chat->mentions = 0;
 	emit CoPlayChatChanged();
+}
+
+void StreamSession::CoPlayOnChatMarks()
+{
+	if(!coplay_chat)
+		return;
+	coplay_chat->marks = CoPlayFetchChatMarks();
+	// Messages their writers deleted: stand-ins
+	for(int i = 0; i < coplay_chat->messages.size(); i++)
+	{
+		QVariantMap e = coplay_chat->messages[i].toMap();
+		const qint64 seq = e.value("seq").toLongLong();
+		if(seq > 0 && !e.value("deleted").toBool() && coplay_chat->marks.deleted.count(static_cast<uint32_t>(seq)))
+		{
+			CoPlayChatMarkDeleted(e);
+			coplay_chat->messages[i] = e;
+		}
+	}
+	emit CoPlayChatChanged();
+}
+
+QVariantMap StreamSession::GetCoPlayChatMarks() const
+{
+	QVariantMap out;
+	if(!coplay_chat)
+		return out;
+	const int own = IsCoPlayActive() ? CoPlayOwnSlot() : -1;
+	QVariantMap read;
+	for(const auto &r : coplay_chat->marks.read)
+		read[QString::number(r.first)] = static_cast<qint64>(r.second);
+	QVariantMap reactions;
+	for(const auto &message : coplay_chat->marks.reactions)
+	{
+		QVariantList kinds;
+		for(const auto &kind : message.second)
+		{
+			// ("slots" is a word Qt keeps for itself)
+			QVariantList who;
+			bool mine = false;
+			for(uint8_t slot : kind.second)
+			{
+				who.append(slot);
+				mine = mine || slot == own;
+			}
+			QVariantMap entry;
+			entry[QStringLiteral("emoji")] = QString::fromStdString(kind.first);
+			entry[QStringLiteral("slots")] = who;
+			entry[QStringLiteral("mine")] = mine;
+			kinds.append(entry);
+		}
+		reactions[QString::number(message.first)] = kinds;
+	}
+	out[QStringLiteral("read")] = read;
+	out[QStringLiteral("reactions")] = reactions;
+	return out;
+}
+
+void StreamSession::coplayReact(qint64 seq, const QString &emoji)
+{
+	if(!coplay_chat || !IsCoPlayActive() || seq <= 0 || !coplay::ValidReaction(emoji.toStdString()))
+		return;
+	const int own = CoPlayOwnSlot();
+	bool given = false;
+	const auto message = coplay_chat->marks.reactions.find(static_cast<uint32_t>(seq));
+	if(message != coplay_chat->marks.reactions.end())
+	{
+		const auto kind = message->second.find(emoji.toStdString());
+		given = kind != message->second.end() && std::find(kind->second.begin(), kind->second.end(), own) != kind->second.end();
+		// Over the limits the host would refuse it: not asked at all
+		if(!given)
+		{
+			size_t mine = 0;
+			for(const auto &k : message->second)
+				mine += std::find(k.second.begin(), k.second.end(), own) != k.second.end() ? 1 : 0;
+			if(mine >= coplay::kMaxReactionsPerPlayer || (kind == message->second.end() && message->second.size() >= coplay::kMaxReactionKinds))
+				return;
+		}
+	}
+	CoPlaySendReaction(static_cast<uint32_t>(seq), emoji.toStdString(), !given);
 }
 
 QVariantMap StreamSession::CoPlayChatEntry(const coplay::ChatMessage &m, bool mine)
@@ -171,7 +268,9 @@ QVariantMap StreamSession::CoPlayChatEntry(const coplay::ChatMessage &m, bool mi
 	e["host"] = m.slot == 0;
 	QString text = QString::fromStdString(m.text);
 	e["text"] = text;
-	e["html"] = ChatHtml(text);
+	e["html"] = ChatHtml(text, CoPlayNames());
+	e["reply"] = static_cast<qint64>(m.reply);
+	e["mentionsMe"] = !mine && chattext::Mentions(text, CoPlayOwnName());
 	e["time"] = static_cast<double>(m.time_ms);
 	e["history"] = (m.flags & coplay::kChatHistory) != 0;
 	e["pending"] = false;
@@ -191,6 +290,9 @@ QVariantMap StreamSession::CoPlayChatEntry(const coplay::ChatMessage &m, bool mi
 		embed["image"] = image_key.isEmpty() ? QString() : coplay_chat->image_urls.value(image_key);
 		e["embed"] = embed;
 	}
+	// Deleted already (it came again after that)
+	if(coplay_chat->marks.deleted.count(m.seq))
+		CoPlayChatMarkDeleted(e);
 	return e;
 }
 
@@ -206,13 +308,17 @@ void StreamSession::CoPlayChatAdd(const QVariantMap &entry, bool notify)
 	while(coplay_chat->messages.size() > kMaxChatEntries)
 		coplay_chat->messages.removeFirst();
 	if(notify)
+	{
 		coplay_chat->unread++;
+		if(entry.value("mentionsMe").toBool())
+			coplay_chat->mentions++;
+	}
 	emit CoPlayChatChanged();
 	if(notify)
 		emit coplayChatMessage(entry);
 }
 
-void StreamSession::coplaySendChat(const QString &raw_text)
+void StreamSession::coplaySendChat(const QString &raw_text, qint64 reply_seq)
 {
 	if(!coplay_chat || !IsCoPlayActive())
 		return;
@@ -230,7 +336,9 @@ void StreamSession::coplaySendChat(const QString &raw_text)
 	pending["you"] = true;
 	pending["host"] = !IsCoPlayGuest();
 	pending["text"] = text;
-	pending["html"] = ChatHtml(text);
+	pending["html"] = ChatHtml(text, CoPlayNames());
+	const uint32_t reply = reply_seq > 0 && reply_seq <= 0xffffffffLL ? static_cast<uint32_t>(reply_seq) : 0;
+	pending["reply"] = static_cast<qint64>(reply);
 	pending["time"] = static_cast<double>(QDateTime::currentMSecsSinceEpoch());
 	pending["history"] = false;
 	pending["pending"] = true;
@@ -240,17 +348,17 @@ void StreamSession::coplaySendChat(const QString &raw_text)
 	QUrl link = coplay_chat->previews ? CoPlayLinkPreview::FirstLink(text) : QUrl();
 	if(link.isEmpty())
 	{
-		CoPlayChatSend(local_key, text, coplay::ChatEmbed(), QByteArray());
+		CoPlayChatSend(local_key, text, coplay::ChatEmbed(), QByteArray(), reply);
 		return;
 	}
 	QPointer<StreamSession> self(this);
-	CoPlayLinkPreview::Fetch(this, link, [self, local_key, text](const coplay::ChatEmbed &embed, const QByteArray &image) {
+	CoPlayLinkPreview::Fetch(this, link, [self, local_key, text, reply](const coplay::ChatEmbed &embed, const QByteArray &image) {
 		if(self && self->coplay_chat)
-			self->CoPlayChatSend(local_key, text, embed, image);
+			self->CoPlayChatSend(local_key, text, embed, image, reply);
 	});
 }
 
-void StreamSession::CoPlayChatSend(const QString &local_key, const QString &text, const coplay::ChatEmbed &embed, const QByteArray &image)
+void StreamSession::CoPlayChatSend(const QString &local_key, const QString &text, const coplay::ChatEmbed &embed, const QByteArray &image, uint32_t reply)
 {
 	std::vector<uint8_t> picture(image.constBegin(), image.constEnd());
 	auto find_pending = [this, &local_key]() -> int {
@@ -264,7 +372,7 @@ void StreamSession::CoPlayChatSend(const QString &local_key, const QString &text
 
 	if(coplay::Host *host = IsCoPlayHosting() ? CoPlayHost() : nullptr)
 	{
-		coplay::ChatMessage sent = host->SendChat(text.toStdString(), embed, picture);
+		coplay::ChatMessage sent = host->SendChat(text.toStdString(), embed, picture, reply);
 		int i = find_pending();
 		if(i < 0)
 			return;
@@ -285,7 +393,7 @@ void StreamSession::CoPlayChatSend(const QString &local_key, const QString &text
 	}
 
 	std::shared_ptr<coplay::Client> client = CoPlayClient();
-	uint32_t id = client ? client->SendChat(text.toStdString(), embed, picture) : 0;
+	uint32_t id = client ? client->SendChat(text.toStdString(), embed, picture, reply) : 0;
 	int i = find_pending();
 	if(i < 0)
 		return;

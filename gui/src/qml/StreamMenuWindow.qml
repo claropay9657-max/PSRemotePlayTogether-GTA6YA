@@ -21,6 +21,7 @@ Window {
     signal mainViewRequested()
     signal displayPanelRequested()
     signal chatRequested()
+    signal friendsRequested()
     signal arrangeRequested()
     signal closeAnimationFinished()
 
@@ -86,6 +87,7 @@ Window {
         onDisplayPanelRequested: streamMenuWindow.displayPanelRequested()
         onMainViewRequested: streamMenuWindow.mainViewRequested()
         onChatRequested: streamMenuWindow.chatRequested()
+        onFriendsRequested: streamMenuWindow.friendsRequested()
         onArrangeRequested: streamMenuWindow.arrangeRequested()
     }
 }

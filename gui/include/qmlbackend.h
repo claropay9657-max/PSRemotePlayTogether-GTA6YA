@@ -105,6 +105,10 @@ class QmlBackend : public QObject
     Q_PROPERTY(QObject* updater READ updaterObject CONSTANT)
     // The sound of the intro film, kept in step with it by the film itself
     Q_PROPERTY(QObject* introSound READ introSoundObject CONSTANT)
+    /** Friends, chats and status (friends.h) */
+    Q_PROPERTY(QObject* friends READ friendsObject CONSTANT)
+    /** The tray icon, starting in it, notifications (tray.h) */
+    Q_PROPERTY(QObject* tray READ trayObject CONSTANT)
     // Whether the display over the game is drawn into the stream scene (true) or sits in a window of its own
     Q_PROPERTY(bool hudInline READ hudInline CONSTANT)
     // A release newer than this build, found by the check at start; empty if there is none
@@ -289,6 +293,14 @@ public:
     QObject *updaterObject() const;
     class KeyMouse *keyMouse() const { return key_mouse; }
     QObject *introSoundObject() const;
+    QObject *friendsObject() const;
+    QObject *trayObject() const { return tray; }
+    /**
+     * The friends' backup file: asks where to save it (or which one to open), then saves or
+     * restores it. Empty when done, "cancel" when no file was chosen, else what went wrong.
+     */
+    Q_INVOKABLE QString friendsSaveBackup(const QString &passphrase);
+    Q_INVOKABLE QString friendsRestoreBackup(const QString &passphrase);
     QObject *overlayLayoutSettings() const;
     bool hudInline() const;
     QString updateVersion() const { return update_version; }
@@ -516,6 +528,12 @@ private:
     class KeyMouse *key_mouse = {};
     class AppUpdater *app_updater = {};
     class IntroSound *intro_sound = {};
+    class FriendsClient *friends_client = {};
+    QObject *tray = {};
+    /** The name and a small picture of the profile, for the friends' card. */
+    void updateFriendsProfile();
+    /** What this computer does, for the friends' status: the game, the session to join. */
+    void updateFriendsActivity();
     class PresetSettings *overlay_settings = {};
     bool settings_allocd = false;
     HostMAC auto_connect_mac = {};

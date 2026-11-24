@@ -40,6 +40,16 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString introState READ introState WRITE setIntroState NOTIFY introStateChanged)
     Q_PROPERTY(bool introSound READ introSound WRITE setIntroSound NOTIFY introSoundChanged)
     Q_PROPERTY(bool updateCheckEnabled READ updateCheckEnabled WRITE setUpdateCheckEnabled NOTIFY updateCheckEnabledChanged)
+    // Settings, General: starting with the computer, the tray, notifications (autostart.h, tray.h).
+    // Whether the app starts with the computer is what the system has, not a saved value.
+    Q_PROPERTY(bool startWithComputer READ startWithComputer WRITE setStartWithComputer NOTIFY trayChanged)
+    Q_PROPERTY(bool startWithComputerPossible READ startWithComputerPossible CONSTANT)
+    // Why it is not possible, an approval the system waits for, or why switching it failed; empty if none
+    Q_PROPERTY(QString startWithComputerNote READ startWithComputerNote NOTIFY trayChanged)
+    Q_PROPERTY(bool startInTray READ startInTray WRITE setStartInTray NOTIFY trayChanged)
+    Q_PROPERTY(bool closeToTray READ closeToTray WRITE setCloseToTray NOTIFY trayChanged)
+    Q_PROPERTY(bool notifications READ notifications WRITE setNotifications NOTIFY trayChanged)
+    Q_PROPERTY(bool notificationWords READ notificationWords WRITE setNotificationWords NOTIFY trayChanged)
     Q_PROPERTY(float hapticOverride READ hapticOverride WRITE setHapticOverride NOTIFY hapticOverrideChanged)
     Q_PROPERTY(int displayTargetContrast READ displayTargetContrast WRITE setDisplayTargetContrast NOTIFY displayTargetContrastChanged)
     Q_PROPERTY(int displayTargetPeak READ displayTargetPeak WRITE setDisplayTargetPeak NOTIFY displayTargetPeakChanged)
@@ -275,6 +285,20 @@ public:
     void setIntroSound(bool on);
     bool updateCheckEnabled() const;
     void setUpdateCheckEnabled(bool enabled);
+    bool startWithComputer() const;
+    void setStartWithComputer(bool on);
+    bool startWithComputerPossible() const;
+    QString startWithComputerNote() const;
+    bool startInTray() const;
+    void setStartInTray(bool on);
+    bool closeToTray() const;
+    void setCloseToTray(bool on);
+    bool notifications() const;
+    void setNotifications(bool on);
+    bool notificationWords() const;
+    void setNotificationWords(bool on);
+    /** Rereads what the system has (the player may have changed it in the system's settings). */
+    Q_INVOKABLE void refreshStartWithComputer();
     void setStreamerMode(bool enabled);
 
     int displayTargetContrast() const;
@@ -918,6 +942,7 @@ signals:
     void introStateChanged();
     void introSoundChanged();
     void updateCheckEnabledChanged();
+    void trayChanged();
     void fpsLocalPS4Changed();
     void fpsRemotePS4Changed();
     void fpsLocalPS5Changed();
@@ -1053,6 +1078,8 @@ private:
 
     Settings *settings = {};
     CoPlayRecent *coplay_recent = {};
+    /** Why switching the start with the computer failed the last time; empty if it worked. */
+    QString start_with_computer_error;
     QStringList audio_in_devices;
     QStringList audio_out_devices;
 };

@@ -36,6 +36,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -107,6 +109,14 @@ enum class PacketType : uint8_t
 	KeyMouse = 0x17,
 	/** guest -> host, empty: wake the sleeping console (kParticipantMayWake, StreamInfo::console_asleep). */
 	WakeUp = 0x18,
+	/** guest -> host: the chat is read up to a message (u32 seq, the host's numbering). */
+	ChatSeen = 0x19,
+	/** guest -> host: a reaction given or taken back (ChatReaction); sent again until a ChatMark shows it. */
+	ChatReactUp = 0x1A,
+	/** guest -> host: a ChatMark has arrived (u32 its mark number). */
+	ChatMarkAck = 0x1B,
+	/** guest -> host: delete an own message for everybody (u32 seq); sent again until a ChatMark shows it. */
+	ChatDeleteUp = 0x1C,
 
 	Video = 0x20,           // host -> guest
 	Audio = 0x21,           // host -> guest
@@ -118,6 +128,8 @@ enum class PacketType : uint8_t
 	Cam = 0x27,             // host -> guest
 	Chat = 0x28,            // host -> guest, answered with ChatAck
 	ChatUpAck = 0x29,       // host -> guest
+	/** host -> guest, answered with ChatMarkAck: how far somebody has read, a reaction, a message deleted (ChatMark). */
+	ChatMark = 0x2A,
 
 	Nack = 0x30,            // guest -> host
 	KeyframeRequest = 0x31, // guest -> host
@@ -266,7 +278,72 @@ struct ChatMessage
 	std::string name;
 	std::string text;
 	ChatEmbed embed;
+	/**
+	 * The message this one answers, by the host's numbering (0: none). At the end of Chat and
+	 * ChatUp, after the embed: versions that do not know it read the packets as before.
+	 */
+	uint32_t reply = 0;
 };
+
+/*
+ * Read marks and reactions in the chat. Versions that do not know them ignore their packets: the
+ * chat works as before, without them.
+ */
+/** One reaction: an emoji, at most this many bytes of UTF-8 (with its modifiers). */
+constexpr size_t kMaxReactionSize = 16;
+/** Different reactions one player gives one message. */
+constexpr size_t kMaxReactionsPerPlayer = 3;
+/** Different reactions on one message. */
+constexpr size_t kMaxReactionKinds = 12;
+
+/** A reaction a guest gives or takes back (ChatReactUp). */
+struct ChatReaction
+{
+	uint32_t seq = 0; // the message, by the host's numbering
+	bool on = true;
+	std::string emoji;
+};
+
+enum class ChatMarkKind : uint8_t
+{
+	/** How far a player has read: seq (0 when they left). */
+	Read = 1,
+	/** A reaction a player gave (on) or took back. */
+	Reaction = 2,
+	/** A message its writer (slot) deleted for everybody: seq. */
+	Deleted = 3
+};
+
+/** What the host tells everybody about read marks, reactions and deleted messages, one change at a time. */
+struct ChatMark
+{
+	uint32_t mark = 0; // the host's number of this mark; the guest acknowledges it
+	ChatMarkKind kind = ChatMarkKind::Read;
+	uint8_t slot = 0;
+	uint32_t seq = 0;
+	bool on = true;
+	std::string emoji; // Reaction only
+};
+
+/** Who read how far and who reacted how, as the app shows it. */
+struct ChatMarks
+{
+	std::map<uint8_t, uint32_t> read; // slot -> read up to this message
+	std::map<uint32_t, std::map<std::string, std::vector<uint8_t>>> reactions; // message -> emoji -> slots
+	std::set<uint32_t> deleted; // messages their writers deleted for everybody
+};
+
+/**
+ * Whether text is one emoji: 1 to kMaxReactionSize bytes of UTF-8 made of emoji code points and
+ * what joins them (no letters of any script, spaces or controls; digits, # and * only as keycaps).
+ */
+bool ValidReaction(const std::string &emoji);
+void WriteChatReaction(ByteWriter &w, const ChatReaction &r);
+bool ReadChatReaction(ByteReader &r, ChatReaction &out);
+void WriteChatMark(ByteWriter &w, const ChatMark &m);
+bool ReadChatMark(ByteReader &r, ChatMark &m);
+/** Applies a mark to what a session knows; false if it changes nothing. */
+bool ApplyChatMark(ChatMarks &marks, const ChatMark &m);
 
 /** At most max bytes of s, never ending in the middle of a UTF-8 character. */
 std::string TruncateUtf8(const std::string &s, size_t max);

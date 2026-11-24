@@ -40,6 +40,8 @@ C.PopupCard {
 
         Text {
             id: label
+            // Names of friends and players come into these texts: never rich text
+            textFormat: Text.PlainText
             Layout.preferredWidth: Math.min(implicitWidth, 460)
             wrapMode: Text.WordWrap
             lineHeight: 1.2

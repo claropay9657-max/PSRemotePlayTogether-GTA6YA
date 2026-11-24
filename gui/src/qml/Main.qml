@@ -256,6 +256,22 @@ Item {
         stack.push(controllerMappingDialogComponent)
     }
 
+    /** Friends: the panel with the lists, or at a friend's chat (their fingerprint). */
+    function showFriends(fp = "") {
+        friendsPanel.show(fp);
+    }
+
+    /** A friend's session from their status or a join card: joined like an invite. */
+    function joinFriendRoom(room) {
+        if (!room || !room.invite)
+            return;
+        if (Chiaki.session) {
+            showInfoDialog(qsTr("You are in a session"), qsTr("Leave this session first, then join %1.").arg(room.title || qsTr("your friend's")));
+            return;
+        }
+        stack.push(joinDialogComponent, { page: 0, startInvite: room.invite, startTitle: room.title || "" });
+    }
+
     /** The intro film: what the app is for and how it works. "How it works" on the start page shows it again. */
     function showIntro() {
         stack.push(introViewComponent);
@@ -493,6 +509,7 @@ Item {
 
             Text {
                 id: infoDialogLabel
+                textFormat: Text.PlainText
                 Layout.preferredWidth: Math.min(implicitWidth, 480)
                 wrapMode: Text.WordWrap
                 lineHeight: 1.2
@@ -512,12 +529,30 @@ Item {
         }
     }
 
+    FriendsPanel {
+        id: friendsPanel
+    }
+
     ConfirmDialog {
         id: confirmDialog
     }
 
     RemindDialog {
         id: remindDialog
+    }
+
+    // The tray (tray.h) has opened the window: for a click on a notification (that chat, or the
+    // friend who asked or hosts), or for a friend's room chosen under "Hosting now"
+    Connections {
+        target: Chiaki.tray
+
+        function onOpenChatRequested(chat) {
+            root.showFriends(chat);
+        }
+
+        function onJoinRequested(room) {
+            root.joinFriendRoom(room);
+        }
     }
 
     // A newer release than this build (Chiaki.checkForUpdate() runs a moment after the start).

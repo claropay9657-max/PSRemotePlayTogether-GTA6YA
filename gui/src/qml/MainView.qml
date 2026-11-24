@@ -727,6 +727,58 @@ Pane {
                 }
             }
 
+            // Friends: who is online, requests, chats. A number on it for what is new.
+            PageIconButton {
+                id: friendsButton
+                readonly property var fr: Chiaki.friends
+                readonly property int news: {
+                    if (!fr || !fr.enabled)
+                        return 0;
+                    let n = fr.unread;
+                    for (let i = 0; i < fr.requests.length; ++i) {
+                        if (fr.requests[i].incoming)
+                            n++;
+                    }
+                    return n;
+                }
+                readonly property int online: {
+                    if (!fr || !fr.enabled)
+                        return 0;
+                    let n = 0;
+                    for (let i = 0; i < fr.friends.length; ++i) {
+                        if (fr.friends[i].state !== "offline")
+                            n++;
+                    }
+                    return n;
+                }
+                iconName: "people"
+                tip: news > 0 ? qsTr("Friends: %1 new").arg(news)
+                     : online > 0 ? qsTr("Friends: %1 online").arg(online) : qsTr("Friends")
+                onClicked: root.showFriends()
+
+                Rectangle {
+                    visible: friendsButton.news > 0 || friendsButton.online > 0
+                    x: parent.width - width + 2
+                    y: -2
+                    width: friendsButton.news > 0 ? Math.max(18, newsLabel.implicitWidth + 8) : 11
+                    height: friendsButton.news > 0 ? 18 : 11
+                    radius: height / 2
+                    color: friendsButton.news > 0 ? C.Theme.brandTo : C.Theme.good
+                    border.width: 2
+                    border.color: C.Theme.ground
+
+                    Label {
+                        id: newsLabel
+                        visible: friendsButton.news > 0
+                        anchors.centerIn: parent
+                        font.pixelSize: 10
+                        font.bold: true
+                        color: "white"
+                        text: friendsButton.news > 99 ? "99+" : friendsButton.news
+                    }
+                }
+            }
+
             PageIconButton {
                 id: settingsButton
                 iconName: "sliders"
@@ -1733,8 +1785,15 @@ Pane {
                         tint: C.Theme.focus
                         ink: "#8ef6ff"
                         text: qsTr("Update available: %1").arg(Chiaki.updateVersion)
-                        tip: qsTr("Open the download page in your browser")
-                        onClicked: Chiaki.openUpdatePage()
+                        // Where the app updates itself, its own page (what is new, and the update);
+                        // otherwise the download page, as the question at the start does
+                        tip: Chiaki.updater.possible ? qsTr("See what is new and update") : qsTr("Open the download page in your browser")
+                        onClicked: {
+                            if (Chiaki.updater.possible)
+                                root.showSettingsDialog("updates");
+                            else
+                                Chiaki.openUpdatePage();
+                        }
                     }
 
                     Label {

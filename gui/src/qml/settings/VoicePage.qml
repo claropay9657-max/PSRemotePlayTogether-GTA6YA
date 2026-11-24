@@ -335,7 +335,7 @@ C.SettingsPage {
 
                 C.SettingsRow {
                     title: qsTr("Preview links I post")
-                    subtitle: qsTr("Your app opens the link once to make the preview.")
+                    subtitle: qsTr("In sessions and with friends. Your app opens the link once to make the preview; the others never open it.")
                     keywords: qsTr("chat link url preview")
                     textMinimum: 180
                     switchItem: linkPreviews

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
 
+#include <algorithm>
 #include <coplay/protocol.h>
 
 #include <cmath>
@@ -536,6 +537,168 @@ bool ValidTwitchLogin(const std::string &login)
 	return true;
 }
 
+namespace
+{
+/** Code points emoji are made of (Unicode's emoji blocks and the few symbols outside them). */
+bool EmojiCodePoint(uint32_t c)
+{
+	return c == 0xa9 || c == 0xae || c == 0x203c || c == 0x2049 || c == 0x2122 || c == 0x2139
+		|| (c >= 0x2190 && c <= 0x21ff) || (c >= 0x2300 && c <= 0x23ff) || c == 0x24c2
+		|| (c >= 0x25a0 && c <= 0x27bf) || (c >= 0x2900 && c <= 0x297f) || (c >= 0x2b00 && c <= 0x2bff)
+		|| c == 0x3030 || c == 0x303d || c == 0x3297 || c == 0x3299 || (c >= 0x1f000 && c <= 0x1faff);
+}
+
+/** What joins or changes an emoji: zero width joiner, variation selectors, the keycap. */
+bool EmojiJoiner(uint32_t c)
+{
+	return c == 0x200d || c == 0xfe0e || c == 0xfe0f || c == 0x20e3;
+}
+}
+
+bool ValidReaction(const std::string &emoji)
+{
+	if(emoji.empty() || emoji.size() > kMaxReactionSize)
+		return false;
+	// UTF-8 that decodes to emoji code points and what joins them: no letters of any script, no
+	// spaces, controls or invisible marks; a digit, # or * only as a keycap (1️⃣, #️⃣)
+	std::vector<uint32_t> points;
+	for(size_t i = 0; i < emoji.size();)
+	{
+		const uint8_t c = static_cast<uint8_t>(emoji[i]);
+		const size_t n = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xe ? 3 : (c >> 3) == 0x1e ? 4 : 0;
+		if(n == 0 || i + n > emoji.size())
+			return false;
+		uint32_t point = n == 1 ? c : n == 2 ? (c & 0x1f) : n == 3 ? (c & 0x0f) : (c & 0x07);
+		for(size_t k = 1; k < n; k++)
+		{
+			const uint8_t b = static_cast<uint8_t>(emoji[i + k]);
+			if((b & 0xc0) != 0x80)
+				return false;
+			point = (point << 6) | (b & 0x3f);
+		}
+		// The shortest form only (no hidden ASCII in long forms)
+		const uint32_t least = n == 1 ? 0 : n == 2 ? 0x80 : n == 3 ? 0x800 : 0x10000;
+		if(point < least || point > 0x10ffff)
+			return false;
+		points.push_back(point);
+		i += n;
+	}
+	bool symbol = false;
+	for(size_t i = 0; i < points.size(); i++)
+	{
+		const uint32_t c = points[i];
+		if((c >= '0' && c <= '9') || c == '#' || c == '*')
+		{
+			// A keycap: the character, perhaps the emoji selector, then the keycap mark
+			size_t k = i + 1;
+			if(k < points.size() && points[k] == 0xfe0f)
+				k++;
+			if(k >= points.size() || points[k] != 0x20e3)
+				return false;
+			symbol = true;
+			i = k;
+		}
+		else if(EmojiCodePoint(c))
+			symbol = true;
+		else if(!EmojiJoiner(c) || c == 0x20e3)
+			return false;
+	}
+	return symbol;
+}
+
+void WriteChatReaction(ByteWriter &w, const ChatReaction &r)
+{
+	w.U32(r.seq);
+	w.U8(r.on ? 1 : 0);
+	w.Str8(r.emoji.substr(0, kMaxReactionSize));
+}
+
+bool ReadChatReaction(ByteReader &r, ChatReaction &out)
+{
+	out.seq = r.U32();
+	out.on = r.U8() != 0;
+	out.emoji = r.Str8();
+	return r.ok() && out.seq != 0 && ValidReaction(out.emoji);
+}
+
+void WriteChatMark(ByteWriter &w, const ChatMark &m)
+{
+	w.U32(m.mark);
+	w.U8(static_cast<uint8_t>(m.kind));
+	w.U8(m.slot);
+	w.U32(m.seq);
+	if(m.kind == ChatMarkKind::Reaction)
+	{
+		w.U8(m.on ? 1 : 0);
+		w.Str8(m.emoji.substr(0, kMaxReactionSize));
+	}
+}
+
+bool ReadChatMark(ByteReader &r, ChatMark &m)
+{
+	m.mark = r.U32();
+	const uint8_t kind = r.U8();
+	m.slot = r.U8();
+	m.seq = r.U32();
+	if(!r.ok() || m.slot > kMaxGuests)
+		return false;
+	if(kind == static_cast<uint8_t>(ChatMarkKind::Read))
+	{
+		m.kind = ChatMarkKind::Read;
+		return true;
+	}
+	if(kind == static_cast<uint8_t>(ChatMarkKind::Deleted))
+	{
+		m.kind = ChatMarkKind::Deleted;
+		return m.seq != 0;
+	}
+	if(kind != static_cast<uint8_t>(ChatMarkKind::Reaction))
+		return false;
+	m.kind = ChatMarkKind::Reaction;
+	m.on = r.U8() != 0;
+	m.emoji = r.Str8();
+	return r.ok() && m.seq != 0 && ValidReaction(m.emoji);
+}
+
+bool ApplyChatMark(ChatMarks &marks, const ChatMark &m)
+{
+	if(m.kind == ChatMarkKind::Read)
+	{
+		if(m.seq == 0)
+			return marks.read.erase(m.slot) > 0;
+		uint32_t &read = marks.read[m.slot];
+		if(read == m.seq)
+			return false;
+		read = m.seq;
+		return true;
+	}
+	if(m.kind == ChatMarkKind::Deleted)
+	{
+		// Gone with its reactions
+		const bool reacted = marks.reactions.erase(m.seq) > 0;
+		return marks.deleted.insert(m.seq).second || reacted;
+	}
+	auto &kinds = marks.reactions[m.seq];
+	auto &slots = kinds[m.emoji];
+	const auto at = std::find(slots.begin(), slots.end(), m.slot);
+	bool changed = false;
+	if(m.on && at == slots.end())
+	{
+		slots.push_back(m.slot);
+		changed = true;
+	}
+	else if(!m.on && at != slots.end())
+	{
+		slots.erase(at);
+		changed = true;
+	}
+	if(slots.empty())
+		kinds.erase(m.emoji);
+	if(kinds.empty())
+		marks.reactions.erase(m.seq);
+	return changed;
+}
+
 std::string TruncateUtf8(const std::string &s, size_t max)
 {
 	if(s.size() <= max)
@@ -557,13 +720,16 @@ void WriteChatMessage(ByteWriter &w, const ChatMessage &m)
 	w.Str8(TruncateUtf8(m.name, kMaxNameLength));
 	w.Str16(TruncateUtf8(m.text, kMaxChatText));
 	w.U8(m.embed.Valid() ? 1 : 0);
-	if(!m.embed.Valid())
-		return;
-	w.Str16(TruncateUtf8(m.embed.url, kMaxChatUrl));
-	w.Str8(TruncateUtf8(m.embed.site, kMaxChatSite));
-	w.Str8(TruncateUtf8(m.embed.title, kMaxChatTitle));
-	w.Str16(TruncateUtf8(m.embed.description, kMaxChatDescription));
-	WriteBlobRef(w, m.embed.image);
+	if(m.embed.Valid())
+	{
+		w.Str16(TruncateUtf8(m.embed.url, kMaxChatUrl));
+		w.Str8(TruncateUtf8(m.embed.site, kMaxChatSite));
+		w.Str8(TruncateUtf8(m.embed.title, kMaxChatTitle));
+		w.Str16(TruncateUtf8(m.embed.description, kMaxChatDescription));
+		WriteBlobRef(w, m.embed.image);
+	}
+	// Last, so that versions without replies read the rest as before
+	w.U32(m.reply);
 }
 
 bool ReadChatMessage(ByteReader &r, ChatMessage &m)
@@ -579,18 +745,25 @@ bool ReadChatMessage(ByteReader &r, ChatMessage &m)
 	if(!r.ok() || m.name.size() > kMaxNameLength || m.text.size() > kMaxChatText)
 		return false;
 	m.embed = ChatEmbed();
-	if(!has_embed)
-		return !m.text.empty();
-	m.embed.url = r.Str16();
-	m.embed.site = r.Str8();
-	m.embed.title = r.Str8();
-	m.embed.description = r.Str16();
-	if(!r.ok() || !ReadBlobRef(r, m.embed.image))
+	m.reply = 0;
+	if(has_embed)
+	{
+		m.embed.url = r.Str16();
+		m.embed.site = r.Str8();
+		m.embed.title = r.Str8();
+		m.embed.description = r.Str16();
+		if(!r.ok() || !ReadBlobRef(r, m.embed.image))
+			return false;
+		if(m.embed.url.empty() || m.embed.url.size() > kMaxChatUrl || m.embed.site.size() > kMaxChatSite
+				|| m.embed.title.size() > kMaxChatTitle || m.embed.description.size() > kMaxChatDescription
+				|| m.embed.image.size > kMaxChatImageSize)
+			return false;
+	}
+	else if(m.text.empty())
 		return false;
-	if(m.embed.url.empty() || m.embed.url.size() > kMaxChatUrl || m.embed.site.size() > kMaxChatSite
-			|| m.embed.title.size() > kMaxChatTitle || m.embed.description.size() > kMaxChatDescription
-			|| m.embed.image.size > kMaxChatImageSize)
-		return false;
+	// The message it answers, from versions that have replies
+	if(r.remaining() >= 4)
+		m.reply = r.U32();
 	return true;
 }
 

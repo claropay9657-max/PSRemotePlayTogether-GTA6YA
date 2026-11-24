@@ -18,6 +18,8 @@ Rectangle {
 
     /** Open the big chat (StreamChatPanel). */
     signal chatRequested()
+    /** Friends: the friends panel beside the picture (StreamFriendsWindow.qml). */
+    signal friendsRequested()
 
     readonly property var session: Chiaki.session
     readonly property bool active: !!session && session.coplayActive
@@ -1169,7 +1171,8 @@ Rectangle {
                             font.pixelSize: 10
                             font.weight: Font.ExtraBold
                             color: "#ffffff"
-                            text: panel.unread > 99 ? "99+" : panel.unread
+                            // A message that mentions you: "@"
+                            text: panel.session && panel.session.coplayChatMentioned ? "@" : panel.unread > 99 ? "99+" : panel.unread
                         }
                     }
 
@@ -1192,6 +1195,16 @@ Rectangle {
                         text: qsTr("Open big")
                         Accessible.name: qsTr("Open the chat")
                         onClicked: panel.chatRequested()
+                    }
+
+                    C.PillButton {
+                        visible: !!Chiaki.friends && Chiaki.friends.enabled
+                        small: true
+                        implicitHeight: 30
+                        iconName: "people"
+                        text: qsTr("Friends")
+                        Accessible.name: qsTr("Open your friends")
+                        onClicked: panel.friendsRequested()
                     }
                 }
 

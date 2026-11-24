@@ -62,11 +62,34 @@ test('the page points to the manifest and has a picture for iOS', () => {
   assert.match(page, /default-src 'self'/);
 });
 
+/** A script without its comments, for what it does rather than what it says. */
+function code(file) {
+  return fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+}
+
 test('nothing of the page is kept on the device', () => {
-  // A copy kept by a service worker could be older than the host's app expects
-  for (const file of fs.readdirSync(path.join(web, 'js'))) {
-    const text = fs.readFileSync(path.join(web, 'js', file), 'utf8');
-    assert.ok(!/serviceWorker\s*\.\s*register/.test(text), `${file} registers a service worker`);
+  // A copy kept by a service worker could be older than the host's app expects. The one service
+  // worker there is takes friends' push messages only (push-sw.js, docs/friends.md "Web only"),
+  // registered by js/friends/push.js once the player switches notifications on
+  const registering = [];
+  for (const file of fs.readdirSync(path.join(web, 'js'), { recursive: true }).filter((f) => f.endsWith('.js'))) {
+    const text = code(path.join(web, 'js', file));
+    const calls = [...text.matchAll(/serviceWorker\s*\.\s*register\s*\(\s*([^,)]*)/g)];
+    if (calls.length) registering.push(file.split(path.sep).join('/'));
+    for (const call of calls) assert.equal(call[1].trim(), "'push-sw.js'", `${file} registers ${call[1]}`);
   }
+  assert.deepEqual(registering, ['friends/push.js']);
+  // No other script beside the page that could be registered for all of it
+  assert.deepEqual(fs.readdirSync(web).filter((f) => /\.m?js$/.test(f)), ['push-sw.js']);
   assert.equal(manifest.serviceworker, undefined);
+
+  // And that one leaves loading the page alone: no fetch handler, no cache, nothing loaded into it
+  const worker = code(path.join(web, 'push-sw.js'));
+  const listened = [...worker.matchAll(/addEventListener\(\s*['"]([a-z]+)['"]/g)].map((m) => m[1]).sort();
+  assert.deepEqual(listened, ['notificationclick', 'push']);
+  assert.ok(!/\bself\s*\.\s*on[a-z]+\s*=/.test(worker), 'push-sw.js sets an on… handler');
+  assert.ok(!/['"`]fetch['"`]|\bfetch\s*\(/.test(worker), 'push-sw.js answers or makes fetches');
+  assert.ok(!/\bcaches\b|\bCache(Storage)?\b|\bindexedDB\b/.test(worker), 'push-sw.js keeps something');
+  assert.ok(!/importScripts|\bimport\s*\(|^\s*import\s/m.test(worker), 'push-sw.js loads code');
+  assert.ok(!/skipWaiting|clients\s*\.\s*claim/.test(worker), 'push-sw.js takes over pages');
 });

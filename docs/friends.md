@@ -1,6 +1,9 @@
 # Friends, chat and status (design)
 
-Status: a design, nothing of it is built. The owner's decisions are at the end.
+Status: built (November 2026), not yet released or reviewed from outside. The exact protocol is
+docs/friends-protocol.md; the code: coplay/src/friends_crypto.cpp (the cryptography),
+gui/src/friends.cpp (the app's client), web/js/friends/ (the browser's), server/friends/ (the
+server). The owner's decisions are at the end.
 
 What it is for: players who know each other should be able to talk, agree on a time and find each
 other's rooms also when no session runs. That means a friends list with who is online and what
@@ -66,7 +69,7 @@ in the tray, and moderation: blocking people, and removing and banning them from
   the chats, sealed with a key from that store.
 - **Linking another device:** **Link a device** on a device that has the identity shows a QR code
   and a short code; the new device scans or types it. The two meet in a **link box** on the server
-  for two minutes, agree on a key there (ECDH, both sides confirm the same four words on screen), and
+  for two minutes, agree on a key there (ECDH, one side committing to its key first; both sides confirm the same six digits on screen), and
   the old device hands over, sealed: the identity's private keys, the friends, the groups and the
   settings, and if wanted the chat history. The new device makes its own prekeys, the card gets the
   new device, and friends' devices start conversations with it by themselves. The private keys of
@@ -107,14 +110,17 @@ in the tray, and moderation: blocking people, and removing and banning them from
   detection on a computer, the room). And "Free tonight from 20:00", typed or picked.
 - **Joining from the friends list:** a friend who hosts can let friends in with one click. Their
   status then carries the session's invite, sealed for friends only; **Join** works like a recent
-  session. Settings: **Friends can join my rooms** (always / ask me each time / never).
+  session. Setting: **Friends can join my sessions** (on or off); how they come in is the session's
+  own rule (ask to join, as viewers, or to play).
 - **How it travels:** each player keeps one status note on the server, sealed with their **friends
   key**, which every friend got over the private conversation. A status is out of date within three
-  minutes anyway, so it needs no ratchet: the friends key is made anew **every day**, and at once
-  when somebody is removed or blocked, so a stolen key reads a day at most. The app renews the note
+  minutes anyway, so it needs no ratchet: the friends key moves on every day (a stolen day key reads
+  that day and the days after, until the next key), and a new one goes to every friend at once when
+  somebody is removed or blocked, and after a year at the latest. The note is kept under a name that
+  only friends can work out, so a fingerprint alone does not tell when somebody is online. The app renews the note
   every minute; friends' notes are read in one request for all of them, every 30 seconds while the
   app runs (every 2 minutes in the tray), at once when the friends list opens.
-- **Who sees it:** **Show my status to** all friends / chosen friends / nobody, **Show what I play**
+- **Who sees it:** **Show my status** (to all friends, or to nobody), **Show what I play**
   on/off.
 
 ### 4. Messages and group chats
@@ -143,8 +149,14 @@ in the tray, and moderation: blocking people, and removing and banning them from
   cannot read on, and a stolen key stops working. A note stays in the group box until every member's
   device has it, at most 30 days.
 - **What a message can be:** text with emoji and links (with the preview the writer's app makes, as
-  in sessions), a join card ("Mara invites you to Friday racing", with **Join**), a plan (below),
-  replies, and later pictures.
+  in sessions, sealed with the message so the others never open the link; a browser shows previews
+  but makes none), a join card ("Mara invites you to Friday racing", with **Join**), a plan (below),
+  and later pictures. A message can answer another one (a quote of it shows above, a click goes
+  there), mention someone with `@` and their name (offered as soon as `@` is typed in a group; the
+  mentioned player gets a notification even in a muted chat), carry reactions, and be deleted for
+  everybody by its writer (a stand-in "Message deleted" stays). A chat or group can be muted for an
+  hour, 8 hours or until turned back on, on each device by itself. In a browser, a closed page only
+  gets an empty push ("something new from your friends"), so muting cannot keep that one quiet.
 - **History** stays on the devices (the app: a file in its data folder; a browser: IndexedDB). The
   server keeps nothing it has delivered. A newly linked device gets the history from the device that
   links it, if the player wants; the backup file can carry it too.

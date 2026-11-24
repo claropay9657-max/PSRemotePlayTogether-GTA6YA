@@ -1,0 +1,1635 @@
+/* SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL */
+/*
+ * Friends in the page (js/friends/panel.js): the panel on the right over the page and over the
+ * game, as the app's gui/src/qml/FriendsPanel.qml, with its invite cards (InviteCard.qml) and
+ * the Friends button's badge (MainView.qml). The same sizes and colours as written there; the
+ * buttons and fields are the page's own (css/style.css), which reach in here too.
+ */
+
+/* ---------------------------------------------------------------- the Friends buttons */
+
+/* In the app bar: on the right, where the app has its buttons */
+:where(.front) button.appbar-friends {
+  position: relative;
+  margin-left: auto;
+}
+
+/* What is new (pink, with a number) or that friends are online (a green dot) */
+.fr-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 2px solid var(--ground);
+  border-radius: 9px;
+  background: var(--brand-to);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.fr-badge.dot {
+  min-width: 0;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  background: var(--good);
+}
+
+/* In the stream menu: on the corner of its pill */
+.mpill .fr-badge {
+  top: -6px;
+  right: -6px;
+  border-color: #100d22;
+}
+
+/* ---------------------------------------------------------------- the panel */
+
+.friends {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+  text-align: left;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.fr-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 3, 12, 0.55);
+  opacity: 0;
+  transition: opacity 140ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.fr-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(460px, 100vw);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line-strong);
+  background: var(--ground);
+  opacity: 0;
+  transition: opacity 140ms cubic-bezier(0.33, 1, 0.68, 1);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.friends.shown .fr-veil,
+.friends.shown .fr-panel {
+  opacity: 1;
+}
+
+.fr-face {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fr-face[hidden] {
+  display: none;
+}
+
+.fr-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.fr-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fr-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.fr-rule {
+  flex: none;
+  height: 1px;
+  background: var(--line);
+}
+
+.fr-anchor {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+
+.fr-anchor[hidden] {
+  display: none;
+}
+
+.friends .set-menu {
+  min-width: 220px;
+}
+
+/* A pill that lets somebody in (the app's "success"): green */
+.friends button.success {
+  border-color: transparent;
+  background: #1f9d6f;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.friends button.success:hover:not(:disabled) {
+  background: #1f9d6f;
+  filter: brightness(1.1);
+}
+
+/* A link in a line of text (the app's TextLink) */
+.friends button.fr-link {
+  min-height: 24px;
+  padding: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--heading-soft);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.friends button.fr-link:hover:not(:disabled) {
+  background: transparent;
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+/* A field with a line icon in front (the app's Field) */
+.fr-field {
+  position: relative;
+  display: block;
+  flex: none;
+}
+
+.fr-field[hidden] {
+  display: none;
+}
+
+.fr-field > svg {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  color: var(--text-soft);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.friends .fr-field.with-icon input {
+  padding-left: 42px;
+}
+
+.friends :is(input[type="text"], select) {
+  font-size: 14px;
+}
+
+/* A round picture with the status as a dot on its edge */
+.fr-avatar {
+  position: relative;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+}
+
+.fr-pic {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background-image: linear-gradient(180deg, var(--brand-from), var(--brand-to));
+  background-position: center;
+  background-size: cover;
+  color: #ffffff;
+  font-size: calc(var(--size) * 0.46);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.fr-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: calc(var(--size) * 0.32);
+  height: calc(var(--size) * 0.32);
+  border: 2px solid var(--ground);
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.fr-dot.good {
+  background: var(--good);
+}
+
+.fr-dot.wait {
+  background: var(--wait);
+}
+
+.fr-dot.bad {
+  background: var(--bad);
+}
+
+.fr-error,
+.fr-problem {
+  margin: 0;
+  font-size: 12px;
+  color: var(--bad);
+}
+
+.fr-error:empty,
+.fr-problem:empty {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- switched off */
+
+.fr-off-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 24px 24px;
+}
+
+.fr-off-words {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  text-align: center;
+}
+
+.fr-off-icon {
+  color: var(--brand-from);
+}
+
+.fr-off-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.fr-off-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+.fr-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.fr-private {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  border-radius: var(--radius-field);
+}
+
+.fr-private-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.fr-private-head svg {
+  color: var(--good);
+}
+
+.fr-private p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.fr-private p.fr-private-web {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.fr-off .fr-problem {
+  font-size: 13px;
+}
+
+.friends button.fr-on-button {
+  align-self: center;
+  margin-top: 6px;
+  padding: 0 26px;
+}
+
+.fr-off .fr-link {
+  align-self: center;
+}
+
+.fr-off-foot {
+  margin: 8px 0 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+/* ---------------------------------------------------------------- the lists */
+
+.fr-lists-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 12px 0 20px;
+}
+
+.fr-lists-head > :not(.fr-title-row) {
+  margin-right: 8px;
+}
+
+.fr-own {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fr-own-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friends select.fr-state {
+  flex: none;
+  width: 140px;
+  height: 40px;
+}
+
+.fr-offline {
+  margin: 0;
+  font-size: 12px;
+  color: var(--wait);
+}
+
+/* The two lists, side by side (the app's Segmented) */
+.fr-tabs {
+  display: flex;
+  gap: 2px;
+  height: 40px;
+  margin-top: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+  background: var(--field);
+}
+
+.friends .fr-tabs button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #d9d5f2;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.friends .fr-tabs button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.friends .fr-tabs button.chosen,
+.friends .fr-tabs button.chosen:hover:not(:disabled) {
+  background: var(--button);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.friends .fr-tabs button:focus-visible {
+  outline-offset: -2px;
+}
+
+.fr-lists .fr-scroll {
+  margin-top: 8px;
+  padding: 0 12px 24px;
+}
+
+.fr-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fr-tab[hidden] {
+  display: none;
+}
+
+.fr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fr-list.tight {
+  gap: 2px;
+}
+
+.fr-list:empty {
+  display: none;
+}
+
+.fr-heading {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: var(--heading-soft);
+}
+
+.fr-empty {
+  margin: 18px 8px 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+/* Add a friend; one's own link */
+.fr-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fr-card-title {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.fr-looked {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fr-looked[hidden] {
+  display: none;
+}
+
+.fr-looked b {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friends button.fr-request-button {
+  align-self: flex-start;
+}
+
+.fr-add .fr-rule {
+  margin-top: 2px;
+}
+
+.fr-mylink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fr-mylink-words {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fr-mylink-words b {
+  font-size: 13px;
+}
+
+.fr-mylink-words b.copied {
+  color: var(--good);
+}
+
+.fr-mylink-words small {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* A request: theirs to answer (purple), ours waiting */
+.fr-request {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 10px 10px;
+  border-radius: 14px;
+}
+
+.fr-request.incoming {
+  align-items: flex-start;
+  border: 1px solid rgba(140, 82, 255, 0.35);
+  background: rgba(140, 82, 255, 0.1);
+}
+
+.fr-request-words,
+.fr-friend-words {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fr-request-words b,
+.fr-friend-name b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-request-words small,
+.fr-friend-words small {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.fr-request-words small.bad {
+  color: var(--bad);
+}
+
+.fr-request-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* A friend: the whole row opens the chat */
+.fr-friend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px 8px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.fr-friend:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fr-friend-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fr-checked {
+  flex: none;
+  color: var(--good);
+}
+
+.fr-friend-words small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-friend-words small.off {
+  color: var(--text-dim);
+}
+
+.fr-friend-words small.free {
+  color: var(--focus);
+}
+
+/* A chat in the list */
+.friends button.fr-chatrow {
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+
+.friends button.fr-chatrow:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fr-chatrow-words {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fr-chatrow-top,
+.fr-chatrow-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fr-chatrow-top b,
+.fr-chatrow-bottom small {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-chatrow-top b {
+  font-size: 14px;
+}
+
+.fr-chatrow-top small {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.fr-chatrow-bottom small {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.fr-chatrow-bottom small.unread {
+  color: var(--text);
+}
+
+.fr-count {
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--brand-to);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- one chat */
+
+.fr-chat-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px 8px;
+}
+
+.fr-chat-who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fr-chat-who b,
+.fr-chat-who small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-chat-who b {
+  font-size: 16px;
+}
+
+.fr-chat-who small {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.fr-messages {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+}
+
+.fr-chat-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 30px;
+  text-align: center;
+}
+
+.fr-chat-empty[hidden] {
+  display: none;
+}
+
+.fr-chat-empty svg {
+  color: var(--good);
+}
+
+.fr-chat-empty p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.fr-message-list {
+  gap: 4px;
+}
+
+/* The emoji over the chat: the face holds them */
+.fr-chat {
+  position: relative;
+}
+
+/* ---------------------------------------------------------------- an invite in a chat */
+
+.fr-invite {
+  position: relative;
+  width: min(360px, 88%);
+  overflow: hidden;
+  border-radius: 18px;
+  background: #161231;
+}
+
+/* A thin edge in the brand's colour over everything */
+.fr-invite::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(167, 123, 255, 0.38);
+  border-radius: 18px;
+  pointer-events: none;
+}
+
+.fr-invite.open::after {
+  border-color: rgba(52, 211, 153, 0.45);
+}
+
+/* The band: the key art blurred, or the brand's colours */
+.fr-invite-band {
+  position: relative;
+  height: 86px;
+  overflow: hidden;
+  background: linear-gradient(90deg, #5b2fd6, #b8327f);
+}
+
+.fr-invite-art {
+  position: absolute;
+  top: -40px;
+  left: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  object-fit: cover;
+  filter: blur(24px) saturate(1.15) brightness(0.82);
+}
+
+/* Large and faint behind it: what the session is about */
+.fr-invite-ghost {
+  position: absolute;
+  top: -14px;
+  right: -24px;
+  color: rgba(255, 255, 255, 0.1);
+}
+
+.fr-invite.has-cover .fr-invite-ghost {
+  display: none;
+}
+
+/* Darker towards the bottom, where the text starts */
+.fr-invite-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgba(13, 10, 31, 0), rgba(13, 10, 31, 0.7));
+}
+
+.fr-invite.has-cover .fr-invite-shade {
+  background: linear-gradient(rgba(13, 10, 31, 0.25), rgba(13, 10, 31, 0.7));
+}
+
+.fr-invite-top {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fr-invite-word {
+  flex: none;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--brand-from), var(--brand-to));
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  line-height: 20px;
+}
+
+.fr-invite-who {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Whether it is open now */
+.fr-live {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.fr-live i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.fr-live.open {
+  border-color: rgba(52, 211, 153, 0.6);
+  background: rgba(13, 64, 43, 0.85);
+  color: #bff5dd;
+}
+
+.fr-live.open i {
+  background: var(--good);
+  animation: fr-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes fr-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.fr-invite-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 16px;
+}
+
+.fr-invite-head {
+  display: flex;
+  gap: 12px;
+}
+
+/* The cover, standing up into the band */
+.fr-invite-cover {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin-top: -34px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--brand-from), var(--brand-to));
+  box-shadow: 0 0 0 3px #161231;
+  color: #ffffff;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.fr-invite-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fr-invite-words {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.fr-invite-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.fr-invite-line {
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--text-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The places: taken ones filled, free ones open */
+.fr-places {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fr-places-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.fr-places-dots i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  box-sizing: border-box;
+}
+
+.fr-places-dots i.taken {
+  border: 0;
+  background: linear-gradient(180deg, var(--brand-from), var(--brand-to));
+}
+
+.fr-places-text {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--text-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-invite-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fr-invite-foot.mine {
+  justify-content: flex-end;
+}
+
+.friends button.fr-join {
+  flex: 1;
+  min-height: 40px;
+  height: 40px;
+  border-color: transparent;
+  background: #1f9d6f;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.friends button.fr-join:hover:not(:disabled) {
+  background: #1f9d6f;
+  filter: brightness(1.1);
+}
+
+.friends button.fr-join.old {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 700;
+}
+
+.fr-invite-time {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* ---------------------------------------------------------------- the settings */
+
+.fr-settings {
+  padding-top: 14px;
+}
+
+.fr-settings > .fr-title-row {
+  padding: 0 12px 0 8px;
+}
+
+.fr-set-about {
+  margin: 6px 20px 0;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--text-soft);
+}
+
+.friends .fr-settings .set-body {
+  margin: 14px 0 0;
+  padding: 2px 16px 24px;
+}
+
+.fr-settings .set-group[hidden] {
+  display: none;
+}
+
+.fr-settings .set-row {
+  padding: 12px 16px;
+}
+
+.fr-settings .set-row[hidden] {
+  display: none;
+}
+
+.fr-set-empty {
+  margin: 0;
+  padding: 16px 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.friends input.fr-server {
+  width: 260px;
+  max-width: 100%;
+}
+
+.friends input.fr-server[hidden] {
+  display: none;
+}
+
+/* The passphrase of a backup */
+.fr-pass-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.fr-pass input[type="password"] {
+  width: 100%;
+  height: var(--touch);
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.fr-pass input[type="password"]:focus {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+.fr-pass input[hidden] {
+  display: none;
+}
+
+.dialog.fr-pass p.fr-error {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--bad);
+}
+
+/* ---------------------------------------------------------------- groups */
+
+/* A group's picture: the brand's colours with people on them */
+.fr-gtile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--size);
+  height: var(--size);
+  border-radius: calc(var(--size) * 0.3);
+  background: linear-gradient(180deg, #00b8d4, var(--brand-from));
+  color: #ffffff;
+}
+
+.fr-gtile.dim {
+  opacity: 0.5;
+}
+
+.fr-gtile[hidden],
+.fr-avatar[hidden] {
+  display: none;
+}
+
+.friends button.fr-new-group {
+  align-self: flex-start;
+  margin-bottom: 6px;
+}
+
+.fr-already {
+  margin: 0;
+  font-size: 13px;
+  color: var(--good);
+}
+
+.fr-already:empty,
+.fr-already[hidden] {
+  display: none;
+}
+
+/* A note of the group in the chat: in the middle, small */
+.fr-system {
+  align-self: center;
+  max-width: calc(100% - 40px);
+  padding: 5px 0 11px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.badge.brand {
+  background: rgba(140, 82, 255, 0.14);
+  color: #cdb6ff;
+}
+
+/* ---------------------------------------------------------------- a plan in a chat */
+
+.fr-plan {
+  position: relative;
+  width: min(360px, 88%);
+  overflow: hidden;
+  border: 1px solid rgba(0, 242, 255, 0.3);
+  border-radius: 18px;
+  background: #161231;
+}
+
+/* A soft band of the plan's colours behind the top, fading into the card */
+.fr-plan-band {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 64px;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(22, 18, 49, 0) 50%, #161231),
+    linear-gradient(90deg, rgba(0, 140, 191, 0.45), rgba(140, 82, 255, 0.35));
+}
+
+.fr-plan-ghost {
+  position: absolute;
+  top: -10px;
+  right: -12px;
+  color: rgba(255, 255, 255, 0.08);
+}
+
+.fr-plan-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.fr-plan-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fr-plan-word {
+  flex: none;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #00b8d4, var(--brand-from));
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  line-height: 20px;
+}
+
+.fr-plan-who {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-plan-time {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.fr-plan-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* One time: when, how many can, the own answer */
+.fr-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.fr-slot.best {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.fr-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fr-slot-when {
+  display: flex;
+  flex-direction: column;
+}
+
+.fr-slot-when small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.fr-slot-when b {
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.fr-slot-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fr-slot-bar {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.fr-slot-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 3px;
+}
+
+.fr-slot-bar i.maybe {
+  background: rgba(245, 186, 66, 0.55);
+}
+
+.fr-slot-bar i.yes {
+  background: var(--good);
+}
+
+.fr-slot-meter small {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.fr-slot-answers {
+  display: flex;
+  gap: 6px;
+}
+
+.friends button.fr-answer {
+  flex: 1;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.friends button.fr-answer:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.friends button.fr-answer.chosen {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.friends button.fr-answer.good.chosen {
+  border-color: var(--good);
+  background: rgba(52, 211, 153, 0.22);
+}
+
+.friends button.fr-answer.wait.chosen {
+  border-color: var(--wait);
+  background: rgba(245, 185, 66, 0.22);
+}
+
+.friends button.fr-answer.bad.chosen {
+  border-color: var(--bad);
+  background: rgba(240, 70, 110, 0.22);
+}
+
+/* ---------------------------------------------------------------- sheets over the panel */
+
+.fr-sheet-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-sheet-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 32px;
+}
+
+.fr-sheet-col > [hidden] {
+  display: none;
+}
+
+.friends button.fr-sheet-go {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 0 22px;
+}
+
+.friends button.fr-sheet-add {
+  align-self: flex-start;
+}
+
+.fr-sheet-label {
+  font-size: 13px;
+}
+
+.fr-add-who {
+  margin: 0;
+}
+
+.fr-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+
+.fr-member-words {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fr-member-words b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-member-words small {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.fr-banned {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+/* A friend to pick: the whole row picks */
+.fr-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 8px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.fr-pick:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fr-pick.on {
+  background: rgba(140, 82, 255, 0.16);
+}
+
+.fr-pick b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-pick input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--button);
+  cursor: pointer;
+}
+
+.fr-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fr-time b {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.fr-time-icon {
+  flex: none;
+  color: var(--focus);
+}
+
+.fr-plan-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.friends .fr-plan-add select.fr-day {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.friends .fr-plan-add select.fr-hour {
+  flex: none;
+  width: 116px;
+}
+
+/* ---------------------------------------------------------------- linking a device */
+
+.friends input.fr-join-link {
+  width: 220px;
+  max-width: 100%;
+}
+
+.fr-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.fr-link-row[hidden],
+.fr-link-code[hidden],
+.fr-link-spin[hidden] {
+  display: none;
+}
+
+.fr-link-row input {
+  flex: 1;
+  min-width: 0;
+  height: var(--touch);
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.fr-link-code {
+  margin-top: 16px;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-align: center;
+  color: var(--focus);
+  font-variant-numeric: tabular-nums;
+}
+
+.fr-link-spin {
+  display: block;
+  margin: 16px auto 0;
+  border-color: rgba(140, 82, 255, 0.25);
+  border-top-color: var(--brand-from);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fr-veil,
+  .fr-panel {
+    transition: none;
+  }
+
+  .fr-live.open i {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- muted chats (this browser's own) */
+
+.fr-muted-icon {
+  flex: none;
+  color: var(--text-dim);
+}
+
+/* What is new in a muted chat: counted, but dimmed */
+.fr-count.muted {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text-soft);
+}
+
+/* The chat's name with the bell crossed out after it */
+.fr-chat-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fr-chat-name b {
+  min-width: 0;
+}

@@ -41,6 +41,7 @@ DialogView {
         { key: "controllers", group: qsTr("Playing"), title: qsTr("Controllers"), icon: "gamepad", file: "ControllersPage.qml" },
         { key: "keyboard", group: qsTr("Playing"), title: qsTr("Keyboard & mouse"), icon: "keyboard", file: "KeyboardPage.qml" },
         { key: "voice", group: qsTr("Play Together"), title: qsTr("Voice & webcam"), icon: "mic", file: "VoicePage.qml" },
+        { key: "friends", group: qsTr("Play Together"), title: qsTr("Friends & chats"), icon: "people", file: "FriendsPage.qml" },
         { key: "overlays", group: qsTr("Play Together"), title: qsTr("Overlays & OBS"), icon: "layers", file: "OverlaysPage.qml" },
         { key: "live", group: qsTr("Play Together"), title: qsTr("Live streaming"), icon: "broadcast", file: "StreamingPage.qml" },
         { key: "scenes", group: qsTr("Play Together"), title: qsTr("Stream scenes"), icon: "monitor", file: "ScenesPage.qml" },

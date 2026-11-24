@@ -30,6 +30,7 @@ FocusScope {
     signal displayPanelRequested()
     signal mainViewRequested()
     signal chatRequested()
+    signal friendsRequested()
     /** Drag the things on the game picture into place. */
     signal arrangeRequested()
 
@@ -693,6 +694,7 @@ FocusScope {
         opacity: streamMenu.reveal
         transform: Translate { x: streamMenu.narrow ? 0 : (1 - streamMenu.reveal) * 40; y: streamMenu.narrow ? (1 - streamMenu.reveal) * 16 : 0 }
         onChatRequested: streamMenu.chatRequested()
+        onFriendsRequested: streamMenu.friendsRequested()
     }
 
     // ------------------------------------------------------------ bottom: sound, picture, quality, overlays

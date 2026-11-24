@@ -19,6 +19,9 @@ int main(int argc, char *argv[]) { return real_main(argc, argv); }
 #include <controllermanager.h>
 #include <discoverymanager.h>
 #include <qmlmainwindow.h>
+#include <qmlbackend.h>
+#include <tray.h>
+#include <autostart.h>
 #include <QSettings>
 #include <QTimer>
 #include <QApplication>
@@ -86,7 +89,9 @@ int RunShare(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_e
 }
 
 int RunStream(QGuiApplication &app, const StreamSessionConnectInfo &connect_info);
-int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit);
+/** How a plain start opens: with its window, in the tray, or (a Mac login item, which carries no --tray) in the tray if the system opened it at login. */
+enum class TrayStart { No, Yes, IfAtLogin };
+int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, TrayStart tray_start);
 int RunJoin(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &invite, const QString &name, bool controller_only);
 int RunShare(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, const QString &what);
 
@@ -287,6 +292,9 @@ int real_main(int argc, char *argv[])
 	QCommandLineOption passcode_option("passcode", "Automatically send your PlayStation login passcode (only affects users with a login passcode set on their PlayStation console).", "passcode");
 	parser.addOption(passcode_option);
 
+	QCommandLineOption tray_option = autostart::TrayOption();
+	parser.addOption(tray_option);
+
 	QCommandLineOption opengl_option("opengl", "Switch the renderer to OpenGL from now on, for systems where Vulkan shows a blank window or crashes (switch back under Settings > Picture > Renderer).");
 	parser.addOption(opengl_option);
 
@@ -313,7 +321,17 @@ int real_main(int argc, char *argv[])
 	}
 
 	if(args.length() == 0)
-		return RunMain(app, use_alt_settings ? &alt_settings : &settings, exit_app_on_stream_exit);
+	{
+		Settings *active_settings = use_alt_settings ? &alt_settings : &settings;
+		// Starting with the computer points at this program, wherever the installer or an update put it
+		autostart::Refresh(active_settings->GetStartInTray());
+		TrayStart tray_start = parser.isSet(tray_option) ? TrayStart::Yes : TrayStart::No;
+#ifdef Q_OS_MACOS
+		if(tray_start == TrayStart::No && active_settings->GetStartInTray() && autostart::IsOn())
+			tray_start = TrayStart::IfAtLogin;
+#endif
+		return RunMain(app, active_settings, exit_app_on_stream_exit, tray_start);
+	}
 
 	if(args[0] == "join")
 	{
@@ -452,10 +470,38 @@ int real_main(int argc, char *argv[])
 	}
 }
 
-int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit)
+int RunMain(QGuiApplication &app, Settings *settings, bool exit_app_on_stream_exit, TrayStart tray_start)
 {
+	// The app sits in the tray already: it opens its window, and this second start ends
+	if(TrayIcon::HandOver(tray_start == TrayStart::Yes))
+		return 0;
 	QmlMainWindow main_window(settings, exit_app_on_stream_exit);
-	main_window.show();
+	TrayIcon *tray = qobject_cast<TrayIcon *>(main_window.getBackend()->trayObject());
+	auto start_in_tray = [&main_window, settings, tray]() {
+		// Nobody sits at the window: no console is connected to by itself
+		main_window.cancelAutoConnect();
+		tray->StartHidden();
+		// Nothing is drawn in the tray, so no Vulkan frame clears the mark of a start that did
+		// not get that far (QmlMainWindow). Getting here is far enough; otherwise switching the
+		// computer off with the app in the tray would put the next start on OpenGL.
+		settings->SetVulkanStartupPending(false);
+		settings->Sync();
+	};
+	if(tray && tray_start == TrayStart::Yes)
+		start_in_tray();
+#ifdef Q_OS_MACOS
+	else if(tray && tray_start == TrayStart::IfAtLogin)
+	{
+		autostart::WhenLaunched(&main_window, [&main_window, start_in_tray](bool at_login) {
+			if(at_login)
+				start_in_tray();
+			else
+				main_window.show();
+		});
+	}
+#endif
+	else
+		main_window.show();
 	return app.exec();
 }
 

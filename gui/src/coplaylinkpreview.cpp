@@ -58,7 +58,7 @@ QUrl CoPlayLinkPreview::FirstLink(const QString &text)
 	return IsWebUrl(url) ? url : QUrl();
 }
 
-QByteArray CoPlayLinkPreview::Thumbnail(const QByteArray &image_file)
+QByteArray CoPlayLinkPreview::Thumbnail(const QByteArray &image_file, size_t max_bytes)
 {
 	QImage image = QImage::fromData(image_file);
 	if(image.isNull())
@@ -75,7 +75,7 @@ QByteArray CoPlayLinkPreview::Thumbnail(const QByteArray &image_file)
 			buffer.open(QIODevice::WriteOnly);
 			if(!image.save(&buffer, "JPEG", quality))
 				return QByteArray();
-			if(static_cast<size_t>(jpeg.size()) <= coplay::kMaxChatImageSize)
+			if(static_cast<size_t>(jpeg.size()) <= max_bytes)
 				return jpeg;
 		}
 		image = image.scaled(image.width() * 3 / 4, image.height() * 3 / 4, Qt::KeepAspectRatio, Qt::SmoothTransformation);

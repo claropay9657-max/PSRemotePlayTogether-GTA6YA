@@ -36,6 +36,7 @@ add_library(coplay STATIC
 	src/blob.cpp
 	src/client.cpp
 	src/crypto.cpp
+	src/friends_crypto.cpp
 	src/host.cpp
 	src/invite.cpp
 	src/media.cpp
@@ -121,6 +122,9 @@ endif()
 if(COPLAY_ENABLE_TESTS)
 	add_executable(coplay-tests test/tests.cpp)
 	target_link_libraries(coplay-tests coplay)
+	# The test vectors of friends' cryptography for the browser's side (test/web/friends-vectors.json)
+	add_executable(friends-vectors tools/friends-vectors.cpp)
+	target_link_libraries(friends-vectors coplay)
 	if(COPLAY_STANDALONE)
 		enable_testing()
 	endif()

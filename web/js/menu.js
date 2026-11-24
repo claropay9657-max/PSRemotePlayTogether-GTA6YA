@@ -56,6 +56,24 @@ const ICONS = {
   touch: [2, '<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>'],
   // Circle on a PlayStation controller: what goes back to the game
   circle: [2.4, '<circle cx="12" cy="12" r="7"/>'],
+  // For friends (js/friends/panel.js), as the app's
+  people: [2, '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.4a6.5 6.5 0 0 1 3.5 5.6"/>'],
+  link: [2.2, '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'],
+  copy: [2.3, '<rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5.5A2.5 2.5 0 0 1 7.5 3H15"/>'],
+  clock: [2, '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+  back: [2.4, '<path d="M19 12H5M11 18l-6-6 6-6"/>'],
+  more: [0, '<circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/>'],
+  block: [2, '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>'],
+  shield: [2, '<path d="M12 3 4.5 6v6c0 4.4 3.2 8.2 7.5 9 4.3-.8 7.5-4.6 7.5-9V6z"/>'],
+  lock: [2, '<rect x="4.5" y="11" width="15" height="10" rx="2.5"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/>'],
+  enter: [2, '<path d="M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/>'],
+  refresh: [2.3, '<path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/>'],
+  download: [2, '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>'],
+  upload: [2, '<path d="M12 15V4M7 9l5-5 5 5M5 20h14"/>'],
+  calendar: [2, '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/>'],
+  reply: [2.2, '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'],
+  trash: [2, '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>'],
+  bellOff: [2, '<path d="M8.7 3.9A6 6 0 0 1 18 9c0 3.2.8 5.3 1.6 6.6M17 17H4.5c1-1.4 1.5-3.5 1.5-8 0-.6.1-1.2.2-1.7"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/><path d="m3 3 18 18"/>'],
 };
 
 /** One of the line icons, in the colour of the text around it. */
@@ -258,7 +276,13 @@ export class StreamMenu {
     this.camRow = el('div', 'mcamsize');
     this.voiceSettings = button('mpill', '', () => h.onVoiceSettings());
     this.voiceSettings.append(icon('sliders', 15), el('span', '', 'Voice & webcam…'));
-    this.camRow.append(this.voiceSettings);
+    // Friends: the same panel as on the start page, over the game (js/friends/panel.js), with
+    // the same badge as the start page's button
+    this.friendsButton = button('mpill', '', () => h.onFriends());
+    this.friendsBadge = el('span', 'fr-badge');
+    this.friendsBadge.hidden = true;
+    this.friendsButton.append(icon('people', 15), el('span', '', 'Friends'), this.friendsBadge);
+    this.camRow.append(this.voiceSettings, this.friendsButton);
 
     // The chat: the last messages, newest at the bottom, and a field to write in
     this.chat = el('div', 'mchat');
@@ -932,6 +956,7 @@ export class StreamMenu {
   addChat(m) {
     this.messages.push(m);
     const line = this.chatLine(m);
+    m.line = line;
     // One's own on its way: dimmed until the host has it, as in the app
     if (m.pending) {
       line.classList.add('pending');
@@ -961,6 +986,14 @@ export class StreamMenu {
     this.chatEmpty.hidden = this.messages.length > 0;
   }
 
+  /** A message its writer deleted for everybody (the host's number): "Message deleted" in its place. */
+  chatDeleted(seq) {
+    const m = this.messages.find((x) => x.seq === seq);
+    if (!m || !m.line) return;
+    const name = m.line.querySelector('b');
+    m.line.replaceChildren(...(name ? [name, '  '] : []), el('i', 'mchat-gone', 'Message deleted'));
+  }
+
   clearChat() {
     this.pendingLines.clear();
     this.messages = [];
@@ -968,9 +1001,20 @@ export class StreamMenu {
     this.chatEmpty.hidden = false;
   }
 
-  setUnread(count) {
+  /** What is new from friends (a pink number), or friends online (a green dot), as on the start page's button. */
+  setFriends(news, online, tip) {
+    this.friendsBadge.hidden = news <= 0 && online <= 0;
+    this.friendsBadge.classList.toggle('dot', news <= 0);
+    this.friendsBadge.textContent = news > 0 ? (news > 99 ? '99+' : String(news)) : '';
+    this.friendsButton.title = tip;
+    this.friendsButton.setAttribute('aria-label', tip);
+  }
+
+  /** New messages in the chat: how many, or "@" when one of them names this player (PlayTogetherBar). */
+  setUnread(count, mention = false) {
     this.unreadPill.hidden = count <= 0;
-    this.unreadPill.textContent = count > 99 ? '99+' : String(count);
+    this.unreadPill.textContent = mention ? '@' : count > 99 ? '99+' : String(count);
+    this.unreadPill.classList.toggle('mention', mention && count > 0);
   }
 
   // ------------------------------------------------------------ what it shows
@@ -1027,7 +1071,7 @@ export class StreamMenu {
     this.pictureRow.hidden = !v.pictureSwitch;
     this.pictureRow.set(!v.pictureOff, v.pictureOff ? 'Controller only: your controller plays along, rumble too'
       : 'The game on this computer too, as the host sends it');
-    this.camRow.hidden = !v.voice && !v.cam;
+    this.voiceSettings.hidden = !v.voice && !v.cam;
     this.layoutSoon();
     this.recoverSoon();
   }

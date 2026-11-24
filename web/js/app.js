@@ -8,11 +8,16 @@
 import { Sound } from './audio.js';
 import { base64UrlDecode, base64UrlEncode } from './bytes.js';
 import { CAMERA_SIZES, Camera, makeAvatar } from './camera.js';
-import { appendWithLinks, button, el } from './dom.js';
+import { mentions, oneLine, placeRoomReaders, roomReactions, roomRunStarts } from './chatmarks.js';
+import { askDelete, chatInputRow, chatMessage, emojiPicker, flashMessage } from './chatview.js';
+import { button, el } from './dom.js';
 import { DualSense } from './dualsense.js';
+import { parseFriendLink } from './friends/client.js';
+import { FriendsPanel, info } from './friends/panel.js';
+import { buttonTip, badgeText, guestActivity, roomOfCard } from './friends/view.js';
 import { Hud } from './hud.js';
 import { parseInvite } from './meet.js';
-import { StreamMenu } from './menu.js';
+import { StreamMenu, icon } from './menu.js';
 import { OverlayOptions } from './options.js';
 import { inputLabel } from './keypad.js';
 import { KeysDialog } from './keysdialog.js';
@@ -37,6 +42,8 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || 
 const PARAMS = new URLSearchParams(location.search);
 const ROOMS_URL = (LOCAL && PARAMS.get('rooms')) || DEFAULT_ROOMS_URL;
 const LOCAL_MEET = LOCAL ? PARAMS.get('meet') || '' : '';
+// A friends server of one's own, for trying things out on this machine
+const LOCAL_FRIENDS = LOCAL ? PARAMS.get('friends') || '' : '';
 /** What opens the stream menu, as the app names it. */
 const MENU_KEY = MAC ? '⌘O' : 'Ctrl+O';
 /** The same buttons as in the app, held together. */
@@ -67,9 +74,30 @@ const ui = {
   touch: $('touch'),
   chat: $('chat'),
   chatList: $('chat-list'),
-  chatInput: $('chat-input'),
-  emoji: $('emoji'),
 };
+
+/** The row to write in (as in the friends' chats) and all emoji for a reaction. */
+const roomInput = chatInputRow({
+  placeholder: 'Message everybody…',
+  label: 'Message everybody',
+  maxLength: P.MAX_CHAT_TEXT,
+  onSend: (typed, reply) => {
+    const text = withEmoji(typed);
+    if (!text || !session) return false;
+    // Only a message the host has numbered can be answered
+    const answers = reply && reply.seq ? reply.seq : 0;
+    const id = session.sendChat(text, answers);
+    if (!id) return false;
+    mySent.add(id);
+    addPendingChat(id, text, answers);
+    return true;
+  },
+});
+const roomReactPicker = emojiPicker({
+  once: true,
+  label: 'React',
+  onPick: (emoji) => roomReact(roomReactingTo, emoji),
+});
 
 /** The same :shortcodes: and faces the app turns into emoji. */
 const SHORTCODES = {
@@ -84,14 +112,6 @@ const FACES = [
   [/(^|\s):-?\)(?=\s|$)/g, '$1🙂'], [/(^|\s):-?D(?=\s|$)/g, '$1😄'], [/(^|\s);-?\)(?=\s|$)/g, '$1😉'],
   [/(^|\s):-?\((?=\s|$)/g, '$1🙁'], [/(^|\s):-?[pP](?=\s|$)/g, '$1😛'], [/(^|\s)<3(?=\s|$)/g, '$1❤️'],
   [/(^|\s)[xX]D(?=\s|$)/g, '$1😆'],
-];
-/** The app's emoji, in its groups. */
-const EMOJI_GROUPS = [
-  ['😀', '😀 😃 😄 😁 😆 😅 😂 🤣 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😋 😛 😜 🤪 🤗 🤭 🤫 🤔 🤐 🤨 😐 😑 😶 😏 😒 🙄 😬 😌 😔 😪 😴 😷 🤒 🥵 🥶 🥴 😵 🤯 🤠 🥳 😎 🤓 🧐 😕 😟 🙁 😮 😯 😲 😳 🥺 😦 😨 😰 😥 😢 😭 😱 😖 😣 😞 😓 😩 😫 🥱 😤 😡 😠 🤬 😈 💀 ☠️ 💩 🤡 👻 👽 🤖'],
-  ['👍', '👍 👎 👌 🤌 🤏 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ 👋 🤚 🖐️ ✋ 👏 🙌 👐 🤲 🙏 ✍️ 💪 🦾 🫡 🤝 👀 🧠 🫶'],
-  ['❤️', '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❤️‍🔥 💕 💞 💓 💗 💖 💘 💝 💯 💢 💥 💫 💦 💨 💤 ✨ ⭐ 🌟 🔥 ⚡ 🌈'],
-  ['🎮', '🎮 🕹️ 👾 🏆 🥇 🥈 🥉 🏅 🎯 🎲 ♟️ 🧩 🎉 🎊 🎁 🎈 🍕 🍔 🍟 🌮 🍿 🍩 🍪 🍺 🍻 🥤 ☕ 🚗 🏎️ 🚀 ✈️ 🛸 ⚔️ 🛡️ 🏹 🔫 💣 🗡️ 🪓 💰 💎 🔑 🗺️'],
-  ['✅', '✅ ❌ ❓ ❗ ‼️ ⁉️ ⚠️ 🚫 ⛔ 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ ⬆️ ⬇️ ⬅️ ➡️ 🔄 ⏸️ ▶️ ⏩ ⏪ 🆗 🆒 🆕 🆙 🔝 💬 💭 🗯️ 📢 🔔 🎵 🎶 ⏰ ⌛'],
 ];
 /** One colour per place in the session, so that names are told apart at a glance. */
 const SLOT_COLORS = ['#b18cff', '#00f2ff', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#fb923c', '#a3e635', '#e879f9'];
@@ -115,6 +135,7 @@ let touch = null;
 let hud = null;
 let menu = null;
 let options = null;
+let friends = null;
 const hudSettings = new PresetSettings('hud', HUD_KEYS, HUD_PRESETS);
 const dualsense = new DualSense();
 const sound = new Sound();
@@ -135,7 +156,6 @@ let leaving = false;
 let reconnecting = '';
 let unread = 0;
 let comboHeld = false;
-let lastChat = null; // the newest message, to tell a run by the same player
 let playersKey = ''; // who was drawn last, see showPlayers()
 const mySent = new Set();
 const blobUrls = new Map(); // picture name -> object URL
@@ -470,13 +490,15 @@ function livePicture(address) {
 
 /** What kind of room it is: what the game runs on, its language, how it is played, how one gets in, whether browsers can come. */
 function fillBadges(badges, room) {
-  badges.replaceChildren(el('span', 'badge', languageName(room.lang)),
-    el('span', 'badge play', CONTROL[room.control]),
-    el('span', 'badge door', POLICY[room.policy]));
+  badges.replaceChildren();
+  // A friend's session (from a join card) says less than a public room: no language, no Twitch
+  if (room.lang !== undefined) badges.append(el('span', 'badge', languageName(room.lang)));
+  if (CONTROL[room.control]) badges.append(el('span', 'badge play', CONTROL[room.control]));
+  if (POLICY[room.policy]) badges.append(el('span', 'badge door', room.talk && room.policy !== 'ask' ? 'Join and talk' : POLICY[room.policy]));
   if (room.console) badges.prepend(el('span', 'badge system', consoleName(room.console)));
   if (room.web) badges.append(el('span', 'badge web', 'Browsers welcome'));
   // The host is live on Twitch: not the same as the "Live" picture of the game
-  if (room.twitch.length) {
+  if (room.twitch && room.twitch.length) {
     const live = el('span', 'badge twitch', room.twitch.length > 1 ? `${room.twitch.length} on Twitch` : 'On Twitch');
     live.prepend(el('i'));
     badges.prepend(live);
@@ -603,6 +625,76 @@ function joinRoom(room) {
 }
 
 /**
+ * A friend's session from their status or an invite in a chat: joined like a room from the
+ * list, with the page's link of it where the host's app gave one (the app joins at once too).
+ */
+function joinFriendRoom(card, name) {
+  if (session || !ui.stage.hidden) {
+    info('You are in a session', `Leave this session first, then join ${card.title || 'your friend\'s'}.`);
+    return;
+  }
+  let text = card.web || card.invite;
+  if (LOCAL_MEET && !text.includes('?meet=')) text += '?meet=' + LOCAL_MEET;
+  const parsed = parseInvite(text, LOCAL);
+  if (!parsed) return;
+  invite = parsed;
+  invite.text = text;
+  // What the join card says, in the place of a public room's card
+  invite.room = roomOfCard(card, name);
+  try {
+    sessionStorage.setItem('psrpt.invite', text);
+  } catch (e) {
+    // only for this visit, then
+  }
+  join();
+}
+
+/** What the Friends buttons show: a pink number for what is new, a green dot when friends are online. */
+function showFriendsCount(news, online) {
+  const badge = $('friends-badge');
+  badge.hidden = news <= 0 && online <= 0;
+  badge.classList.toggle('dot', news <= 0);
+  badge.textContent = news > 0 ? badgeText(news) : '';
+  const tip = buttonTip(news, online);
+  $('friends-button').title = tip;
+  $('friends-button').setAttribute('aria-label', tip);
+  if (menu) menu.setFriends(news, online, tip);
+}
+
+/**
+ * A friend link opened in the page ("#f=…") or a click on a notification ("#friends"): taken
+ * out of the address, as an invite is. The link, "" for the friends alone, or null.
+ */
+function friendsAddress() {
+  const hash = location.hash;
+  if (!hash.startsWith('#f=') && hash !== '#friends') return null;
+  try {
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch (e) {
+    // a file opened from disk
+  }
+  // The link as it was opened, for the field it goes into
+  return hash === '#friends' ? '' : location.origin + location.pathname + hash;
+}
+
+function openFriends(link) {
+  if (link) friends.showLink(link);
+  else friends.show();
+}
+
+function openFriendsFromAddress() {
+  const link = friendsAddress();
+  if (link === null) return false;
+  openFriends(link);
+  return true;
+}
+
+/** The name and picture friends see: the ones of "You join as". */
+function friendsProfile() {
+  if (friends) friends.setProfile($('join-name').value.trim() || recall('psrpt.name'), avatar ? avatar.data : null);
+}
+
+/**
  * The page on a home screen, like an app: where the browser can install it (Chrome, Edge), the
  * foot of the page gets a button for it; on an iPhone or iPad only the Share menu can, so a
  * line says how. Not when the page already runs installed.
@@ -663,7 +755,8 @@ function typing() {
   const a = document.activeElement;
   const field = !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT')
     && a.type !== 'checkbox' && a.type !== 'range');
-  return field || $('keys').open || grabbed() || !ui.chat.hidden || !!(options && options.isOpen) || !$('sleep-ask').hidden;
+  return field || $('keys').open || grabbed() || !ui.chat.hidden || !!(options && options.isOpen) || !$('sleep-ask').hidden
+    || !!(friends && friends.isOpen);
 }
 
 function remember(key, value) {
@@ -754,6 +847,7 @@ async function setAvatar(data, store) {
     if (store) remember('psrpt.avatar', base64UrlEncode(data));
   }
   showAvatar();
+  friendsProfile();
 }
 
 function showAvatar() {
@@ -908,6 +1002,7 @@ function makeSession() {
     onInputs,
     onChat,
     onChatFailed: chatFailed,
+    onChatMarks,
     onBlob,
     onCamFragment,
     onClosed,
@@ -929,7 +1024,8 @@ function connectingStatus(text) {
   const host = invite && invite.room ? invite.room.host : '';
   const waiting = text === 'Waiting for the host to let you in…';
   $('connecting-text').textContent = waiting ? (host ? `Waiting for ${host} to let you in…` : text) : 'Looking for the host…';
-  $('connecting-sub').textContent = waiting
+  // Under the strip; the line under the title (connecting-sub) is the room's, as fillHead() writes it
+  $('connecting-step').textContent = waiting
     ? (host ? `${host} sees your name.` : 'The host sees your name.')
     : `${text} The connection goes straight from your browser to your friend's computer.`;
 }
@@ -1021,6 +1117,8 @@ function enterStage() {
     if (lastState) showCamFrame(lastState.yourSlot, jpeg);
   };
   showStageNote();
+  // Friends see where this player is, as the app tells them of a guest
+  if (friends) friends.setActivity(guestActivity((invite && invite.room && invite.room.game) || (invite && invite.recent && invite.recent.game)));
 
   syncMouseAim(true);
   clearInterval(padTimer);
@@ -1112,14 +1210,20 @@ function leaveStage() {
   wakeLock = null;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   ui.chat.hidden = true;
-  ui.emoji.hidden = true;
+  closeChatPickers();
   ui.banner.hidden = true;
   $('sleep-ask').hidden = true;
   ui.chatList.replaceChildren();
+  roomMessages = [];
+  roomBarKey = '';
+  roomReactingTo = 0;
+  roomReadSent = 0;
+  unreadMention = false;
+  roomInput.clear();
   menu.clearChat();
   ui.notices.replaceChildren();
-  lastChat = null;
   unread = 0;
+  if (friends) friends.setActivity('');
 }
 
 /** @param {boolean} [sleepConsole] also asks the host to put the console to sleep */
@@ -1402,6 +1506,8 @@ function showPlayers() {
   menu.setPlayers(players);
   $('chat-sub').textContent = players.length > 1 ? `${players.length} players in this session`
     : 'Everybody who joins can read along';
+  // Names, pictures and whose read marks count go with who is here
+  drawRoomChat();
 }
 
 /** The console sleeps and the room stays: who may, wakes it. */
@@ -1506,12 +1612,8 @@ function onBlob(ref, data) {
   const key = P.hashKey(ref.hash);
   if (!blobUrls.has(key)) blobUrls.set(key, URL.createObjectURL(new Blob([data])));
   showPlayers();
-  for (const img of ui.chatList.querySelectorAll(`[data-blob="${key}"]`)) {
-    if (img.tagName === 'IMG') {
-      img.src = blobUrls.get(key);
-      img.hidden = false;
-    } else img.style.backgroundImage = `url("${blobUrls.get(key)}")`;
-  }
+  // In the chat: a player's picture, or the one of a link's preview
+  drawRoomChat();
 }
 
 // ------------------------------------------------------------------ the numbers of the connection
@@ -1674,43 +1776,63 @@ function chatEmpty() {
   return empty;
 }
 
-/** One's own messages on their way: shown at once, dimmed, as in the app (id -> its entry). */
-const pendingChat = new Map();
+/**
+ * The session's chat as the app's RoomChat.qml shows it: every message, oldest first, own ones
+ * on their way included ({key, seq, upId, slot, name, timeMs, text, embed, host, mine, pending,
+ * failed}), drawn by ./chatview.js with the reactions and read marks the host tells (session.chatMarks).
+ */
+let roomMessages = [];
+/** The chat is drawn again when it shows: it changed while it was closed. */
+let roomDirty = false;
+/** At the newest message: it stays there as messages, reactions and pictures come. */
+let roomStick = true;
+/** The message whose quick reactions show, and the one a reaction from all emoji is for. */
+let roomBarKey = '';
+let roomReactingTo = 0;
+/** How far this player's read mark went out. */
+let roomReadSent = 0;
+/** Among the messages not read yet (the chat closed): one that names this player. */
+let unreadMention = false;
+/** The most messages the chat keeps (the app keeps the host's log). */
+const ROOM_CHAT_KEEP = 300;
 
-function addPendingChat(id, text) {
-  const entry = el('div', 'cmsg pending');
-  const body = el('div', 'cmsg-body');
-  const words = el('div', 'cmsg-text');
-  appendWithLinks(words, text);
-  const status = el('div', 'cmsg-status', 'Sending…');
-  body.append(words, status);
-  entry.append(el('div', 'cmsg-avatar'), body);
-  const empty = ui.chatList.querySelector('.chat-empty');
-  if (empty) empty.remove();
-  ui.chatList.append(entry);
-  ui.chatList.scrollTop = ui.chatList.scrollHeight;
+function addRoomMessage(m) {
+  roomMessages.push(m);
+  if (roomMessages.length > ROOM_CHAT_KEEP) roomMessages.splice(0, roomMessages.length - ROOM_CHAT_KEEP);
+  drawRoomChat();
+}
+
+/** This player's name in the session, as the others see it (what "@" names them by). */
+function ownRoomName() {
   const s = lastState;
   const own = s ? s.participants.find((p) => p.slot === s.yourSlot) : null;
+  return own ? own.name : $('join-name').value.trim();
+}
+
+/** One's own messages on their way: shown at once, as in the app (id -> its entry). */
+function addPendingChat(id, text, reply = 0) {
+  const s = lastState;
+  const own = s ? s.participants.find((p) => p.slot === s.yourSlot) : null;
+  roomStick = true;
+  addRoomMessage({ key: `p${id}`, seq: 0, upId: id, slot: s ? s.yourSlot : 0, name: own ? own.name : 'You', timeMs: Date.now(),
+    text, embed: null, host: false, mine: true, pending: true, failed: false, reply });
   menu.addChat({ slot: s ? s.yourSlot : 0, name: own ? own.name : 'You', text, embed: null, pending: true, id });
-  pendingChat.set(id, { entry, status });
 }
 
 /** The host has it: the message shows as everybody's does. */
 function chatArrived(id) {
-  const p = pendingChat.get(id);
-  if (!p) return;
-  pendingChat.delete(id);
-  p.entry.remove();
+  const at = roomMessages.findIndex((m) => m.pending && m.upId === id);
+  if (at < 0) return;
+  roomMessages.splice(at, 1);
   menu.chatSettled(id, false);
 }
 
 function chatFailed(id) {
-  const p = pendingChat.get(id);
-  if (!p) return;
-  pendingChat.delete(id);
-  p.entry.classList.remove('pending');
-  p.entry.classList.add('failed');
-  p.status.textContent = 'Not sent — the host did not answer';
+  const m = roomMessages.find((x) => x.pending && x.upId === id);
+  if (!m) return;
+  m.pending = false;
+  m.failed = true;
+  drawRoomChat();
   menu.chatSettled(id, true);
 }
 
@@ -1720,91 +1842,151 @@ function onChat(m) {
   if (mine) chatArrived(m.upId);
   const who = s ? s.participants.find((p) => p.slot === m.slot) : null;
   const name = m.name || `Player ${m.slot + 1}`;
-  // A run of messages by the same player shows the name once
-  const continued = !!lastChat && lastChat.slot === m.slot && lastChat.name === m.name && m.timeMs - lastChat.timeMs < 120000;
-  lastChat = { slot: m.slot, name: m.name, timeMs: m.timeMs };
-
-  const entry = el('div', 'cmsg' + (continued ? ' continued' : ''));
-  const side = el('div', 'cmsg-avatar');
-  const body = el('div', 'cmsg-body');
-  if (!continued) {
-    const face = el('div', 'hud-avatar');
-    face.style.width = '34px';
-    face.style.height = '34px';
-    const inner = el('div', 'hud-avatar-face');
-    inner.style.inset = '0';
-    inner.style.fontSize = '16px';
-    const key = who && who.avatar.valid ? P.hashKey(who.avatar.hash) : '';
-    const url = key ? blobUrls.get(key) : '';
-    if (key) inner.dataset.blob = key;
-    if (url) {
-      inner.style.backgroundImage = `url("${url}")`;
-      inner.classList.add('picture');
-    } else inner.textContent = (name.trim().charAt(0) || '?').toUpperCase();
-    face.append(inner);
-    side.append(face);
-    const head = el('div', 'cmsg-head');
-    const label = el('span', 'cmsg-name', name);
-    label.style.color = SLOT_COLORS[m.slot % SLOT_COLORS.length];
-    head.append(label);
-    if (who ? who.host : m.slot === 0) head.append(el('span', 'cmsg-host', 'HOST'));
-    head.append(el('span', 'cmsg-time', new Date(m.timeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })));
-    body.append(head);
-  }
-  if (m.text) {
-    const text = el('div', 'cmsg-text');
-    appendWithLinks(text, m.text);
-    body.append(text);
-  }
-  if (m.embed && /^https?:\/\//i.test(m.embed.url)) body.append(embedCard(m.embed));
-  entry.append(side, body);
-
-  const empty = ui.chatList.querySelector('.chat-empty');
-  if (empty) empty.remove();
-  const atEnd = ui.chatList.scrollHeight - ui.chatList.scrollTop - ui.chatList.clientHeight < 60;
-  ui.chatList.append(entry);
-  if (atEnd || mine) ui.chatList.scrollTop = ui.chatList.scrollHeight;
+  const embed = m.embed && /^https?:\/\//i.test(m.embed.url) ? m.embed : null;
+  if (mine) roomStick = true;
+  addRoomMessage({ key: `m${m.seq}`, seq: m.seq, upId: m.upId, slot: m.slot, name, timeMs: m.timeMs, text: m.text, embed,
+    host: who ? who.host : m.slot === 0, mine, pending: false, failed: false, reply: m.reply || 0 });
   // The last messages also show in the stream menu's panel
-  menu.addChat({ slot: m.slot, name, text: m.text, embed: m.embed && /^https?:\/\//i.test(m.embed.url) ? m.embed : null });
+  menu.addChat({ slot: m.slot, name, text: m.text, embed, seq: m.seq });
   if (m.history) return;
   if (mine) return;
   // What somebody else wrote: for a few seconds on the game picture, unless the chat is open anyway
   hud.chatMessage({ slot: m.slot, name, text: m.text, embed: m.embed && m.embed.url ? m.embed : null });
   if (ui.chat.hidden) {
     unread++;
-    menu.setUnread(unread);
+    // A message that names this player: "@" on the badge (the app's PlayTogetherBar)
+    if (mentions(m.text, ownRoomName())) unreadMention = true;
+    menu.setUnread(unread, unreadMention);
   }
 }
 
-function hostOf(url) {
-  try {
-    return new URL(url).hostname;
-  } catch (e) {
-    return '';
+/** Somebody read further, reacted, or deleted a message (the host's marks have changed). */
+function onChatMarks(marks) {
+  for (const seq of marks.deleted) menu.chatDeleted(seq);
+  // No answering a message that is gone
+  const reply = roomInput.reply;
+  if (reply && marks.deleted.has(reply.seq)) roomInput.setReply(null);
+  drawRoomChat();
+}
+
+/** Deletes an own message for everybody, once the player says so. */
+async function roomDelete(seq) {
+  if (!session || !seq || !(await askDelete())) return;
+  session.deleteChat(seq);
+}
+
+function blobUrl(ref) {
+  return ref && ref.valid ? blobUrls.get(P.hashKey(ref.hash)) || '' : '';
+}
+
+const twoDigits = (n) => String(n).padStart(2, '0');
+
+/** A message's time, as the app's chat has it: hh:mm. */
+function chatTime(ms) {
+  const d = new Date(ms);
+  return `${twoDigits(d.getHours())}:${twoDigits(d.getMinutes())}`;
+}
+
+/** The read mark: up to the newest message everybody has (own ones on their way have no number yet). */
+function markRoomRead() {
+  if (!session || ui.chat.hidden || document.visibilityState !== 'visible') return;
+  let newest = 0;
+  for (const m of roomMessages) newest = Math.max(newest, m.seq || 0);
+  if (newest > roomReadSent) {
+    roomReadSent = newest;
+    session.setChatRead(newest);
   }
 }
 
-/** The preview of a link, as its sender made it. */
-function embedCard(embed) {
-  const a = el('a', 'cembed');
-  a.href = embed.url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  const site = embed.site || hostOf(embed.url);
-  if (site) a.append(el('div', 'cembed-site', site));
-  a.append(el('div', 'cembed-title', embed.title || embed.url));
-  if (embed.description) a.append(el('div', 'cembed-text', embed.description));
-  if (embed.image.valid) {
-    const key = P.hashKey(embed.image.hash);
-    const img = el('img');
-    img.alt = '';
-    img.dataset.blob = key;
-    const url = blobUrls.get(key);
-    if (url) img.src = url;
-    else img.hidden = true; // shows when the picture has arrived
-    a.append(img);
+/** Gives a reaction to a message, or takes it back if it was given already (the app's coplayReact). */
+function roomReact(seq, emoji) {
+  if (!session || !seq) return;
+  const given = session.reacted(seq, emoji);
+  // Over the limits the host would refuse it: not asked at all
+  if (!given && session.welcome) {
+    const kinds = session.chatMarks.reactions.get(seq);
+    if (kinds) {
+      let mine = 0;
+      for (const slots of kinds.values()) if (slots.includes(session.welcome.slot)) mine++;
+      if (mine >= P.MAX_REACTIONS_PER_PLAYER || (!kinds.has(emoji) && kinds.size >= P.MAX_REACTION_KINDS)) return;
+    }
   }
-  return a;
+  session.react(seq, emoji, !given);
+}
+
+function drawRoomChat() {
+  if (ui.chat.hidden) {
+    roomDirty = true;
+    return;
+  }
+  roomDirty = false;
+  const list = ui.chatList;
+  const s = lastState;
+  const own = s ? s.yourSlot : -1;
+  const marks = session ? session.chatMarks : P.newChatMarks();
+  const players = s ? s.participants.map((p) => ({ slot: p.slot, name: p.name, avatar: blobUrl(p.avatar), you: p.slot === own })) : [];
+  const readers = placeRoomReaders(roomMessages, marks.read, players);
+  const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+  const keep = list.scrollTop;
+  const bySeq = new Map(roomMessages.filter((m) => m.seq).map((m) => [m.seq, m]));
+  const me = ownRoomName();
+  // "@Name" is drawn for whoever is here, oneself too; the list after "@" offers the others
+  const names = players.map((p) => p.name);
+  roomInput.setPeople(players.filter((p) => !p.you).map((p) => ({ name: p.name, avatar: p.avatar })));
+  /** What a reply answers: the message while the chat has it (deleted: said so), else only that it was earlier. */
+  const quoteOf = (seq) => {
+    const o = bySeq.get(seq);
+    if (!o) return { name: '', text: 'A message from earlier', earlier: true };
+    const gone = marks.deleted.has(seq);
+    return { name: o.name, color: SLOT_COLORS[o.slot % SLOT_COLORS.length], deleted: gone,
+      text: gone ? 'Deleted message' : oneLine(o.text || (o.embed ? o.embed.title || o.embed.url : '')) };
+  };
+  const shown = roomMessages.map((m, i) => {
+    const who = players.find((p) => p.slot === m.slot);
+    const deleted = !!m.seq && marks.deleted.has(m.seq);
+    return chatMessage({
+      key: m.key,
+      mine: m.mine,
+      first: roomRunStarts(roomMessages, i),
+      showAuthor: true,
+      name: m.name,
+      nameColor: SLOT_COLORS[m.slot % SLOT_COLORS.length],
+      avatar: who ? who.avatar : '',
+      host: m.host,
+      text: m.text,
+      dim: m.pending,
+      deleted,
+      quote: m.reply ? quoteOf(m.reply) : null,
+      onQuote: m.reply ? () => flashMessage(list, `m${m.reply}`) : null,
+      names,
+      mentionsMe: !m.mine && mentions(m.text, me),
+      embed: m.embed ? { url: m.embed.url, site: m.embed.site, title: m.embed.title, description: m.embed.description,
+        image: blobUrl(m.embed.image) } : null,
+      status: m.failed ? 'Not sent — the host did not answer' : m.pending ? 'Sending…' : chatTime(m.timeMs),
+      statusBad: m.failed,
+      reactions: roomReactions(marks, m.seq, own),
+      readers: readers.get(i) || [],
+      // Reactions, replies and deleting need the host's number for the message
+      canReact: !!m.seq && !m.pending,
+      onReact: (emoji) => roomReact(m.seq, emoji),
+      onReply: m.seq && !m.pending ? () => roomInput.setReply({ seq: m.seq, name: m.name, text: oneLine(m.text) }) : null,
+      onDelete: m.mine && m.seq && !m.pending ? () => roomDelete(m.seq) : null,
+      onMore: () => {
+        roomReactingTo = m.seq;
+        roomReactPicker.open();
+      },
+      barOpen: roomBarKey === m.key,
+      onBar: (open) => {
+        roomBarKey = open ? m.key : roomBarKey === m.key ? '' : roomBarKey;
+      },
+    });
+  });
+  list.replaceChildren(...shown);
+  if (!roomMessages.length) list.append(chatEmpty());
+  if (roomStick || atEnd) list.scrollTop = list.scrollHeight;
+  else list.scrollTop = keep;
+  roomStick = false;
+  markRoomRead();
 }
 
 function openChat(open) {
@@ -1812,35 +1994,25 @@ function openChat(open) {
   hud.chatOpen = open;
   if (open) {
     unread = 0;
+    unreadMention = false;
     menu.setUnread(0);
-    if (!ui.chatList.children.length) ui.chatList.append(chatEmpty());
-    ui.chatList.scrollTop = ui.chatList.scrollHeight;
-    ui.chatInput.focus();
+    roomStick = true;
+    drawRoomChat();
+    roomInput.input.focus();
   } else {
-    ui.chatInput.blur();
-    ui.emoji.hidden = true;
+    roomInput.input.blur();
+    roomInput.picker.close();
+    roomReactPicker.close();
   }
   wake();
 }
 
-function buildEmoji() {
-  const tabs = el('div', 'chat-picker-tabs');
-  const grid = el('div', 'chat-picker-grid');
-  const showGroup = (index) => {
-    for (const [i, tab] of Array.from(tabs.children).entries()) tab.classList.toggle('selected', i === index);
-    grid.replaceChildren(...EMOJI_GROUPS[index][1].split(' ').map((emoji) => button('', emoji, () => {
-      const input = ui.chatInput;
-      const at = input.selectionStart === null ? input.value.length : input.selectionStart;
-      input.value = input.value.slice(0, at) + emoji + input.value.slice(input.selectionEnd === null ? at : input.selectionEnd);
-      input.focus();
-      input.selectionStart = input.selectionEnd = at + emoji.length;
-      $('chat-send').disabled = false;
-    })));
-    grid.scrollTop = 0;
-  };
-  EMOJI_GROUPS.forEach(([icon], index) => tabs.append(button('', icon, () => showGroup(index))));
-  ui.emoji.append(tabs, grid);
-  showGroup(0);
+/** Closes an open emoji picker of the chat; false if none was open. */
+function closeChatPickers() {
+  if (!roomInput.picker.isOpen && !roomReactPicker.isOpen) return roomInput.closeExtras();
+  roomInput.picker.close();
+  roomReactPicker.close();
+  return true;
 }
 
 // ------------------------------------------------------------------ the stream menu
@@ -2132,6 +2304,11 @@ function start() {
       options.show();
       syncFront();
     },
+    // The friends panel over the game, as on the start page
+    onFriends: () => {
+      menu.close();
+      friends.show();
+    },
   });
   menu.onOpenChange = (open) => {
     if (open) {
@@ -2156,6 +2333,23 @@ function start() {
   $('menu-handle-key').textContent = MENU_KEY;
   ui.handle.addEventListener('click', () => menu.show(false));
 
+  // ------------------------------------------------ friends
+  friends = new FriendsPanel({
+    server: LOCAL_FRIENDS,
+    onJoin: joinFriendRoom,
+    onCount: showFriendsCount,
+    // During a game, what the app's tray would say shows on the picture, as the app's notices do
+    onEvent: (kind, d) => {
+      if (ui.stage.hidden) return;
+      const who = d.name || (kind === 'request' ? 'Somebody' : 'A friend');
+      if (kind === 'request') notice(`${who} wants to be your friend.`);
+      else if (kind === 'message') notice(d.mention ? `${who} mentioned you` : `${who}: New message`);
+      else if (kind === 'hosting') notice(d.title ? `${who} is hosting: ${d.title}` : `${who} is hosting`);
+    },
+  });
+  $('friends-button').addEventListener('click', () => friends.show());
+  showFriendsCount(0, 0);
+
   // ------------------------------------------------ before the game
   // The public rooms: language choice, search and filters
   $('rooms-lang').replaceChildren(el('option', '', 'All languages'),
@@ -2174,8 +2368,15 @@ function start() {
 
   $('landing-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const parsed = parseInvite($('landing-invite').value, LOCAL);
     const error = $('landing-error');
+    // A friend link: to the friends, to add them
+    if (parseFriendLink($('landing-invite').value)) {
+      error.hidden = true;
+      friends.showLink($('landing-invite').value.trim());
+      $('landing-invite').value = '';
+      return;
+    }
+    const parsed = parseInvite($('landing-invite').value, LOCAL);
     if (!parsed) {
       error.textContent = 'That is not a link or invite of PSRemotePlayTogether. Copy the whole link your friend sent you.';
       error.hidden = false;
@@ -2207,6 +2408,7 @@ function start() {
   });
   // Another link opened in this tab while it is not in a session
   window.addEventListener('hashchange', () => {
+    if (openFriendsFromAddress()) return;
     if (session || !ui.stage.hidden) return;
     const next = readInvite();
     if (!next) return;
@@ -2217,8 +2419,11 @@ function start() {
     if (!avatar) showAvatar();
     syncNoName();
   });
-  // Kept as it is typed, so that every way of joining takes it
-  $('join-name').addEventListener('change', () => remember('psrpt.name', $('join-name').value.trim()));
+  // Kept as it is typed, so that every way of joining takes it; friends see it too
+  $('join-name').addEventListener('change', () => {
+    remember('psrpt.name', $('join-name').value.trim());
+    friendsProfile();
+  });
   const pickAvatar = () => $('join-avatar-file').click();
   $('join-avatar').addEventListener('click', pickAvatar);
   $('join-avatar-choose').addEventListener('click', pickAvatar);
@@ -2267,26 +2472,12 @@ function start() {
     openChat(false);
     syncFront();
   });
-  $('chat-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const text = withEmoji(ui.chatInput.value.trim());
-    if (!text || !session) return;
-    const id = session.sendChat(text);
-    if (id) {
-      mySent.add(id);
-      addPendingChat(id, text);
-      ui.chatInput.value = '';
-      $('chat-send').disabled = true;
-    }
-  });
-  ui.chatInput.addEventListener('input', () => {
-    $('chat-send').disabled = ui.chatInput.value.trim().length === 0;
-  });
-  buildEmoji();
-  $('chat-emoji').addEventListener('click', () => {
-    ui.emoji.hidden = !ui.emoji.hidden;
-    if (ui.emoji.hidden) ui.chatInput.focus();
-  });
+  // The close button as the app's (an icon button), the row to write in and the emoji as in the friends' chats
+  $('chat-close').className = 'cv-icon-button';
+  $('chat-close').replaceChildren(icon('close', 20));
+  $('chat-close').title = 'Close';
+  ui.chat.append(roomInput.el, roomInput.picker, roomReactPicker);
+  document.addEventListener('visibilitychange', () => markRoomRead());
 
   $('banner-leave').addEventListener('click', () => leave());
   $('sleep-ask-yes').addEventListener('click', () => leave(true));
@@ -2380,6 +2571,8 @@ function start() {
   // ------------------------------------------------ keys and the mouse
   window.addEventListener('keydown', (e) => {
     if (ui.stage.hidden) return;
+    // The friends panel over the game has the keys, Escape too
+    if (friends.isOpen) return;
     // The chat: the app has Ctrl+T / ⌘T, which a browser keeps for a new tab; here it is Alt+T / ⌥T
     if (e.code === 'KeyT' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault();
@@ -2397,10 +2590,9 @@ function start() {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
     // Escape closes what is in front; the menu, the options and arranging see to themselves
     if (hud.editing || (e.target instanceof Element && e.target.closest('#menu, #options'))) return;
-    if (!ui.emoji.hidden) {
+    if (!ui.chat.hidden && closeChatPickers()) {
       e.preventDefault();
-      ui.emoji.hidden = true;
-      ui.chatInput.focus();
+      roomInput.input.focus();
     } else if (!ui.chat.hidden) {
       e.preventDefault();
       openChat(false);
@@ -2486,6 +2678,7 @@ function start() {
       get session() { return session; },
       get player() { return player; },
       get state() { return lastState; },
+      get friends() { return friends; },
       sound,
       pad,
       touch,
@@ -2504,9 +2697,13 @@ function start() {
 
   recent = readRecent(recall(RECENT_KEY), LOCAL);
   fillYou();
+  friendsProfile();
+  // A friend link in the address is for the friends panel, not an invite
+  const forFriends = friendsAddress();
   invite = readInvite();
   if (invite) showJoin();
   else show(ui.landing);
+  if (forFriends !== null) openFriends(forFriends);
   // A phone or tablet without a controller gets one on the screen
   if (TouchControls.likely() && !pad.gamepads().length) setTouch(true, true);
 }

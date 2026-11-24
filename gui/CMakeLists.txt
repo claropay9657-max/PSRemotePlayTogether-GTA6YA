@@ -83,6 +83,14 @@ set(SOURCE_FILES
 	src/livecontroller.cpp
 	include/keystore.h
 	src/keystore.cpp
+	include/friends.h
+	src/friends.cpp
+	include/tray.h
+	src/tray.cpp
+	include/autostart.h
+	src/autostart.cpp
+	include/chattext.h
+	src/chattext.cpp
 	include/livescenes.h
 	src/livescenes.cpp
 	include/websocketclient.h
@@ -321,6 +329,41 @@ elseif(WIN32)
 else()
 	# libsecret is opened when needed (keystore.cpp)
 	target_link_libraries(chiaki ${CMAKE_DL_LIBS})
+endif()
+# Starting with the computer on a Mac: the login item (ServiceManagement, macOS 13 and later),
+# how the app was opened, and its Dock icon while it sits in the menu bar (autostart_mac.mm)
+if(APPLE)
+	target_sources(chiaki PRIVATE src/autostart_mac.mm)
+	set_source_files_properties(src/autostart_mac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+	target_link_libraries(chiaki "-framework ServiceManagement")
+endif()
+
+# Friends end to end: clients of the app against a friends server (test/friends-client.sh
+# starts one with php -S); not part of ctest, it needs PHP
+if(COPLAY_ENABLE_TESTS)
+	add_executable(friends-client-test "${CMAKE_SOURCE_DIR}/test/friends-client.cpp" include/friends.h src/friends.cpp include/keystore.h src/keystore.cpp
+		include/chattext.h src/chattext.cpp include/coplaylinkpreview.h src/coplaylinkpreview.cpp)
+	target_include_directories(friends-client-test PRIVATE include)
+	target_link_libraries(friends-client-test coplay Qt::Core Qt::Gui Qt::Network)
+	if(APPLE)
+		target_link_libraries(friends-client-test "-framework Security" "-framework CoreFoundation")
+	elseif(WIN32)
+		target_link_libraries(friends-client-test advapi32)
+	else()
+		target_link_libraries(friends-client-test ${CMAKE_DL_LIBS})
+	endif()
+	# Pictures of the friends panel with the app's QML, without the app (test/friends-shot.sh)
+	add_executable(friends-shot "${CMAKE_SOURCE_DIR}/test/friends-shot.cpp" include/friends.h src/friends.cpp include/keystore.h src/keystore.cpp
+		include/chattext.h src/chattext.cpp include/coplaylinkpreview.h src/coplaylinkpreview.cpp src/qml/qml.qrc res/resources.qrc)
+	target_include_directories(friends-shot PRIVATE include)
+	target_link_libraries(friends-shot coplay Qt::Core Qt::Gui Qt::GuiPrivate Qt::Network Qt::Qml Qt::Quick)
+	if(APPLE)
+		target_link_libraries(friends-shot "-framework Security" "-framework CoreFoundation")
+	elseif(WIN32)
+		target_link_libraries(friends-shot advapi32)
+	else()
+		target_link_libraries(friends-shot ${CMAKE_DL_LIBS})
+	endif()
 endif()
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fanalyzer")

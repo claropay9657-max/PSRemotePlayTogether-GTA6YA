@@ -3,6 +3,7 @@
 #include "coplayrecent.h"
 #include "coplayaddress.h"
 #include "sessionlog.h"
+#include "autostart.h"
 
 #include <QSet>
 #include <QKeySequence>
@@ -165,6 +166,94 @@ void QmlSettings::setUpdateCheckEnabled(bool enabled)
 {
     settings->SetUpdateCheckEnabled(enabled);
     emit updateCheckEnabledChanged();
+}
+
+bool QmlSettings::startWithComputer() const
+{
+    return autostart::IsOn();
+}
+
+void QmlSettings::setStartWithComputer(bool on)
+{
+    start_with_computer_error.clear();
+    if (!autostart::Set(on, settings->GetStartInTray(), &start_with_computer_error) && start_with_computer_error.isEmpty())
+        start_with_computer_error = tr("That did not work.");
+    emit trayChanged();
+}
+
+bool QmlSettings::startWithComputerPossible() const
+{
+    return autostart::Possible();
+}
+
+QString QmlSettings::startWithComputerNote() const
+{
+    QString why;
+    if (!autostart::Possible(&why))
+        return why;
+    if (!start_with_computer_error.isEmpty())
+        return start_with_computer_error;
+    return autostart::Note();
+}
+
+void QmlSettings::refreshStartWithComputer()
+{
+    emit trayChanged();
+}
+
+bool QmlSettings::startInTray() const
+{
+    return settings->GetStartInTray();
+}
+
+void QmlSettings::setStartInTray(bool on)
+{
+    if (on == settings->GetStartInTray())
+        return;
+    settings->SetStartInTray(on);
+    // The flag is part of the entry (not on a Mac, where the app looks how it was opened)
+    if (autostart::IsOn())
+        autostart::Set(true, on);
+    emit trayChanged();
+}
+
+bool QmlSettings::closeToTray() const
+{
+    return settings->GetCloseToTray();
+}
+
+void QmlSettings::setCloseToTray(bool on)
+{
+    if (on == settings->GetCloseToTray())
+        return;
+    settings->SetCloseToTray(on);
+    emit trayChanged();
+}
+
+bool QmlSettings::notifications() const
+{
+    return settings->GetNotifications();
+}
+
+void QmlSettings::setNotifications(bool on)
+{
+    if (on == settings->GetNotifications())
+        return;
+    settings->SetNotifications(on);
+    emit trayChanged();
+}
+
+bool QmlSettings::notificationWords() const
+{
+    return settings->GetNotificationWords();
+}
+
+void QmlSettings::setNotificationWords(bool on)
+{
+    if (on == settings->GetNotificationWords())
+        return;
+    settings->SetNotificationWords(on);
+    emit trayChanged();
 }
 
 float QmlSettings::hapticOverride() const

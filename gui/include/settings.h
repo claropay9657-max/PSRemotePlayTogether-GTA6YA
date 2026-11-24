@@ -455,6 +455,23 @@ class Settings : public QObject
 		bool GetIntroSound() const					{ return default_settings.value("settings/intro_sound", true).toBool(); }
 		void SetIntroSound(bool on)					{ default_settings.setValue("settings/intro_sound", on); }
 
+		/**
+		 * The tray (tray.h) and starting with the computer (autostart.h), for the whole app as
+		 * well. Whether the app starts with the computer at all is kept by the system itself.
+		 */
+		/** A start with the computer opens no window, only the icon in the tray. */
+		bool GetStartInTray() const					{ return default_settings.value("settings/start_in_tray", true).toBool(); }
+		void SetStartInTray(bool on)				{ default_settings.setValue("settings/start_in_tray", on); }
+		/** Closing the window keeps the app in the tray. */
+		bool GetCloseToTray() const					{ return default_settings.value("settings/close_to_tray", false).toBool(); }
+		void SetCloseToTray(bool on)				{ default_settings.setValue("settings/close_to_tray", on); }
+		/** Notifications from the system: a message, a friend request, a friend who hosts. */
+		bool GetNotifications() const				{ return default_settings.value("settings/notifications", true).toBool(); }
+		void SetNotifications(bool on)				{ default_settings.setValue("settings/notifications", on); }
+		/** A notification of a message shows its words, not only who wrote. */
+		bool GetNotificationWords() const			{ return default_settings.value("settings/notification_words", false).toBool(); }
+		void SetNotificationWords(bool on)			{ default_settings.setValue("settings/notification_words", on); }
+
 		bool GetButtonsByPosition() const 		{ return settings.value("settings/buttons_by_pos", false).toBool(); }
 		void SetButtonsByPosition(bool enabled) { settings.setValue("settings/buttons_by_pos", enabled); }
 

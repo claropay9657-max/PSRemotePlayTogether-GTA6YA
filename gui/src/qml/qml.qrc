@@ -14,6 +14,15 @@
     <file>StreamMenuWindow.qml</file>
     <file>StreamMenuContent.qml</file>
     <file>StreamChatPanel.qml</file>
+    <file>RoomChat.qml</file>
+    <file>FriendsPanel.qml</file>
+    <file>StreamFriendsWindow.qml</file>
+    <file>InviteCard.qml</file>
+    <file>PlanCard.qml</file>
+    <file>ChatBubble.qml</file>
+    <file>EmojiPicker.qml</file>
+    <file>ChatComposer.qml</file>
+    <file>ChatDeleteDialog.qml</file>
     <file>ConfirmDialog.qml</file>
     <file>RemindDialog.qml</file>
     <file>DialogView.qml</file>
@@ -32,6 +41,7 @@
     <file>settings/ControllersPage.qml</file>
     <file>settings/KeyboardPage.qml</file>
     <file>settings/VoicePage.qml</file>
+    <file>settings/FriendsPage.qml</file>
     <file>settings/OverlaysPage.qml</file>
     <file>settings/StreamingPage.qml</file>
     <file>settings/ScenesPage.qml</file>

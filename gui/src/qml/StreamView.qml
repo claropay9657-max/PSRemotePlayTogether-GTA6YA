@@ -518,6 +518,10 @@ Item {
                 menuController.close();
                 chatPanel.open = true;
             }
+            onFriendsRequested: {
+                menuController.close();
+                friendsWindow.open = true;
+            }
             onArrangeRequested: {
                 menuController.close();
                 view.hud.editing = true;
@@ -899,6 +903,12 @@ Item {
         view: view
     }
 
+    // Friends, from the stream menu: beside the picture, as the chat
+    StreamFriendsWindow {
+        id: friendsWindow
+        view: view
+    }
+
     // The display options, opened from the stream menu
     StreamDisplayPanel {
         id: displayPanel
@@ -1004,6 +1014,10 @@ Item {
         onChatRequested: {
             menuController.close();
             chatPanel.open = true;
+        }
+        onFriendsRequested: {
+            menuController.close();
+            friendsWindow.open = true;
         }
         onArrangeRequested: {
             menuController.close();

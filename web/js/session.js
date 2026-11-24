@@ -106,6 +106,15 @@ export class Session {
     this.chatSeen = [];
     this.chatOut = new Map();
     this.chatUpSeq = 0;
+    // Read marks and reactions (coplay Client): as the host told them, the newest mark number
+    // applied for each thing, how far this player has read, and its reactions on their way
+    this.chatMarks = P.newChatMarks();
+    this.marksApplied = new Map();
+    this.readWanted = 0;
+    this.readSentMs = 0;
+    this.readFirstMs = 0;
+    this.reactionsOut = [];
+    this.deletesOut = [];
     this.timer = 0;
     this.abort = new AbortController();
     this.stats = { packets: 0, bytes: 0, audioFrames: 0 };
@@ -440,15 +449,80 @@ export class Session {
     this.send(P.voiceUpFrame(this.voiceSeq, opus));
   }
 
-  /** @returns {number} the message's own number, 0 if it could not be sent */
-  sendChat(text) {
+  /**
+   * @param {string} text
+   * @param {number} [reply] the message it answers (the host's numbering), 0 for none
+   * @returns {number} the message's own number, 0 if it could not be sent
+   */
+  sendChat(text, reply = 0) {
     const clean = text.trim();
     if (!this.connected || !clean) return 0;
     const id = ++this.chatUpSeq;
-    const payload = P.chatUpFrame(id, clean);
+    const payload = P.chatUpFrame(id, clean, reply);
     this.chatOut.set(id, { payload, firstMs: nowMs(), lastMs: nowMs() });
     this.send(payload);
     return id;
+  }
+
+  /** The chat is read up to this message (the host's numbering); told again until the host's marks show it. */
+  setChatRead(seq) {
+    if (!this.connected || this.closed || !seq || seq <= this.readWanted) return;
+    this.readWanted = seq;
+    this.readSentMs = this.readFirstMs = nowMs();
+    this.send(P.chatSeenFrame(seq));
+  }
+
+  /** This player's reaction to a message, given or taken back; sent again until the host shows it. */
+  react(seq, emoji, on) {
+    if (!this.connected || this.closed || !seq || !P.validReaction(emoji)) return;
+    const now = nowMs();
+    // The newest wish for that reaction is the one that counts
+    this.reactionsOut = this.reactionsOut.filter((o) => !(o.seq === seq && o.emoji === emoji));
+    const payload = P.chatReactUpFrame(seq, emoji, on);
+    this.reactionsOut.push({ seq, emoji, on, payload, firstMs: now, lastMs: now });
+    this.send(payload);
+  }
+
+  /** Deletes an own message for everybody; asked again until the host's mark shows it (or given up). */
+  deleteChat(seq) {
+    if (!this.connected || this.closed || !seq || this.chatMarks.deleted.has(seq)) return;
+    const now = nowMs();
+    this.deletesOut = this.deletesOut.filter((o) => o.seq !== seq);
+    this.deletesOut.push({ seq, firstMs: now, lastMs: now });
+    this.send(P.chatDeleteUpFrame(seq));
+  }
+
+  /** Whether this player has given that reaction to a message, as the host last said. */
+  reacted(seq, emoji) {
+    const kinds = this.chatMarks.reactions.get(seq);
+    const slots = kinds ? kinds.get(emoji) : null;
+    return !!slots && !!this.welcome && slots.includes(this.welcome.slot);
+  }
+
+  /** Reactions and the read mark again, until the host's marks show them. */
+  resendMarks(now) {
+    // Deleting, until the host's mark shows it (or given up like a message)
+    this.deletesOut = this.deletesOut.filter((o) => now - o.firstMs <= CHAT_GIVE_UP_MS);
+    for (const o of this.deletesOut) {
+      if (now - o.lastMs >= CHAT_RESEND_MS) {
+        o.lastMs = now;
+        this.send(P.chatDeleteUpFrame(o.seq));
+      }
+    }
+    this.reactionsOut = this.reactionsOut.filter((o) => now - o.firstMs <= CHAT_GIVE_UP_MS);
+    for (const o of this.reactionsOut) {
+      if (now - o.lastMs >= CHAT_RESEND_MS) {
+        o.lastMs = now;
+        this.send(o.payload);
+      }
+    }
+    // A host without read marks never shows it: given up like a message, told again with the next one read
+    const own = this.welcome ? this.chatMarks.read.get(this.welcome.slot) || 0 : 0;
+    if (this.readWanted && own < this.readWanted && now - this.readFirstMs <= CHAT_GIVE_UP_MS &&
+      now - this.readSentMs >= CHAT_RESEND_MS * 3) {
+      this.readSentMs = now;
+      this.send(P.chatSeenFrame(this.readWanted));
+    }
   }
 
   requestKeyframe() {
@@ -558,6 +632,29 @@ export class Session {
         if (this.chatSeen.length > 256) this.chatSeen.shift();
         if (m.embed && m.embed.image.valid) this.wantBlob(m.embed.image);
         if (this.h.onChat) this.h.onChat(m);
+        break;
+      }
+      case P.PT.ChatMark: {
+        const m = P.readChatMark(payload);
+        if (!m) break;
+        // Always acknowledged: the earlier answer may have been lost
+        this.send(P.chatMarkAckFrame(m.mark));
+        // A mark older than one applied for the same thing changes nothing
+        const key = P.chatMarkKey(m);
+        let changed = false;
+        if (m.mark > (this.marksApplied.get(key) || 0)) {
+          this.marksApplied.set(key, m.mark);
+          changed = P.applyChatMark(this.chatMarks, m);
+        }
+        // This player's own reaction, as the host has it now as wanted: no need to send it again.
+        // A mark the other way is an older wish (taking it back got lost) or a refusal over the
+        // limits: sent again, until it shows or is given up
+        if (m.kind === P.MARK_REACTION && this.welcome && m.slot === this.welcome.slot) {
+          this.reactionsOut = this.reactionsOut.filter((o) => !(o.seq === m.seq && o.emoji === m.emoji && o.on === m.on));
+        }
+        // Deleted: no need to ask again
+        if (m.kind === P.MARK_DELETED) this.deletesOut = this.deletesOut.filter((o) => o.seq !== m.seq);
+        if (changed && this.h.onChatMarks) this.h.onChatMarks(this.chatMarks);
         break;
       }
       case P.PT.ChatUpAck: {
@@ -681,6 +778,8 @@ export class Session {
         this.send(m.payload);
       }
     }
+
+    this.resendMarks(now);
 
     if (now - this.lastBlobPollMs >= 50) {
       this.lastBlobPollMs = now;

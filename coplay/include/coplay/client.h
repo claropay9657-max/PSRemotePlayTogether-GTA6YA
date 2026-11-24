@@ -89,6 +89,8 @@ struct ClientCallbacks
 	std::function<void(const ChatMessage &)> on_chat;
 	/** The picture of a link preview has arrived; fetch it with Client::ChatImage(). */
 	std::function<void(const BlobRef &)> on_chat_image;
+	/** Somebody read further or reacted to a message; see Client::GetChatMarks(). */
+	std::function<void()> on_chat_marks;
 	/** Not called after Stop(). */
 	std::function<void(DisconnectReason)> on_disconnected;
 };
@@ -164,12 +166,21 @@ class Client
 		void SendCamFrame(const uint8_t *data, size_t size);
 		/**
 		 * Writes in the chat. It is sent again until the host has it. image is the
-		 * preview picture of the embed (JPEG, at most kMaxChatImageSize) or empty.
+		 * preview picture of the embed (JPEG, at most kMaxChatImageSize) or empty;
+		 * reply is the message it answers (the host's numbering, 0: none).
 		 * @return our number for it (the up_id of the message when it comes back), 0 if not sent
 		 */
-		uint32_t SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image);
+		uint32_t SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image, uint32_t reply = 0);
 		/** The picture of a link preview, or null if it is not (yet) here. */
 		BlobData ChatImage(const BlobHash &hash);
+		/** We have read the chat up to this message (the host's numbering); told until the host has it. */
+		void SetChatRead(uint32_t seq);
+		/** Our reaction to a message, given or taken back; sent again until the host shows it. */
+		void React(uint32_t seq, const std::string &emoji, bool on);
+		/** Deletes one of our messages for everybody; asked again until the host's marks show it. */
+		void DeleteChat(uint32_t seq);
+		/** Who read how far, and the reactions, as the host told us. */
+		ChatMarks GetChatMarks();
 		ClientStats Stats();
 		BlobRef OwnAvatar() const { return own_avatar; }
 		/** A player's picture, or null if it is not (yet) here. */
@@ -188,6 +199,7 @@ class Client
 		void SendInput(uint64_t now_ms);
 		void SendPing(uint64_t now_ms);
 		void ResendChats(uint64_t now_ms);
+		void ResendMarks(uint64_t now_ms);
 
 		ClientConfig config;
 		ClientCallbacks callbacks;
@@ -270,6 +282,27 @@ class Client
 		std::mutex chat_mutex;
 		std::map<uint32_t, PendingChat> chat_out; // what the host has not confirmed yet
 		uint32_t chat_up_seq = 0;
+		// Read marks and reactions, with chat_mutex
+		ChatMarks marks;
+		/** The newest mark number applied for each read mark and reaction, so an older one changes nothing. */
+		std::map<std::string, uint32_t> mark_applied;
+		uint32_t read_wanted = 0;
+		uint64_t read_sent_ms = 0;
+		uint64_t read_first_ms = 0;
+		struct PendingReaction
+		{
+			ChatReaction reaction;
+			uint64_t first_ms = 0;
+			uint64_t last_ms = 0;
+		};
+		std::vector<PendingReaction> reactions_out;
+		struct PendingDelete
+		{
+			uint32_t seq = 0;
+			uint64_t first_ms = 0;
+			uint64_t last_ms = 0;
+		};
+		std::vector<PendingDelete> deletes_out;
 		// Network thread only
 		std::deque<uint32_t> chat_seen;
 		uint64_t last_chat_resend_ms = 0;

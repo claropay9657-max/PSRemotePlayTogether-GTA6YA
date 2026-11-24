@@ -23,6 +23,14 @@ export const PT = {
   ChatAck: 0x16,
   KeyMouse: 0x17,
   WakeUp: 0x18,
+  /** guest -> host: the chat is read up to a message (u32 seq, the host's numbering). */
+  ChatSeen: 0x19,
+  /** guest -> host: a reaction given or taken back; sent again until a ChatMark shows it. */
+  ChatReactUp: 0x1a,
+  /** guest -> host: a ChatMark has arrived (u32 its mark number). */
+  ChatMarkAck: 0x1b,
+  /** guest -> host: delete an own message for everybody (u32 seq); sent again until a ChatMark shows it. */
+  ChatDeleteUp: 0x1c,
   Video: 0x20,
   Audio: 0x21,
   Haptics: 0x22,
@@ -33,6 +41,8 @@ export const PT = {
   Cam: 0x27,
   Chat: 0x28,
   ChatUpAck: 0x29,
+  /** host -> guest, answered with ChatMarkAck: how far somebody has read, or a reaction. */
+  ChatMark: 0x2a,
   Nack: 0x30,
   KeyframeRequest: 0x31,
   Bye: 0x40,
@@ -520,12 +530,18 @@ export function readChat(payload) {
     if (!r.ok || !e.url) return null;
     m.embed = e;
   } else if (!m.text) return null;
+  // The message it answers (the host's numbering), from versions that have replies
+  m.reply = r.remaining >= 4 ? r.u32() : 0;
   return m;
 }
 
-/** What a guest writes: only its own number and the text count, the host fills in the rest. */
-export function chatUpFrame(id, text) {
-  const w = new Writer(64 + text.length * 3);
+/**
+ * What a guest writes: only its own number, the text and the message it answers (the host's
+ * number, 0 for none) count, the host fills in the rest. The reply goes last, so that a host
+ * without replies reads the rest as before.
+ */
+export function chatUpFrame(id, text, reply = 0) {
+  const w = new Writer(72 + text.length * 3);
   w.u8(PT.ChatUp);
   w.u32(id);
   w.u32(0);
@@ -535,7 +551,172 @@ export function chatUpFrame(id, text) {
   w.str8('');
   w.str16(text, MAX_CHAT_TEXT);
   w.u8(0); // no link preview
+  w.u32(reply >>> 0);
   return w.done();
+}
+
+/** Deletes an own message for everybody (the host's number). */
+export function chatDeleteUpFrame(seq) {
+  return u32Frame(PT.ChatDeleteUp, seq);
+}
+
+// ------------------------------------------------------------------ read marks and reactions in the chat
+//
+// coplay/include/coplay/protocol.h (ChatReaction, ChatMark, ValidReaction, ApplyChatMark). A host
+// that does not know them ignores these packets: the chat works as before, without them.
+
+/** One reaction: an emoji, at most this many bytes of UTF-8 (with its modifiers). */
+export const MAX_REACTION_SIZE = 16;
+/** Different reactions one player gives one message. */
+export const MAX_REACTIONS_PER_PLAYER = 3;
+/** Different reactions on one message. */
+export const MAX_REACTION_KINDS = 12;
+/**
+ * ChatMark kinds: how far a player has read (seq, 0 when they left), a reaction given or taken
+ * back, or a message its writer (slot) deleted for everybody.
+ */
+export const MARK_READ = 1;
+export const MARK_REACTION = 2;
+export const MARK_DELETED = 3;
+
+const utf8 = new TextEncoder();
+const fromUtf8 = new TextDecoder('utf-8', { fatal: false });
+
+/** Code points emoji are made of (Unicode's emoji blocks and the few symbols outside them). */
+function emojiCodePoint(c) {
+  return c === 0xa9 || c === 0xae || c === 0x203c || c === 0x2049 || c === 0x2122 || c === 0x2139 ||
+    (c >= 0x2190 && c <= 0x21ff) || (c >= 0x2300 && c <= 0x23ff) || c === 0x24c2 ||
+    (c >= 0x25a0 && c <= 0x27bf) || (c >= 0x2900 && c <= 0x297f) || (c >= 0x2b00 && c <= 0x2bff) ||
+    c === 0x3030 || c === 0x303d || c === 0x3297 || c === 0x3299 || (c >= 0x1f000 && c <= 0x1faff);
+}
+
+/** What joins or changes an emoji: zero width joiner, variation selectors, the keycap. */
+function emojiJoiner(c) {
+  return c === 0x200d || c === 0xfe0e || c === 0xfe0f || c === 0x20e3;
+}
+
+/**
+ * Whether text (or its UTF-8 bytes) is one emoji as the app's ValidReaction has it: 1 to 16 bytes
+ * of UTF-8 made of emoji code points and what joins them (no letters of any script, spaces,
+ * controls or invisible marks), a digit, # or * only as a keycap (1️⃣, #️⃣).
+ */
+export function validReaction(emoji) {
+  const b = typeof emoji === 'string' ? utf8.encode(emoji) : emoji;
+  if (!(b instanceof Uint8Array) || b.length === 0 || b.length > MAX_REACTION_SIZE) return false;
+  const points = [];
+  for (let i = 0; i < b.length;) {
+    const c = b[i];
+    const n = c < 0x80 ? 1 : (c >> 5) === 0x6 ? 2 : (c >> 4) === 0xe ? 3 : (c >> 3) === 0x1e ? 4 : 0;
+    if (n === 0 || i + n > b.length) return false;
+    let point = n === 1 ? c : n === 2 ? c & 0x1f : n === 3 ? c & 0x0f : c & 0x07;
+    for (let k = 1; k < n; k++) {
+      if ((b[i + k] & 0xc0) !== 0x80) return false;
+      point = point * 64 + (b[i + k] & 0x3f);
+    }
+    // The shortest form only (no hidden ASCII in long forms)
+    const least = n === 1 ? 0 : n === 2 ? 0x80 : n === 3 ? 0x800 : 0x10000;
+    if (point < least || point > 0x10ffff) return false;
+    points.push(point);
+    i += n;
+  }
+  let symbol = false;
+  for (let i = 0; i < points.length; i++) {
+    const c = points[i];
+    if ((c >= 0x30 && c <= 0x39) || c === 0x23 || c === 0x2a) {
+      // A keycap: the character, perhaps the emoji selector, then the keycap mark
+      let k = i + 1;
+      if (k < points.length && points[k] === 0xfe0f) k++;
+      if (k >= points.length || points[k] !== 0x20e3) return false;
+      symbol = true;
+      i = k;
+    } else if (emojiCodePoint(c)) symbol = true;
+    else if (!emojiJoiner(c) || c === 0x20e3) return false;
+  }
+  return symbol;
+}
+
+/** The chat is read up to this message (the host's numbering). */
+export function chatSeenFrame(seq) {
+  return u32Frame(PT.ChatSeen, seq);
+}
+
+/** A reaction given or taken back (ChatReactUp: u32 seq, u8 on, str8 emoji). */
+export function chatReactUpFrame(seq, emoji, on) {
+  const w = new Writer(32);
+  w.u8(PT.ChatReactUp);
+  w.u32(seq);
+  w.u8(on ? 1 : 0);
+  w.str8(emoji, MAX_REACTION_SIZE);
+  return w.done();
+}
+
+/** A ChatMark has arrived. */
+export function chatMarkAckFrame(mark) {
+  return u32Frame(PT.ChatMarkAck, mark);
+}
+
+/**
+ * A ChatMark: u32 mark, u8 kind, u8 slot, u32 seq, and for a reaction u8 on and str8 emoji.
+ * @returns {{mark: number, kind: number, slot: number, seq: number, on: boolean, emoji: string}|null}
+ */
+export function readChatMark(payload) {
+  const r = new Reader(payload);
+  const m = { mark: r.u32(), kind: r.u8(), slot: r.u8(), seq: r.u32(), on: true, emoji: '' };
+  if (!r.ok || m.slot > MAX_GUESTS) return null;
+  if (m.kind === MARK_READ) return m;
+  if (m.kind === MARK_DELETED) return m.seq !== 0 ? m : null;
+  if (m.kind !== MARK_REACTION) return null;
+  m.on = r.u8() !== 0;
+  const emoji = r.bytes(r.u8());
+  if (!r.ok || m.seq === 0 || !validReaction(emoji)) return null;
+  m.emoji = fromUtf8.decode(emoji);
+  return m;
+}
+
+/**
+ * Who read how far, who reacted how, and what was deleted: read (slot -> seq), reactions
+ * (seq -> emoji -> slots), deleted (seqs).
+ */
+export function newChatMarks() {
+  return { read: new Map(), reactions: new Map(), deleted: new Set() };
+}
+
+/** Applies a mark (ApplyChatMark); false if it changes nothing. */
+export function applyChatMark(marks, m) {
+  if (m.kind === MARK_READ) {
+    if (m.seq === 0) return marks.read.delete(m.slot);
+    if (marks.read.get(m.slot) === m.seq) return false;
+    marks.read.set(m.slot, m.seq);
+    return true;
+  }
+  if (m.kind === MARK_DELETED) {
+    // Gone with its reactions
+    const reacted = marks.reactions.delete(m.seq);
+    const fresh = !marks.deleted.has(m.seq);
+    marks.deleted.add(m.seq);
+    return fresh || reacted;
+  }
+  let kinds = marks.reactions.get(m.seq);
+  if (!kinds) marks.reactions.set(m.seq, (kinds = new Map()));
+  let slots = kinds.get(m.emoji);
+  if (!slots) kinds.set(m.emoji, (slots = []));
+  const at = slots.indexOf(m.slot);
+  let changed = false;
+  if (m.on && at < 0) {
+    slots.push(m.slot);
+    changed = true;
+  } else if (!m.on && at >= 0) {
+    slots.splice(at, 1);
+    changed = true;
+  }
+  if (!slots.length) kinds.delete(m.emoji);
+  if (!kinds.size) marks.reactions.delete(m.seq);
+  return changed;
+}
+
+/** What a mark is about, as the app's guest keys it: a newer mark for the same thing replaces an older one. */
+export function chatMarkKey(m) {
+  return m.kind === MARK_READ ? `r${m.slot}` : m.kind === MARK_DELETED ? `d${m.seq}` : `x${m.slot}:${m.seq}:${m.emoji}`;
 }
 
 export function u32Frame(type, value) {

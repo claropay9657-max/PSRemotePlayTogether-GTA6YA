@@ -250,7 +250,7 @@ h3 {
   letter-spacing: -0.01em;
 }
 
-:where(.front, .dialog) p {
+:where(.front, .dialog, .friends) p {
   margin: 0;
 }
 
@@ -281,8 +281,9 @@ h3 {
 /* ---------------------------------------------------------------- buttons */
 
 /* A pill at least 44 px high. Ghost unless it says otherwise: "primary" goes on, "brand" (the
-   gradient) is the one step that starts something */
-:where(.front, .dialog) button {
+   gradient) is the one step that starts something. The same in the windows of the page and in
+   the friends panel (css/friends.css), which lie outside the start page */
+:where(.front, .dialog, .friends) button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -301,62 +302,62 @@ h3 {
   transition: background-color 0.12s, filter 0.12s;
 }
 
-:where(.front, .dialog) button:hover:not(:disabled) {
+:where(.front, .dialog, .friends) button:hover:not(:disabled) {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-:where(.front, .dialog) button:active:not(:disabled) {
+:where(.front, .dialog, .friends) button:active:not(:disabled) {
   background-color: rgba(255, 255, 255, 0.14);
 }
 
-:where(.front, .dialog) button:focus-visible {
+:where(.front, .dialog, .friends) button:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
-:where(.front, .dialog) button:disabled {
+:where(.front, .dialog, .friends) button:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-:where(.front, .dialog) button.primary {
+:where(.front, .dialog, .friends) button.primary {
   border-color: transparent;
   background: var(--button);
   color: #ffffff;
   font-weight: 800;
 }
 
-:where(.front, .dialog) button.brand {
+:where(.front, .dialog, .friends) button.brand {
   border-color: transparent;
   background: linear-gradient(90deg, var(--button-from), var(--button-to));
   color: #ffffff;
   font-weight: 800;
 }
 
-:where(.front, .dialog) button.primary:hover:not(:disabled),
-:where(.front, .dialog) button.brand:hover:not(:disabled) {
+:where(.front, .dialog, .friends) button.primary:hover:not(:disabled),
+:where(.front, .dialog, .friends) button.brand:hover:not(:disabled) {
   filter: brightness(1.1);
 }
 
-:where(.front, .dialog) button.primary:active:not(:disabled),
-:where(.front, .dialog) button.brand:active:not(:disabled) {
+:where(.front, .dialog, .friends) button.primary:active:not(:disabled),
+:where(.front, .dialog, .friends) button.brand:active:not(:disabled) {
   filter: brightness(0.9);
 }
 
-:where(.front, .dialog) button.small {
+:where(.front, .dialog, .friends) button.small {
   min-height: 34px;
   padding: 0 14px;
   font-size: 13px;
 }
 
-:where(.front, .dialog) button.big {
+:where(.front, .dialog, .friends) button.big {
   min-height: 48px;
   padding: 0 30px;
   font-size: 16px;
 }
 
 /* A square button with only an icon; says what it does to screen readers */
-:where(.front, .dialog) button.icon-button {
+:where(.front, .dialog, .friends) button.icon-button {
   flex: none;
   width: var(--touch);
   min-height: var(--touch);
@@ -368,7 +369,7 @@ h3 {
   color: #d9d5f2;
 }
 
-:where(.front, .dialog) button.icon-button.small {
+:where(.front, .dialog, .friends) button.icon-button.small {
   width: 34px;
   min-height: 34px;
   height: 34px;
@@ -381,7 +382,7 @@ h3 {
 
 /* ---------------------------------------------------------------- fields */
 
-:where(.front, .dialog) :is(input[type="text"], input[type="search"], select) {
+:where(.front, .dialog, .friends) :is(input[type="text"], input[type="search"], select) {
   width: 100%;
   min-width: 0;
   height: var(--touch);
@@ -397,13 +398,13 @@ h3 {
   outline: none;
 }
 
-:where(.front, .dialog) :is(input[type="text"], input[type="search"], select):focus,
-:where(.front, .dialog) :is(input[type="text"], input[type="search"], select):focus-visible {
+:where(.front, .dialog, .friends) :is(input[type="text"], input[type="search"], select):focus,
+:where(.front, .dialog, .friends) :is(input[type="text"], input[type="search"], select):focus-visible {
   border-color: var(--focus);
   box-shadow: 0 0 0 1px var(--focus);
 }
 
-:where(.front, .dialog) :is(input[type="text"], input[type="search"])::placeholder {
+:where(.front, .dialog, .friends) :is(input[type="text"], input[type="search"])::placeholder {
   color: var(--text-dim);
   opacity: 1;
 }
@@ -413,7 +414,7 @@ h3 {
   appearance: none;
 }
 
-:where(.front) select {
+:where(.front, .friends) select:not([multiple]) {
   padding-right: 38px;
   -webkit-appearance: none;
   appearance: none;
@@ -424,7 +425,7 @@ h3 {
   cursor: pointer;
 }
 
-:where(.front) select option {
+:where(.front, .friends) select option {
   background: var(--popup);
   color: var(--text);
 }
@@ -1665,12 +1666,12 @@ button.pill-link {
 
 /* Fingers: everything to press at least 44 px */
 @media (pointer: coarse) {
-  :where(.front, .dialog) button.small,
+  :where(.front, .dialog, .friends) button.small,
   .pill-link {
     min-height: var(--touch);
   }
 
-  :where(.front, .dialog) button.icon-button.small {
+  :where(.front, .dialog, .friends) button.icon-button.small {
     width: var(--touch);
     height: var(--touch);
     min-height: var(--touch);
@@ -1683,7 +1684,7 @@ button.pill-link {
 
 /* No zooming in on a field on a phone */
 @media (pointer: coarse), (max-width: 639px) {
-  :where(.front, .dialog) :is(input[type="text"], input[type="search"], select) {
+  :where(.front, .dialog, .friends) :is(input[type="text"], input[type="search"], select) {
     font-size: 16px;
   }
 }
@@ -1696,7 +1697,7 @@ button.pill-link {
 
   .toggle input,
   .toggle input::before,
-  :where(.front, .dialog) button,
+  :where(.front, .dialog, .friends) button,
   .room {
     transition: none;
   }

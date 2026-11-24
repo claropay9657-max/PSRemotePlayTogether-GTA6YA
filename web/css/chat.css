@@ -1,0 +1,884 @@
+/* SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL */
+/*
+ * The messages of both chats of the page (js/chatview.js), the session's and the friends', as
+ * the app's gui/src/qml/ChatBubble.qml draws them in both, the emoji to choose from
+ * (EmojiPicker.qml) and the row to write in. The same sizes and colours as written there.
+ */
+
+/* ---------------------------------------------------------------- the list */
+
+.cv-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cv-msg {
+  position: relative;
+  display: flex;
+  padding: 3px 6px 0;
+}
+
+.cv-msg.first {
+  padding-top: 8px;
+}
+
+.cv-msg.mine {
+  justify-content: flex-end;
+}
+
+/* Room on the left for the writer's picture */
+.cv-msg.side {
+  padding-left: 50px;
+}
+
+.cv-col {
+  min-width: 0;
+  max-width: min(460px, 80%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.cv-msg.mine .cv-col {
+  align-items: flex-end;
+}
+
+/* A card (an invite, a plan) is wider than a bubble may be */
+.cv-msg.with-card .cv-col {
+  width: min(360px, 100%);
+  max-width: none;
+}
+
+.cv-face {
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background-image: linear-gradient(180deg, var(--brand-from), var(--brand-to));
+  background-position: center;
+  background-size: cover;
+  color: #ffffff;
+  font-size: calc(var(--size) * 0.42);
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Beside the first message of a run, under the name */
+.cv-author {
+  position: absolute;
+  left: 6px;
+  top: 30px;
+}
+
+.cv-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.cv-name {
+  overflow: hidden;
+  color: var(--heading-soft);
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-host {
+  flex: none;
+  height: 14px;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: rgba(140, 82, 255, 0.8);
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 14px;
+}
+
+/* ---------------------------------------------------------------- the bubble */
+
+.cv-body {
+  position: relative;
+  max-width: 100%;
+}
+
+.cv-msg.with-card .cv-body,
+.cv-body.cv-card > :first-child {
+  width: 100%;
+}
+
+.cv-bubble {
+  min-width: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card-high);
+}
+
+.cv-msg.mine .cv-bubble {
+  border-color: rgba(140, 82, 255, 0.45);
+  background: rgba(140, 82, 255, 0.3);
+}
+
+.cv-text {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.cv-text a {
+  color: var(--focus);
+  text-decoration: underline;
+}
+
+.cv-bubble.dim .cv-text {
+  opacity: 0.55;
+}
+
+.cv-status {
+  align-self: flex-start;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 13px;
+}
+
+.cv-msg.mine .cv-status {
+  align-self: flex-end;
+}
+
+.cv-status.bad {
+  color: var(--bad);
+}
+
+/* The preview the writer's app made of the first link */
+.cv-embed {
+  position: relative;
+  width: min(300px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  text-decoration: none;
+}
+
+.cv-embed:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cv-embed::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 1.5px;
+  background: var(--brand-from);
+}
+
+.cv-embed-site {
+  overflow: hidden;
+  opacity: 0.6;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-embed-title,
+.cv-embed-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cv-embed-title {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--focus);
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.cv-embed-text {
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  opacity: 0.75;
+  font-size: 12px;
+}
+
+.cv-embed img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+/* ---------------------------------------------------------------- reactions and readers */
+
+.cv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Under an own message they start on the right */
+.cv-chips.mine {
+  flex-direction: row-reverse;
+}
+
+button.cv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-soft);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+button.cv-chip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+button.cv-chip.own {
+  border-color: rgba(167, 123, 255, 0.8);
+  background: rgba(140, 82, 255, 0.3);
+  color: #ffffff;
+}
+
+button.cv-chip.own:hover:not(:disabled) {
+  background: rgba(140, 82, 255, 0.42);
+}
+
+button.cv-chip:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.cv-chip-emoji {
+  font-size: 13px;
+}
+
+.cv-chip-count {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+/* Who read up to here: small, overlapping, on the right */
+.cv-readers {
+  align-self: flex-end;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+}
+
+.cv-reader {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ground);
+}
+
+.cv-reader + .cv-reader,
+.cv-reader + .cv-readers-more {
+  margin-right: -4px;
+}
+
+.cv-reader .cv-face {
+  font-size: 8px;
+}
+
+.cv-readers-more {
+  flex: none;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--card-high);
+  color: var(--text-soft);
+  font-size: 9px;
+  font-weight: bold;
+  line-height: 18px;
+}
+
+/* ---------------------------------------------------------------- reacting */
+
+/* Beside the bubble while the pointer is on the message: reply, react, and delete one's own */
+.cv-actions {
+  position: absolute;
+  z-index: 2;
+  top: max(0px, min(17px, calc(50% - 13px)));
+  left: calc(100% + 6px);
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.cv-msg.mine .cv-actions {
+  left: auto;
+  right: calc(100% + 6px);
+  flex-direction: row-reverse;
+}
+
+/* (with the keys: while one of its buttons has the focus ring, not after a click) */
+.cv-msg:hover .cv-actions,
+.cv-msg:has(:focus-visible) .cv-actions {
+  display: flex;
+}
+
+.cv-msg.bar-open .cv-actions {
+  display: none;
+}
+
+button.cv-act {
+  flex: none;
+  width: 26px;
+  min-height: 0;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.8;
+  cursor: pointer;
+}
+
+button.cv-act:hover:not(:disabled),
+button.cv-act:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  opacity: 1;
+}
+
+button.cv-act.bad:hover:not(:disabled),
+button.cv-act.bad:focus-visible {
+  color: var(--bad);
+}
+
+/* The quick reactions, over the message */
+.cv-bar {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  bottom: calc(100% - 10px);
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 17px;
+  background: #1d1838;
+  white-space: nowrap;
+}
+
+.cv-msg.mine .cv-bar {
+  left: auto;
+  right: 0;
+}
+
+.cv-bar.below {
+  top: calc(100% - 10px);
+  bottom: auto;
+}
+
+button.cv-quick {
+  flex: none;
+  width: 30px;
+  min-height: 0;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+button.cv-quick:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 20px;
+}
+
+button.cv-quick.bad {
+  color: var(--bad);
+}
+
+/* Reply and delete in the bar: after "+", set off a little */
+button.cv-quick.more + button.cv-quick.more {
+  margin-left: 2px;
+}
+
+/* ---------------------------------------------------------------- the emoji */
+
+.cv-picker {
+  position: absolute;
+  z-index: 5;
+  left: 10px;
+  right: 10px;
+  height: min(300px, calc(100% - 140px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: #17132d;
+}
+
+/* For writing: over the row to write in */
+.cv-picker.write {
+  bottom: 66px;
+}
+
+/* For a reaction: in the middle */
+.cv-picker.react {
+  top: max(60px, calc(50% - min(150px, calc(50% - 70px))));
+}
+
+.cv-picker-tabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.cv-picker button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cv-picker-tabs button {
+  width: 44px;
+  height: 40px;
+  font-size: 18px;
+}
+
+.cv-picker-tabs button.chosen {
+  background: rgba(140, 82, 255, 0.35);
+}
+
+.cv-picker-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  grid-auto-rows: 40px;
+  overflow-y: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.cv-picker-grid button {
+  font-size: 22px;
+}
+
+.cv-picker button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cv-picker-tabs button.chosen:hover:not(:disabled) {
+  background: rgba(140, 82, 255, 0.45);
+}
+
+/* ---------------------------------------------------------------- writing */
+
+.cv-input {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+}
+
+.cv-input[hidden] {
+  display: none;
+}
+
+.cv-input button.cv-emoji-button {
+  flex: none;
+  width: 48px;
+  min-height: 0;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 24px;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cv-input button.cv-emoji-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cv-input input.cv-field {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  height: 40px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  box-shadow: none;
+}
+
+.cv-input input.cv-field:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.cv-input input.cv-field:focus {
+  border-color: var(--brand-from);
+  box-shadow: inset 0 0 0 1px var(--brand-from);
+}
+
+.cv-input input.cv-field::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+}
+
+.cv-input input.cv-field:disabled {
+  opacity: 0.5;
+}
+
+.cv-input button.cv-send {
+  flex: none;
+  width: 44px;
+  min-height: 0;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d9d5f2;
+  cursor: pointer;
+}
+
+.cv-input button.cv-send:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.cv-input button.cv-send:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.cv-input button.cv-send svg {
+  display: block;
+}
+
+/* The app's IconButton, for the session chat's Close */
+button.cv-icon-button {
+  flex: none;
+  width: 44px;
+  min-height: 0;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d9d5f2;
+  font-size: 0;
+  cursor: pointer;
+}
+
+button.cv-icon-button:hover:not(:disabled),
+button.cv-icon-button:focus-visible {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+/* The session's chat: a little closer together than the friends' (RoomChat.qml's spacing) */
+.chat-list.cv-list {
+  gap: 2px;
+}
+
+/* ---------------------------------------------------------------- replies, mentions, deleted */
+
+/* What a reply answers, over its text: who and one line, an accent on the left; a click goes there */
+button.cv-quote {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 4px 8px 5px;
+  border: 0;
+  border-left: 3px solid var(--quote, #b18cff);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.cv-quote:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+button.cv-quote:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.cv-quote-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--quote, #b18cff);
+  font-size: 12px;
+  font-weight: bold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-quote-text {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-quote-text.gone {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* "@Name" of a member, or of oneself */
+.cv-at {
+  color: #b18cff;
+  font-weight: bold;
+}
+
+/* A message that names this player */
+.cv-bubble.mentions-me {
+  border-left: 3px solid #b18cff;
+  box-shadow: 0 0 14px rgba(177, 140, 255, 0.28);
+}
+
+/* Deleted by its writer */
+.cv-text.cv-gone {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.cv-msg.deleted .cv-bubble {
+  border-style: dashed;
+  background: transparent;
+}
+
+/* Gone to from a quote: lit up for a moment */
+@keyframes cv-flash {
+  from {
+    background: rgba(140, 82, 255, 0.3);
+  }
+
+  to {
+    background: rgba(140, 82, 255, 0);
+  }
+}
+
+.cv-msg.cv-flash {
+  border-radius: 14px;
+  animation: cv-flash 1.6s ease-out;
+}
+
+/* The row to write in with what goes above it */
+.cv-writer {
+  position: relative;
+  flex: none;
+}
+
+.cv-writer[hidden] {
+  display: none;
+}
+
+.cv-reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 10px 0;
+  padding: 5px 5px 5px 10px;
+  border-left: 3px solid #b18cff;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cv-reply-icon {
+  flex: none;
+  color: #b18cff;
+}
+
+.cv-reply-words {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.cv-reply-title {
+  overflow: hidden;
+  color: #b18cff;
+  font-size: 12px;
+  font-weight: bold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-reply-text {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.cv-reply-close {
+  flex: none;
+  width: 28px;
+  min-height: 0;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+button.cv-reply-close:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* After "@": the names to pick from, over the row */
+.cv-mentions {
+  position: absolute;
+  z-index: 6;
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% - 4px);
+  max-height: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #17132d;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+button.cv-mention {
+  flex: none;
+  min-height: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.cv-mention.chosen,
+button.cv-mention:hover:not(:disabled) {
+  background: rgba(140, 82, 255, 0.28);
+}
+
+.cv-mention-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "Delete" in the question */
+button.cv-danger {
+  border-color: transparent;
+  background: var(--bad);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+button.cv-danger:hover:not(:disabled) {
+  background: var(--bad);
+  filter: brightness(1.1);
+}
+
+/* The session chat's badge when a new message names this player */
+.munread.mention {
+  background: #b18cff;
+  color: #ffffff;
+}

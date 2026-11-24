@@ -35,8 +35,8 @@ class CoPlayLinkPreview : public QObject
 		/** The first http(s) link in a text, or an empty URL. */
 		static QUrl FirstLink(const QString &text);
 
-		/** A JPEG of at most coplay::kMaxChatImageSize for the preview, or empty. */
-		static QByteArray Thumbnail(const QByteArray &image_file);
+		/** A JPEG of at most max_bytes (a session's chat: coplay::kMaxChatImageSize) for the preview, or empty. */
+		static QByteArray Thumbnail(const QByteArray &image_file, size_t max_bytes = coplay::kMaxChatImageSize);
 };
 
 #endif // COPLAYLINKPREVIEW_H

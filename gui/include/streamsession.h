@@ -68,7 +68,7 @@ class QEvent;
 namespace coplay { struct KeyMouseUpdate; }
 class PcPortal;
 class VirtualPads;
-namespace coplay { class Client; class Host; struct ClientConfig; enum class DisconnectReason; struct ChatMessage; struct ChatEmbed; struct BlobRef; }
+namespace coplay { class Client; class Host; struct ClientConfig; enum class DisconnectReason; struct ChatMessage; struct ChatEmbed; struct BlobRef; struct ChatMarks; }
 struct CoPlayState;
 struct CoPlayChatState;
 struct CoPlayRejoin;
@@ -276,6 +276,8 @@ class StreamSession : public QObject
 	Q_PROPERTY(QString coplayInvitePublic READ GetCoPlayInvitePublic NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInviteIPv6 READ GetCoPlayInviteIPv6 NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayInviteWeb READ GetCoPlayInviteWeb NOTIFY CoPlayChanged)
+	/** What an invite to a friend shows: invite, web, title, host, game, cover, console, policy, control, players, max, talk. */
+	Q_PROPERTY(QVariantMap coplayInviteCard READ GetCoPlayInviteCard NOTIFY CoPlayChanged)
 	Q_PROPERTY(QString coplayReachText READ GetCoPlayReachText NOTIFY CoPlayChanged)
 	Q_PROPERTY(bool coplayReachGood READ GetCoPlayReachGood NOTIFY CoPlayChanged)
 	Q_PROPERTY(QVariantList coplayPlayers READ GetCoPlayPlayers NOTIFY CoPlayChanged)
@@ -309,7 +311,11 @@ class StreamSession : public QObject
 	Q_PROPERTY(int coplayCamSerial READ GetCoPlayCamSerial NOTIFY CoPlayCamChanged)
 	Q_PROPERTY(bool coplayReconnecting READ IsCoPlayReconnecting NOTIFY CoPlayReconnectingChanged)
 	Q_PROPERTY(QVariantList coplayChat READ GetCoPlayChat NOTIFY CoPlayChatChanged)
+	/** read: {slot: seq read up to}, reactions: {seq: [{emoji, slots, mine}]} (players with a version that knows them). */
+	Q_PROPERTY(QVariantMap coplayChatMarks READ GetCoPlayChatMarks NOTIFY CoPlayChatChanged)
 	Q_PROPERTY(int coplayChatUnread READ GetCoPlayChatUnread NOTIFY CoPlayChatChanged)
+	/** An unread message mentions this player ("@" and their name). */
+	Q_PROPERTY(bool coplayChatMentioned READ GetCoPlayChatMentioned NOTIFY CoPlayChatChanged)
 
 	private:
 		SessionLog log;
@@ -578,7 +584,11 @@ class StreamSession : public QObject
 		void CoPlayChatFini();
 		QVariantMap CoPlayChatEntry(const coplay::ChatMessage &m, bool mine);
 		void CoPlayChatAdd(const QVariantMap &entry, bool notify);
-		void CoPlayChatSend(const QString &local_key, const QString &text, const coplay::ChatEmbed &embed, const QByteArray &image);
+		void CoPlayChatSend(const QString &local_key, const QString &text, const coplay::ChatEmbed &embed, const QByteArray &image, uint32_t reply);
+		/** The players' names, for mentions in the chat. */
+		QStringList CoPlayNames() const;
+		/** A message its writer deleted: a stand-in in the list. */
+		void CoPlayChatMarkDeleted(QVariantMap &entry) const;
 		void CoPlayOnChat(const coplay::ChatMessage &m);
 		void CoPlayOnChatImage(const coplay::BlobRef &ref);
 		/** The connection to the host, whichever it is right now (see joining again). */
@@ -683,6 +693,7 @@ class StreamSession : public QObject
 		QString GetCoPlayInviteIPv6() const;
 		/** The link for a friend's web browser; empty if this session takes no browsers. */
 		QString GetCoPlayInviteWeb() const;
+		QVariantMap GetCoPlayInviteCard() const;
 		/** While sharing: whether friends elsewhere get in without a forwarded port, in a sentence. Empty when there is nothing to say. */
 		QString GetCoPlayReachText() const;
 		/** Whether that sentence is good news. */
@@ -730,9 +741,22 @@ class StreamSession : public QObject
 		/** The latest messages for the OBS overlay. */
 		QJsonArray OverlayChat() const;
 		int GetCoPlayChatUnread() const;
-		/** Writes in the chat. A link in it gets a preview, made by this app. */
-		Q_INVOKABLE void coplaySendChat(const QString &text);
+		bool GetCoPlayChatMentioned() const;
+		/** Writes in the chat. A link in it gets a preview, made by this app; reply is the message it answers (0: none). */
+		Q_INVOKABLE void coplaySendChat(const QString &text, qint64 reply = 0);
+		/** Deletes one of this player's own messages for everybody. */
+		Q_INVOKABLE void coplayDeleteChat(qint64 seq);
 		Q_INVOKABLE void coplayMarkChatRead();
+		QVariantMap GetCoPlayChatMarks() const;
+		/** This player's reaction to a message: given, or taken back if it was given already. */
+		Q_INVOKABLE void coplayReact(qint64 seq, const QString &emoji);
+		/** Read marks or reactions changed (host or guest). */
+		void CoPlayOnChatMarks();
+		// Where the chat reaches the host or the guest's connection (streamsession_coplay.cpp)
+		void CoPlaySendChatRead(uint32_t seq);
+		void CoPlaySendReaction(uint32_t seq, const std::string &emoji, bool on);
+		void CoPlaySendDelete(uint32_t seq);
+		coplay::ChatMarks CoPlayFetchChatMarks();
 		Q_INVOKABLE void coplayKick(int slot);
 		/**
 		 * Each their own controller on this computer: makes a guest player `number` (2..4); whoever

@@ -35,7 +35,7 @@ server only helps the two find each other.
 | Rumble | where the browser has it (Chrome, Edge, Safari) |
 | The game's haptics | as rumble; the strength is set in the stream menu |
 | Voice chat | yes, both ways |
-| Text chat | yes, with emoji; the previews of links the others post show, but a link posted from a browser gets none: a page cannot open other sites, and the host's app does not open links for browser guests on purpose (anybody in a public room could make it open addresses in the host's own network) |
+| Text chat | yes, with emoji, reactions to messages, the readers' pictures under the last message they read, replies, `@` mentions and deleting one's own messages for everybody; the previews of links the others post show, but a link posted from a browser gets none: a page cannot open other sites, and the host's app does not open links for browser guests on purpose (anybody in a public room could make it open addresses in the host's own network) |
 | Just talk (no game) | yes: the host's **Just talk** shows "Just talking" in the browser as in the app |
 | Webcams | the others' and the own |
 | Player pictures | shown, and a browser guest can choose one of its own |
@@ -98,7 +98,9 @@ app, piece by piece, from the app's own sources:
   **L1+R1+L3+R3** on the controller, and with the **Menu** button that shows
   while the mouse moves, because a page cannot count on a keyboard. While it
   is open nothing goes to the game, as in the app.
-- **The chat** (`StreamChatPanel.qml`) and **the options**
+- **The chat** (`StreamChatPanel.qml` with `RoomChat.qml`; messages and emoji
+  as `ChatBubble.qml` and `EmojiPicker.qml` draw them, the same as in the
+  friends' chats) and **the options**
   (`StreamDisplayPanel.qml`, the "On the game picture" card of
   `DisplayOptions.qml`), opened from the stream menu.
 
@@ -111,8 +113,8 @@ the keyboard's keys. Settings and presets are kept in the browser
 
 When the app's display changes, the page has to follow by hand: sizes, colours
 and wording are written out in `web/js/hud.js`, `web/js/menu.js`,
-`web/js/options.js` and `web/css/game.css` next to the names of the QML files
-they come from.
+`web/js/options.js`, `web/js/chatview.js`, `web/css/game.css` and
+`web/css/chat.css` next to the names of the QML files they come from.
 
 ## How the two find each other
 
@@ -231,7 +233,9 @@ nothing to install.
 | `js/menu.js` | the stream menu |
 | `js/options.js` | the options of the display |
 | `js/rooms.js` | the list of public rooms |
-| `js/app.js` | the page itself, and the chat |
+| `js/app.js` | the page itself, and the session's chat |
+| `js/chatview.js`, `js/chatmarks.js`, `css/chat.css` | one message, the emoji picker and the writing row for both chats, the session's and the friends' (ports of `ChatBubble.qml` and `EmojiPicker.qml`), and where reactions and readers' pictures go (`RoomChat.qml`, `FriendsPanel.qml`) |
+| `js/friends/`, `css/friends.css`, `push-sw.js` | friends, chats and status: see [friends.md](friends.md) |
 | `css/game.css` | how everything on the game picture looks |
 | `pad/` | the controller pictures of the display |
 

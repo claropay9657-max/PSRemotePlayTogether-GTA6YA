@@ -5,6 +5,7 @@
 
 #include <coplay/blob.h>
 #include <coplay/client.h>
+#include <coplay/friends_crypto.h>
 #include <coplay/host.h>
 #include <coplay/invite.h>
 #include <coplay/media.h>
@@ -3993,6 +3994,245 @@ TEST(net_chat_gets_through_heavy_loss_exactly_once)
 	a.client->SetSimulatedLoss(0.0);
 }
 
+TEST(chat_reactions_are_emoji)
+{
+	CHECK(ValidReaction("👍"));
+	CHECK(ValidReaction("❤️"));
+	CHECK(ValidReaction("👍🏽"));
+	CHECK(ValidReaction("1️⃣"));
+	CHECK(!ValidReaction(""));
+	CHECK(!ValidReaction("a"));
+	CHECK(!ValidReaction("1"));
+	CHECK(!ValidReaction("ok"));
+	CHECK(!ValidReaction(" 👍"));
+	CHECK(!ValidReaction("<img>"));
+	CHECK(!ValidReaction(std::string("\xff\xfe")));
+	CHECK(!ValidReaction("👍👍👍👍👍"));
+	// Emoji of every kind, and nothing that only looks like one
+	CHECK(ValidReaction("❤️‍🔥"));
+	CHECK(ValidReaction("🇩🇪"));
+	CHECK(ValidReaction("#️⃣"));
+	CHECK(ValidReaction("*⃣"));
+	CHECK(ValidReaction("‼️"));
+	CHECK(ValidReaction("⬆️"));
+	CHECK(ValidReaction("🫶"));
+	CHECK(!ValidReaction("é"));
+	CHECK(!ValidReaction("日本"));
+	CHECK(!ValidReaction("ок"));
+	CHECK(!ValidReaction("1👍"));
+	CHECK(!ValidReaction("👍1"));
+	CHECK(!ValidReaction("1\xe2\x83\xa3x"));
+	CHECK(!ValidReaction("\xe2\x83\xa3"));
+	CHECK(!ValidReaction("\xef\xb8\x8f"));
+	CHECK(!ValidReaction("\xe2\x80\x8d"));
+	CHECK(!ValidReaction("👍\xe2\x80\x8b"));
+	CHECK(!ValidReaction("👍\xe2\x80\xae"));
+	CHECK(!ValidReaction(std::string("\xc1\x81")));
+	CHECK(!ValidReaction(std::string("\xf0\x80\x80\xb1\xe2\x83\xa3")));
+	ChatMarks marks;
+	ChatMark m;
+	m.kind = ChatMarkKind::Reaction;
+	m.slot = 2;
+	m.seq = 7;
+	m.emoji = "🔥";
+	CHECK(ApplyChatMark(marks, m));
+	CHECK(!ApplyChatMark(marks, m));
+	CHECK(marks.reactions[7]["🔥"] == std::vector<uint8_t>{ 2 });
+	m.on = false;
+	CHECK(ApplyChatMark(marks, m) && marks.reactions.empty());
+}
+
+TEST(net_chat_read_marks_and_reactions_reach_everyone)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll, 3000, {}, 0, 6000);
+	TestGuest b(h.MakeInvite(), "B", kWantAll, 3000, {}, 0, 6000);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	const uint8_t slot_a = a.client->Welcome().slot;
+	const uint8_t slot_b = b.client->Welcome().slot;
+	a.client->SendChat("first", ChatEmbed(), {});
+	CHECK(WaitFor([&] { return b.Chats().size() == 1; }, 2000));
+	const uint32_t seq = b.Chats()[0].seq;
+
+	// Read marks and reactions, also through heavy loss
+	h.host->SetSimulatedLoss(0.4, 21);
+	b.client->SetSimulatedLoss(0.4, 22);
+	b.client->SetChatRead(seq);
+	b.client->React(seq, "🔥", true);
+	b.client->React(seq, "👍", true);
+	h.host->React(seq, "🔥", true);
+	CHECK(WaitFor([&] {
+		const ChatMarks m = a.client->GetChatMarks();
+		const auto r = m.reactions.find(seq);
+		return m.read.count(slot_b) && m.read.at(slot_b) == seq && r != m.reactions.end() && r->second.count("🔥")
+			&& r->second.at("🔥").size() == 2 && r->second.count("👍");
+	}, 15000));
+	h.host->SetSimulatedLoss(0.0);
+	b.client->SetSimulatedLoss(0.0);
+	// The host has the same
+	CHECK(WaitFor([&] { return h.host->GetChatMarks().reactions[seq].size() == 2; }, 3000));
+
+	// Taken back
+	b.client->React(seq, "👍", false);
+	CHECK(WaitFor([&] { return a.client->GetChatMarks().reactions[seq].count("👍") == 0; }, 3000));
+
+	// Given and taken back at once, and the taking back lost: the host's mark for the giving comes
+	// in between, and the taking back is still sent again
+	b.client->React(seq, "😎", true);
+	b.client->SetSimulatedLoss(1.0, 23);
+	b.client->React(seq, "😎", false);
+	CHECK(WaitFor([&] { return b.client->GetChatMarks().reactions[seq].count("😎") == 1; }, 2000));
+	b.client->SetSimulatedLoss(0.0);
+	CHECK(WaitFor([&] { return h.host->GetChatMarks().reactions[seq].count("😎") == 0; }, 3000));
+	CHECK(WaitFor([&] { return b.client->GetChatMarks().reactions[seq].count("😎") == 0; }, 3000));
+
+	// The limits: a fourth reaction of one player is refused
+	b.client->React(seq, "😂", true);
+	b.client->React(seq, "😮", true);
+	b.client->React(seq, "😢", true);
+	SleepMs(800);
+	size_t of_b = 0;
+	const ChatMarks host_marks = h.host->GetChatMarks();
+	for(const auto &kind : host_marks.reactions.at(seq))
+		of_b += std::count(kind.second.begin(), kind.second.end(), slot_b);
+	CHECK(of_b == 3);
+
+	// A newcomer gets how it stands
+	TestGuest c(h.MakeInvite(), "C");
+	CHECK(c.Connect());
+	CHECK(WaitFor([&] {
+		const ChatMarks m = c.client->GetChatMarks();
+		return m.read.count(slot_b) && m.reactions.count(seq) && m.reactions.at(seq).count("🔥");
+	}, 3000));
+
+	// Who leaves takes their mark and reactions along
+	b.client->Stop();
+	CHECK(WaitFor([&] {
+		const ChatMarks m = a.client->GetChatMarks();
+		bool any_b = m.read.count(slot_b) > 0;
+		for(const auto &message : m.reactions)
+			for(const auto &kind : message.second)
+				any_b = any_b || std::count(kind.second.begin(), kind.second.end(), slot_b) > 0;
+		return !any_b;
+	}, 8000));
+	CHECK(slot_a != slot_b);
+}
+
+TEST(chat_reply_is_read_by_versions_without_it)
+{
+	// The reply is last: without its four bytes the packet is what versions before it wrote
+	ChatMessage m;
+	m.seq = 4;
+	m.text = "same here";
+	m.reply = 3;
+	std::vector<uint8_t> with;
+	ByteWriter w(with);
+	WriteChatMessage(w, m);
+	ByteReader r(with.data(), with.size());
+	ChatMessage back;
+	CHECK(ReadChatMessage(r, back) && back.reply == 3 && back.text == "same here");
+	std::vector<uint8_t> old(with.begin(), with.end() - 4);
+	ByteReader r2(old.data(), old.size());
+	ChatMessage from_old;
+	CHECK(ReadChatMessage(r2, from_old) && from_old.reply == 0 && from_old.text == "same here");
+	// With a preview too
+	m.embed.url = "https://example.com/";
+	m.embed.title = "Example";
+	std::vector<uint8_t> embedded;
+	ByteWriter w3(embedded);
+	WriteChatMessage(w3, m);
+	ByteReader r3(embedded.data(), embedded.size());
+	CHECK(ReadChatMessage(r3, back) && back.reply == 3 && back.embed.title == "Example");
+	// A deleted mark
+	ChatMarks marks;
+	ChatMark react;
+	react.kind = ChatMarkKind::Reaction;
+	react.slot = 1;
+	react.seq = 4;
+	react.emoji = "👍";
+	CHECK(ApplyChatMark(marks, react));
+	ChatMark gone;
+	gone.kind = ChatMarkKind::Deleted;
+	gone.slot = 0;
+	gone.seq = 4;
+	gone.mark = 9;
+	std::vector<uint8_t> bytes;
+	ByteWriter w4(bytes);
+	WriteChatMark(w4, gone);
+	ByteReader r4(bytes.data(), bytes.size());
+	ChatMark read_back;
+	CHECK(ReadChatMark(r4, read_back) && read_back.kind == ChatMarkKind::Deleted && read_back.seq == 4 && read_back.mark == 9);
+	CHECK(ApplyChatMark(marks, read_back));
+	CHECK(marks.deleted.count(4) == 1 && marks.reactions.empty());
+	CHECK(!ApplyChatMark(marks, read_back));
+	gone.seq = 0;
+	std::vector<uint8_t> zero;
+	ByteWriter w5(zero);
+	WriteChatMark(w5, gone);
+	ByteReader r5(zero.data(), zero.size());
+	CHECK(!ReadChatMark(r5, read_back));
+}
+
+TEST(net_chat_replies_and_deleting)
+{
+	TestHost h;
+	TestGuest a(h.MakeInvite(), "A", kWantAll, 3000, {}, 0, 6000);
+	TestGuest b(h.MakeInvite(), "B", kWantAll, 3000, {}, 0, 6000);
+	CHECK(a.Connect());
+	CHECK(b.Connect());
+	CHECK(WaitFor([&] { return h.host->Guests().size() == 2; }, 2000));
+	a.client->SendChat("who is in?", ChatEmbed(), {});
+	CHECK(WaitFor([&] { return b.Chats().size() == 1; }, 2000));
+	const uint32_t question = b.Chats()[0].seq;
+
+	// A reply, and one to a message nobody has: no reply
+	b.client->SendChat("me!", ChatEmbed(), {}, question);
+	b.client->SendChat("and?", ChatEmbed(), {}, 999);
+	CHECK(WaitFor([&] { return a.Chats().size() == 3; }, 2000));
+	CHECK(a.Chats()[1].reply == question && a.Chats()[1].text == "me!");
+	CHECK(a.Chats()[2].reply == 0);
+	ChatMessage from_host = h.host->SendChat("great", ChatEmbed(), {}, question);
+	CHECK(from_host.reply == question);
+	CHECK(WaitFor([&] { return a.Chats().size() == 4; }, 2000));
+	CHECK(a.Chats()[3].reply == question);
+
+	// Deleting: only one's own, through loss, and it reaches everybody
+	const uint32_t me = a.Chats()[1].seq;
+	a.client->DeleteChat(me);
+	SleepMs(600);
+	CHECK(h.host->GetChatMarks().deleted.count(me) == 0);
+	h.host->SetSimulatedLoss(0.4, 31);
+	b.client->SetSimulatedLoss(0.4, 32);
+	b.client->React(me, "🔥", true);
+	CHECK(WaitFor([&] { return a.client->GetChatMarks().reactions.count(me) == 1; }, 8000));
+	b.client->DeleteChat(me);
+	CHECK(WaitFor([&] {
+		const ChatMarks m = a.client->GetChatMarks();
+		return m.deleted.count(me) == 1 && m.reactions.count(me) == 0;
+	}, 15000));
+	CHECK(WaitFor([&] { return b.client->GetChatMarks().deleted.count(me) == 1; }, 15000));
+	h.host->SetSimulatedLoss(0.0);
+	b.client->SetSimulatedLoss(0.0);
+	CHECK(h.host->GetChatMarks().deleted.count(me) == 1);
+	// The host deletes its own
+	h.host->DeleteChat(from_host.seq);
+	CHECK(WaitFor([&] { return b.client->GetChatMarks().deleted.count(from_host.seq) == 1; }, 3000));
+	// A newcomer does not get them, nor answers to them that went
+	TestGuest c(h.MakeInvite(), "C");
+	CHECK(c.Connect());
+	CHECK(WaitFor([&] { return c.Chats().size() == 2; }, 3000));
+	SleepMs(300);
+	CHECK(c.Chats().size() == 2);
+	for(const ChatMessage &m : c.Chats())
+		CHECK(m.seq != me && m.seq != from_host.seq);
+	// No reply to a message that went
+	a.client->SendChat("late", ChatEmbed(), {}, me);
+	CHECK(WaitFor([&] { return c.Chats().size() == 3; }, 2000));
+	CHECK(c.Chats()[2].reply == 0);
+}
+
 TEST(net_chat_link_preview_picture_travels)
 {
 	TestHost h;
@@ -5764,6 +6004,375 @@ TEST(net_browser_that_keeps_falling_behind_is_named_to_the_host_once)
 	falls_behind_and_recovers();
 	SleepMs(100);
 	CHECK(t.h->behind == 1);
+}
+
+
+// ------------------------------------------------------------------ friends: the cryptography (docs/friends-protocol.md)
+
+namespace fc = coplay::friends;
+
+TEST(friends_keys_sign_and_agree)
+{
+	fc::KeyPair a, b;
+	CHECK(fc::GenerateKeyPair(a) && fc::GenerateKeyPair(b));
+	CHECK(fc::ValidPublic(a.pub) && a.pub[0] == 0x04);
+	// the public point comes back from the private scalar alone
+	fc::KeyPair again;
+	CHECK(fc::KeyPairFromPrivate(a.d, again) && again == a);
+	// both sides of a key agreement get the same
+	fc::Key32 ab, ba;
+	CHECK(fc::Dh(a, b.pub, ab) && fc::Dh(b, a.pub, ba) && ab == ba);
+	// signatures: right message, right key only
+	fc::Sig sig;
+	const fc::Bytes msg = fc::Label("hello");
+	CHECK(fc::Sign(a, msg, sig));
+	CHECK(fc::Verify(a.pub, msg, sig));
+	CHECK(!fc::Verify(b.pub, msg, sig));
+	CHECK(!fc::Verify(a.pub, fc::Label("hellO"), sig));
+	sig[10] ^= 1;
+	CHECK(!fc::Verify(a.pub, msg, sig));
+	// what is no point on the curve, and no scalar
+	fc::Pub bad = a.pub;
+	bad[64] ^= 1;
+	CHECK(!fc::ValidPublic(bad));
+	fc::Key32 out;
+	CHECK(!fc::Dh(a, bad, out));
+	fc::Key32 zero{};
+	CHECK(!fc::KeyPairFromPrivate(zero, again));
+	fc::Key32 big;
+	big.fill(0xFF);
+	CHECK(!fc::KeyPairFromPrivate(big, again));
+}
+
+TEST(friends_hkdf_matches_rfc5869_case_1)
+{
+	fc::Bytes ikm(22, 0x0b);
+	fc::Bytes salt = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c };
+	std::string info = "\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9";
+	fc::Bytes okm = fc::Hkdf(salt, ikm, info, 42);
+	const uint8_t expected[42] = { 0x3c, 0xb2, 0x5f, 0x25, 0xfa, 0xac, 0xd5, 0x7a, 0x90, 0x43, 0x4f, 0x64, 0xd0, 0x36,
+		0x2f, 0x2a, 0x2d, 0x2d, 0x0a, 0x90, 0xcf, 0x1a, 0x5a, 0x4c, 0x5d, 0xb0, 0x2d, 0x56, 0xec, 0xc4, 0xc5, 0xbf,
+		0x34, 0x00, 0x72, 0x08, 0xd5, 0xb8, 0x87, 0x18, 0x58, 0x65 };
+	CHECK(okm.size() == 42 && std::memcmp(okm.data(), expected, 42) == 0);
+}
+
+TEST(friends_card_carries_its_own_proof)
+{
+	fc::Identity id;
+	CHECK(fc::MakeIdentity(id));
+	CHECK(id.fp == fc::Fingerprint(id.iks.pub, id.ikd.pub));
+	fc::Card card;
+	card.seq = 3;
+	for(int i = 0; i < 2; i++)
+	{
+		fc::CardDevice d;
+		d.id.fill(static_cast<uint8_t>(i + 1));
+		d.kind = static_cast<uint8_t>(i + 1);
+		d.spk_id = 7;
+		fc::KeyPair spk;
+		CHECK(fc::GenerateKeyPair(spk));
+		d.spk = spk.pub;
+		CHECK(fc::SignPrekey(id, d.id, d.spk_id, d.spk, d.spk_sig));
+		card.devices.push_back(d);
+	}
+	fc::Id16 lk{};
+	lk.fill(9);
+	CHECK(fc::SealProfile(lk, id.fp, "{\"name\":\"Mara\"}", card.profile));
+	fc::Bytes bytes;
+	CHECK(fc::EncodeCard(id, card, bytes));
+	fc::Card read;
+	CHECK(fc::DecodeCard(bytes, read));
+	CHECK(read.fp == id.fp && read.seq == 3 && read.devices.size() == 2 && read.devices[1].kind == 2);
+	std::string profile;
+	CHECK(fc::OpenProfile(lk, read.fp, read.profile, profile) && profile == "{\"name\":\"Mara\"}");
+	fc::Id16 other_lk = lk;
+	other_lk[0] ^= 1;
+	CHECK(!fc::OpenProfile(other_lk, read.fp, read.profile, profile));
+	// any changed byte, anywhere, makes it no card
+	int refused = 0;
+	for(size_t i = 0; i < bytes.size(); i += 7)
+	{
+		fc::Bytes changed = bytes;
+		changed[i] ^= 0x20;
+		fc::Card c;
+		refused += fc::DecodeCard(changed, c) ? 0 : 1;
+	}
+	CHECK(refused == static_cast<int>((bytes.size() + 6) / 7));
+	// a prekey signed by somebody else
+	fc::Identity other;
+	CHECK(fc::MakeIdentity(other));
+	CHECK(fc::SignPrekey(other, card.devices[0].id, 7, card.devices[0].spk, card.devices[0].spk_sig));
+	fc::Bytes forged;
+	CHECK(fc::EncodeCard(id, card, forged));
+	fc::Card c;
+	CHECK(!fc::DecodeCard(forged, c));
+	// cut short, too long
+	CHECK(!fc::DecodeCard(fc::Bytes(bytes.begin(), bytes.end() - 1), c));
+	fc::Bytes longer = bytes;
+	longer.push_back(0);
+	CHECK(!fc::DecodeCard(longer, c));
+}
+
+/** Two devices that met through X3DH, with their ratchets. */
+struct FriendsPair
+{
+	fc::Identity alice, bob;
+	fc::DeviceId alice_device{}, bob_device{};
+	fc::KeyPair bob_spk, bob_opk;
+	fc::Ratchet a, b;
+	fc::Bytes ad_a, ad_b;
+	fc::Envelope first;
+
+	bool Start(bool with_opk, const std::string &hello)
+	{
+		alice_device.fill(0xA1);
+		bob_device.fill(0xB2);
+		if(!fc::MakeIdentity(alice) || !fc::MakeIdentity(bob) || !fc::GenerateKeyPair(bob_spk) || !fc::GenerateKeyPair(bob_opk))
+			return false;
+		fc::PrekeyBundle bundle;
+		bundle.fp = bob.fp;
+		bundle.ikd = bob.ikd.pub;
+		bundle.device = bob_device;
+		bundle.spk_id = 1;
+		bundle.spk = bob_spk.pub;
+		bundle.opk_id = with_opk ? 5 : 0;
+		bundle.opk = bob_opk.pub;
+		fc::X3dhStart start;
+		if(!fc::X3dhInitiate(alice, alice_device, bundle, start) || !a.InitInitiator(start.sk, bob_spk.pub))
+			return false;
+		ad_a = start.ad;
+		first.kind = 1;
+		first.from_fp = alice.fp;
+		first.from_device = alice_device;
+		first.to_device = bob_device;
+		first.ek = start.ek.pub;
+		first.spk_id = 1;
+		first.opk_id = bundle.opk_id;
+		if(!a.Encrypt(ad_a, fc::Label(hello), first.header, first.sealed))
+			return false;
+		// Bob, from what the envelope says
+		fc::Envelope e;
+		if(!fc::Envelope::Decode(first.Encode(), e))
+			return false;
+		fc::Key32 sk;
+		if(!fc::X3dhRespond(bob, bob_device, bob_spk, e.opk_id ? &bob_opk : nullptr, e.from_fp, alice.ikd.pub, e.from_device, e.ek, sk, ad_b))
+			return false;
+		if(sk != start.sk || ad_b != ad_a)
+			return false;
+		b.InitResponder(sk, bob_spk);
+		fc::Bytes plain;
+		return b.Decrypt(ad_b, e.header, e.sealed, plain, 1000) && plain == fc::Label(hello);
+	}
+};
+
+TEST(friends_x3dh_both_sides_agree)
+{
+	FriendsPair with, without;
+	CHECK(with.Start(true, "hi"));
+	CHECK(without.Start(false, "hi"));
+	// the wrong prekey, or none where one was used, does not get there
+	FriendsPair p;
+	CHECK(p.Start(true, "x"));
+	fc::Key32 sk;
+	fc::Bytes ad;
+	fc::KeyPair other;
+	CHECK(fc::GenerateKeyPair(other));
+	fc::X3dhRespond(p.bob, p.bob_device, p.bob_spk, nullptr, p.alice.fp, p.alice.ikd.pub, p.alice_device, p.first.ek, sk, ad);
+	fc::Ratchet b2;
+	b2.InitResponder(sk, p.bob_spk);
+	fc::Bytes plain;
+	CHECK(!b2.Decrypt(ad, p.first.header, p.first.sealed, plain, 1000));
+}
+
+TEST(friends_ratchet_conversation)
+{
+	FriendsPair p;
+	CHECK(p.Start(true, "hello Bob"));
+	struct Sent
+	{
+		fc::RatchetHeader h;
+		fc::Bytes sealed;
+	};
+	auto send = [](fc::Ratchet &r, const fc::Bytes &ad, const std::string &text) {
+		Sent s;
+		CHECK(r.Encrypt(ad, fc::Label(text), s.h, s.sealed));
+		return s;
+	};
+	auto receive = [](fc::Ratchet &r, const fc::Bytes &ad, const Sent &s, std::string &text) {
+		fc::Bytes plain;
+		if(!r.Decrypt(ad, s.h, s.sealed, plain, 2000))
+			return false;
+		text.assign(plain.begin(), plain.end());
+		return true;
+	};
+	std::string text;
+	// Bob answers: a new key agreement
+	Sent b1 = send(p.b, p.ad_b, "hi Alice");
+	CHECK(receive(p.a, p.ad_a, b1, text) && text == "hi Alice");
+	// Alice sends three, the second arrives last, the third first
+	Sent a1 = send(p.a, p.ad_a, "one");
+	Sent a2 = send(p.a, p.ad_a, "two");
+	Sent a3 = send(p.a, p.ad_a, "three");
+	CHECK(receive(p.b, p.ad_b, a3, text) && text == "three");
+	CHECK(receive(p.b, p.ad_b, a1, text) && text == "one");
+	CHECK(p.b.skipped.size() == 1);
+	// the state is saved and loaded between two messages
+	fc::Ratchet loaded;
+	CHECK(fc::Ratchet::Load(p.b.Save(), loaded));
+	p.b = loaded;
+	CHECK(receive(p.b, p.ad_b, a2, text) && text == "two");
+	CHECK(p.b.skipped.empty());
+	// a message read twice does not open twice
+	CHECK(!receive(p.b, p.ad_b, a2, text));
+	// a changed byte in the text, the header or the associated data
+	Sent b2 = send(p.b, p.ad_b, "four");
+	Sent changed = b2;
+	changed.sealed[0] ^= 1;
+	CHECK(!receive(p.a, p.ad_a, changed, text));
+	changed = b2;
+	changed.h.n += 1;
+	CHECK(!receive(p.a, p.ad_a, changed, text));
+	fc::Bytes other_ad = p.ad_a;
+	other_ad[0] ^= 1;
+	CHECK(!receive(p.a, other_ad, b2, text));
+	// and the real one still opens after all that
+	CHECK(receive(p.a, p.ad_a, b2, text) && text == "four");
+	// a long back and forth
+	for(int i = 0; i < 20; i++)
+	{
+		Sent x = send(i % 3 ? p.a : p.b, i % 3 ? p.ad_a : p.ad_b, "m" + std::to_string(i));
+		CHECK(receive(i % 3 ? p.b : p.a, i % 3 ? p.ad_b : p.ad_a, x, text) && text == "m" + std::to_string(i));
+	}
+	// far too many skipped messages are refused
+	Sent far;
+	for(size_t i = 0; i < fc::kMaxSkippedKeys + 5; i++)
+		far = send(p.a, p.ad_a, "x");
+	CHECK(!receive(p.b, p.ad_b, far, text));
+}
+
+TEST(friends_envelope_round_trip)
+{
+	FriendsPair p;
+	CHECK(p.Start(true, "hello"));
+	fc::Envelope e;
+	CHECK(fc::Envelope::Decode(p.first.Encode(), e));
+	CHECK(e.kind == 1 && e.from_fp == p.alice.fp && e.ek == p.first.ek && e.opk_id == 5 && e.sealed == p.first.sealed);
+	fc::Bytes bytes = p.first.Encode();
+	bytes.push_back(0);
+	CHECK(!fc::Envelope::Decode(bytes, e));
+	bytes = p.first.Encode();
+	bytes[1] = 3;
+	CHECK(!fc::Envelope::Decode(bytes, e));
+}
+
+TEST(friends_group_sender_keys)
+{
+	fc::SenderChain mine, theirs;
+	CHECK(mine.New(1));
+	// what the others get of it
+	theirs.chain = mine.chain;
+	theirs.ck = mine.ck;
+	theirs.sign_pub = mine.sign.pub;
+	fc::Id16 group{}, fp{};
+	group.fill(3);
+	fp.fill(4);
+	fc::DeviceId device{};
+	std::vector<fc::Bytes> sent(5);
+	for(int i = 0; i < 5; i++)
+		CHECK(fc::GroupSeal(mine, group, fp, device, fc::Label("g" + std::to_string(i)), sent[static_cast<size_t>(i)]));
+	auto open = [&](const fc::Bytes &bytes, std::string &text) {
+		fc::GroupMessage m;
+		fc::Bytes plain;
+		if(!fc::GroupMessage::Decode(bytes, m) || !fc::GroupOpen(theirs, m, plain))
+			return false;
+		text.assign(plain.begin(), plain.end());
+		return true;
+	};
+	std::string text;
+	CHECK(open(sent[0], text) && text == "g0");
+	CHECK(open(sent[3], text) && text == "g3");
+	CHECK(open(sent[1], text) && text == "g1");
+	CHECK(open(sent[2], text) && text == "g2");
+	CHECK(!open(sent[2], text));
+	CHECK(open(sent[4], text) && text == "g4");
+	// signed by somebody else, or changed
+	fc::GroupMessage m;
+	CHECK(fc::GroupMessage::Decode(sent[4], m));
+	fc::KeyPair impostor;
+	CHECK(fc::GenerateKeyPair(impostor));
+	fc::SenderChain fake = theirs;
+	fake.sign_pub = impostor.pub;
+	fc::Bytes plain;
+	CHECK(!fc::GroupOpen(fake, m, plain));
+	fc::Bytes changed = sent[4];
+	changed[changed.size() - 70] ^= 1;
+	CHECK(!open(changed, text));
+}
+
+TEST(friends_status_box)
+{
+	using namespace coplay::friends;
+	Key32 a{}, b{};
+	a[0] = 1;
+	b[0] = 2;
+	// A name per key and day: the same for everybody who has the key, another the next day
+	CHECK(StatusBox(a, 20420) == StatusBox(a, 20420));
+	CHECK(StatusBox(a, 20420) != StatusBox(a, 20421));
+	CHECK(StatusBox(a, 20420) != StatusBox(b, 20420));
+}
+
+TEST(friends_status_note)
+{
+	fc::Key32 epoch_key;
+	epoch_key.fill(7);
+	fc::Id16 fp{};
+	fp.fill(1);
+	fc::Bytes note;
+	CHECK(fc::SealStatus(epoch_key, 2, 5, fp, "{\"state\":\"online\"}", note));
+	std::string json;
+	uint32_t day = 0;
+	CHECK(fc::OpenStatus(epoch_key, 2, fp, note, json, &day) && json == "{\"state\":\"online\"}" && day == 5);
+	// another epoch, another identity, another key
+	CHECK(!fc::OpenStatus(epoch_key, 3, fp, note, json));
+	fc::Id16 other = fp;
+	other[0] = 9;
+	CHECK(!fc::OpenStatus(epoch_key, 2, other, note, json));
+	fc::Key32 wrong = epoch_key;
+	wrong[0] ^= 1;
+	CHECK(!fc::OpenStatus(wrong, 2, fp, note, json));
+	// a day's key comes from the day before, not the other way round
+	CHECK(fc::FriendsKeyForDay(epoch_key, 0) == epoch_key);
+	CHECK(fc::FriendsKeyForDay(fc::FriendsKeyForDay(epoch_key, 3), 2) == fc::FriendsKeyForDay(epoch_key, 5));
+}
+
+TEST(friends_codes_links_and_backup)
+{
+	fc::Id16 a{}, b{};
+	a.fill(1);
+	b.fill(2);
+	const std::string code = fc::SafetyCode(a, b);
+	CHECK(code == fc::SafetyCode(b, a) && code.size() == 29);
+	fc::Key32 k;
+	k.fill(5);
+	const std::string link = fc::LinkCode(k);
+	CHECK(link.size() == 7 && link[3] == ' ');
+	CHECK(fc::RequestBox(a) != fc::RequestBox(b) && fc::LinkBox(a) != fc::RequestBox(a));
+	std::string text;
+	CHECK(fc::SealBackup("correct horse", "{\"x\":1}", text, 100000));
+	CHECK(text.compare(0, 15, "PSRPT-BACKUP 1\n") == 0);
+	std::string json;
+	CHECK(fc::OpenBackup("correct horse", text, json) && json == "{\"x\":1}");
+	CHECK(!fc::OpenBackup("Correct horse", text, json));
+	// a file that asks for too few rounds is refused, as one that was changed
+	std::string weak;
+	CHECK(fc::SealBackup("p", "{}", weak, 1000));
+	CHECK(!fc::OpenBackup("p", weak, json));
+	std::string changed = text;
+	changed[40] = changed[40] == 'A' ? 'B' : 'A';
+	CHECK(!fc::OpenBackup("correct horse", changed, json));
+	// the message a request is signed over
+	const fc::Bytes m = fc::RequestMessage("status_put", "123", { { "note", "N" }, { "fp", "F" } });
+	CHECK(std::string(m.begin(), m.end()) == "psrpt friends 1\nstatus_put\n123\nfp=F\nnote=N\n");
 }
 
 int main(int argc, char **argv)

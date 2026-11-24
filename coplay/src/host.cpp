@@ -233,6 +233,8 @@ void Host::Fire(Deferred &d)
 		callbacks.on_sleep_requested(d.sleep_slot, d.sleep_name);
 	if(d.wake_requested && callbacks.on_wake_requested)
 		callbacks.on_wake_requested(d.wake_slot, d.wake_name);
+	if(d.chat_marks_changed && callbacks.on_chat_marks)
+		callbacks.on_chat_marks();
 	if(callbacks.on_guest_behind)
 	{
 		for(const auto &who : d.behind)
@@ -351,9 +353,39 @@ void Host::RemoveGuest(uint32_t conn_id, Deferred &d, const std::string &why)
 		d.key_mouse.push_back(gone);
 	}
 	BlobRef avatar = g.avatar;
+	const uint8_t slot = g.slot;
 	if(g.web_peer)
 		web_closing.emplace_back(g.web_peer, NowMs() + kWebCloseDelayMs);
 	guests.erase(it);
+	// Their read mark and reactions go: the slot may be somebody else's next
+	if(was_confirmed)
+	{
+		std::vector<ChatMark> gone;
+		if(chat_marks.read.count(slot))
+		{
+			ChatMark m;
+			m.kind = ChatMarkKind::Read;
+			m.slot = slot;
+			gone.push_back(m);
+		}
+		for(const auto &message : chat_marks.reactions)
+		{
+			for(const auto &kind : message.second)
+			{
+				if(std::find(kind.second.begin(), kind.second.end(), slot) == kind.second.end())
+					continue;
+				ChatMark m;
+				m.kind = ChatMarkKind::Reaction;
+				m.slot = slot;
+				m.seq = message.first;
+				m.on = false;
+				m.emoji = kind.first;
+				gone.push_back(m);
+			}
+		}
+		for(const ChatMark &m : gone)
+			ChangeMark(m, NowMs(), d);
+	}
 	if(avatar.Valid() && avatar != own_avatar)
 	{
 		bool still_used = false;
@@ -585,6 +617,30 @@ void Host::ConfirmGuest(Guest &g, uint64_t now_ms, Deferred &d)
 	size_t skip = chat_log.size() > kChatHistorySize ? chat_log.size() - kChatHistorySize : 0;
 	for(size_t i = skip; i < chat_log.size(); i++)
 		SendChatTo(g, chat_log[i].seq, now_ms, true);
+	// And who read how far, and the reactions to it
+	for(const auto &read : chat_marks.read)
+	{
+		ChatMark m;
+		m.kind = ChatMarkKind::Read;
+		m.slot = read.first;
+		m.seq = read.second;
+		SendMarkTo(g, m, now_ms);
+	}
+	for(const auto &message : chat_marks.reactions)
+	{
+		for(const auto &kind : message.second)
+		{
+			for(uint8_t slot : kind.second)
+			{
+				ChatMark m;
+				m.kind = ChatMarkKind::Reaction;
+				m.slot = slot;
+				m.seq = message.first;
+				m.emoji = kind.first;
+				SendMarkTo(g, m, now_ms);
+			}
+		}
+	}
 }
 
 bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, size_t size, uint64_t now_ms, Deferred &d)
@@ -748,6 +804,52 @@ bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, 
 			uint32_t seq = r.U32();
 			if(r.ok())
 				g.chat_pending.erase(seq);
+			break;
+		}
+		case PacketType::ChatSeen: {
+			const uint32_t seq = r.U32();
+			if(!r.ok() || !g.confirmed || seq == 0 || seq > chat_seq)
+				break;
+			const auto at = chat_marks.read.find(g.slot);
+			if(at != chat_marks.read.end() && at->second >= seq)
+				break;
+			ChatMark m;
+			m.kind = ChatMarkKind::Read;
+			m.slot = g.slot;
+			m.seq = seq;
+			ChangeMark(m, now_ms, d);
+			break;
+		}
+		case PacketType::ChatReactUp: {
+			ChatReaction react;
+			if(!ReadChatReaction(r, react) || !g.confirmed)
+				break;
+			// Only messages still in the log
+			if(std::none_of(chat_log.begin(), chat_log.end(), [&](const ChatMessage &m) { return m.seq == react.seq; }))
+				break;
+			ChatMark m;
+			m.kind = ChatMarkKind::Reaction;
+			m.slot = g.slot;
+			m.seq = react.seq;
+			m.on = react.on && ReactionAllowed(react.seq, g.slot, react.emoji);
+			m.emoji = react.emoji;
+			// Nothing changed (it came again, or it is over the limits): this guest is told how it
+			// stands, so that it stops sending it
+			if(!ChangeMark(m, now_ms, d))
+				SendMarkTo(g, m, now_ms);
+			break;
+		}
+		case PacketType::ChatMarkAck: {
+			const uint32_t mark = r.U32();
+			if(r.ok())
+				g.mark_pending.erase(mark);
+			break;
+		}
+		case PacketType::ChatDeleteUp: {
+			const uint32_t seq = r.U32();
+			if(!r.ok() || seq == 0 || !g.confirmed)
+				break;
+			DeleteFromLog(seq, g.slot, &g, now_ms, d);
 			break;
 		}
 		case PacketType::KeyframeRequest:
@@ -2264,6 +2366,9 @@ void Host::HandleChatUp(Guest &g, ByteReader &r, uint64_t now_ms, Deferred &d)
 	m.slot = g.slot;
 	m.name = g.name;
 	m.flags = 0;
+	// An answer only to a message everybody can still see
+	if(!InChatLog(m.reply))
+		m.reply = 0;
 	if(m.embed.image.Valid())
 	{
 		// The others will ask us for it, and we ask the writer
@@ -2282,6 +2387,13 @@ void Host::PostChat(ChatMessage &m, uint64_t now_ms)
 	chat_log.push_back(m);
 	if(chat_log.size() > kChatLogSize)
 		chat_log.pop_front();
+	while(!chat_marks.reactions.empty() && chat_marks.reactions.begin()->first < chat_log.front().seq)
+		chat_marks.reactions.erase(chat_marks.reactions.begin());
+	// And what was deleted that long ago
+	while(!chat_marks.deleted.empty() && *chat_marks.deleted.begin() < chat_log.front().seq)
+		chat_marks.deleted.erase(chat_marks.deleted.begin());
+	while(!chat_deleted_by.empty() && chat_deleted_by.begin()->first < chat_log.front().seq)
+		chat_deleted_by.erase(chat_deleted_by.begin());
 	for(auto &entry : guests)
 	{
 		Guest &g = *entry.second;
@@ -2338,7 +2450,149 @@ void Host::ResendChats(uint64_t now_ms)
 		}
 		for(const auto &item : due)
 			SendChatTo(g, item.first, now_ms, item.second);
+		for(auto it = g.mark_pending.begin(); it != g.mark_pending.end();)
+		{
+			if(ElapsedMs(now_ms, it->second.first_ms) > kChatGiveUpMs)
+			{
+				it = g.mark_pending.erase(it);
+				continue;
+			}
+			if(ElapsedMs(now_ms, it->second.last_ms) >= kChatResendMs)
+			{
+				it->second.last_ms = now_ms;
+				SendToGuest(g, PacketType::ChatMark, it->second.payload);
+			}
+			++it;
+		}
 	}
+}
+
+bool Host::ChangeMark(ChatMark m, uint64_t now_ms, Deferred &d)
+{
+	if(!ApplyChatMark(chat_marks, m))
+		return false;
+	for(auto &entry : guests)
+	{
+		if(entry.second->confirmed)
+			SendMarkTo(*entry.second, m, now_ms);
+	}
+	d.chat_marks_changed = true;
+	return true;
+}
+
+void Host::SendMarkTo(Guest &g, ChatMark m, uint64_t now_ms)
+{
+	// Every mark a number of its own: the guest applies them in that order
+	m.mark = ++chat_mark_seq;
+	std::vector<uint8_t> payload;
+	ByteWriter w(payload);
+	WriteChatMark(w, m);
+	SendToGuest(g, PacketType::ChatMark, payload);
+	Guest::PendingMark &p = g.mark_pending[m.mark];
+	p.payload = payload;
+	p.first_ms = now_ms;
+	p.last_ms = now_ms;
+}
+
+bool Host::ReactionAllowed(uint32_t seq, uint8_t slot, const std::string &emoji) const
+{
+	const auto message = chat_marks.reactions.find(seq);
+	if(message == chat_marks.reactions.end())
+		return true;
+	if(message->second.count(emoji))
+		return true;
+	if(message->second.size() >= kMaxReactionKinds)
+		return false;
+	size_t own = 0;
+	for(const auto &kind : message->second)
+		own += std::count(kind.second.begin(), kind.second.end(), slot) > 0 ? 1 : 0;
+	return own < kMaxReactionsPerPlayer;
+}
+
+void Host::SetChatRead(uint32_t seq)
+{
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		const auto at = chat_marks.read.find(0);
+		if(!running || seq == 0 || seq > chat_seq || (at != chat_marks.read.end() && at->second >= seq))
+			return;
+		ChatMark m;
+		m.kind = ChatMarkKind::Read;
+		m.slot = 0;
+		m.seq = seq;
+		ChangeMark(m, NowMs(), d);
+	}
+	Fire(d);
+}
+
+void Host::React(uint32_t seq, const std::string &emoji, bool on)
+{
+	if(!ValidReaction(emoji))
+		return;
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		if(!running || std::none_of(chat_log.begin(), chat_log.end(), [seq](const ChatMessage &m) { return m.seq == seq; }))
+			return;
+		ChatMark m;
+		m.kind = ChatMarkKind::Reaction;
+		m.slot = 0;
+		m.seq = seq;
+		m.on = on && ReactionAllowed(seq, 0, emoji);
+		m.emoji = emoji;
+		ChangeMark(m, NowMs(), d);
+	}
+	Fire(d);
+}
+
+void Host::DeleteChat(uint32_t seq)
+{
+	Deferred d;
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		if(!running || seq == 0)
+			return;
+		DeleteFromLog(seq, 0, nullptr, NowMs(), d);
+	}
+	Fire(d);
+}
+
+bool Host::InChatLog(uint32_t seq) const
+{
+	return seq != 0 && std::any_of(chat_log.begin(), chat_log.end(), [seq](const ChatMessage &m) { return m.seq == seq; });
+}
+
+void Host::DeleteFromLog(uint32_t seq, uint8_t slot, Guest *asking, uint64_t now_ms, Deferred &d)
+{
+	ChatMark m;
+	m.kind = ChatMarkKind::Deleted;
+	m.slot = slot;
+	m.seq = seq;
+	// Deleted already (the asking came again): the writer is told, so that it stops asking
+	const auto done = chat_deleted_by.find(seq);
+	if(done != chat_deleted_by.end())
+	{
+		if(asking && done->second == slot)
+			SendMarkTo(*asking, m, now_ms);
+		return;
+	}
+	// Only the writer's own, and only while everybody can still see it
+	auto it = std::find_if(chat_log.begin(), chat_log.end(), [seq](const ChatMessage &c) { return c.seq == seq; });
+	if(it == chat_log.end() || it->slot != slot)
+		return;
+	chat_log.erase(it);
+	chat_deleted_by[seq] = slot;
+	// Not sent to anybody any more (a newcomer's history, a guest still waiting for it)
+	for(auto &entry : guests)
+		entry.second->chat_pending.erase(seq);
+	ChangeMark(m, now_ms, d);
+}
+
+ChatMarks Host::GetChatMarks()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	return chat_marks;
 }
 
 void Host::TrackChatImage(const BlobHash &hash)
@@ -2354,7 +2608,7 @@ void Host::TrackChatImage(const BlobHash &hash)
 	}
 }
 
-ChatMessage Host::SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image)
+ChatMessage Host::SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image, uint32_t reply)
 {
 	ChatMessage m;
 	m.text = TruncateUtf8(text, kMaxChatText);
@@ -2366,6 +2620,7 @@ ChatMessage Host::SendChat(const std::string &text, const ChatEmbed &embed, cons
 	std::lock_guard<std::mutex> lock(mutex);
 	if(!running)
 		return m;
+	m.reply = InChatLog(reply) ? reply : 0;
 	if(m.embed.Valid() && !image.empty() && image.size() <= kMaxChatImageSize)
 	{
 		m.embed.image = chat_blobs.Put(image);

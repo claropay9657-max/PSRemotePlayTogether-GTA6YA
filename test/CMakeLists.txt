@@ -49,6 +49,17 @@ target_include_directories(appupdate-unit PRIVATE "${CMAKE_SOURCE_DIR}/gui/inclu
 set_target_properties(appupdate-unit PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 add_test(NAME appupdate COMMAND appupdate-unit)
 
+# Starting with the computer: the .desktop file, the Run value and the --tray flag they carry,
+# read back as the desktop, Windows and the app read them (gui/src/autostart.cpp, with Qt Core)
+find_package(Qt6 QUIET COMPONENTS Core)
+if(Qt6Core_FOUND)
+	add_executable(autostart-unit autostart.cpp "${CMAKE_SOURCE_DIR}/gui/src/autostart.cpp")
+	target_include_directories(autostart-unit PRIVATE "${CMAKE_SOURCE_DIR}/gui/include")
+	target_link_libraries(autostart-unit Qt6::Core)
+	set_target_properties(autostart-unit PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+	add_test(NAME autostart COMMAND autostart-unit)
+endif()
+
 target_link_libraries(chiaki-unit chiaki-lib munit)
 
 if(CHIAKI_ENABLE_FFMPEG_DECODER)

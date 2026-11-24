@@ -7,6 +7,9 @@
 #include "appupdater.h"
 #include "macpermissions.h"
 #include "introsound.h"
+#include "friends.h"
+#include "tray.h"
+#include <QStandardPaths>
 #include "twitch.h"
 #include "twitchelements.h"
 #include "vieweractions.h"
@@ -448,6 +451,32 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     device_check = new DeviceCheck(settings, this);
     permissions = new MacPermissions(&discovery_manager, this);
     intro_sound = new IntroSound(settings, this);
+    // Friends belong to the player, not to a setting set: one folder for all of them. Their
+    // key goes into the password store where it stays readable for every new version of the
+    // app; macOS asks again for each differently signed build, so there it is a file only this
+    // user can read, next to the data.
+    friends_client = new FriendsClient(this);
+#ifdef Q_OS_MACOS
+    const QString friends_secret;
+#else
+    const QString friends_secret = QStringLiteral("friends-store");
+#endif
+    friends_client->SetStorage(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/friends"), friends_secret);
+    updateFriendsProfile();
+    connect(settings_qml, &QmlSettings::coplayChanged, this, &QmlBackend::updateFriendsProfile);
+    // What this computer does, for the friends' status: the session, its game, the room to join
+    connect(this, &QmlBackend::sessionChanged, this, [this](StreamSession *s) {
+        if (s)
+            connect(s, &StreamSession::CoPlayChanged, this, &QmlBackend::updateFriendsActivity, Qt::UniqueConnection);
+        updateFriendsActivity();
+    });
+    // The tray: the friends status as a dot, the friends who host, notifications, and the app
+    // kept there when the window closes (Settings, General)
+    {
+        TrayIcon *tray_icon = new TrayIcon(friends_client, settings_qml, window, this);
+        tray = tray_icon;
+        connect(this, &QmlBackend::sessionChanged, tray_icon, [tray_icon](StreamSession *s) { tray_icon->SetPlaying(s != nullptr); });
+    }
     // While playing, the session has the microphone, the speakers and the webcam
     connect(this, &QmlBackend::sessionChanged, device_check, [this]() {
         if (session)
@@ -3171,8 +3200,9 @@ void QmlBackend::updateDiscoveryHosts()
             }
         }
     }
-    // The game of a public room: what the console of the session says it runs
-    if (session && session->GetCoPlayPublic()) {
+    // The game of a hosted session (its public room, the invites to friends): what the console
+    // of the session says it runs
+    if (session && session->IsCoPlayHosting()) {
         for (const auto &host : discovery_manager.GetHosts()) {
             if (host.host_addr == session_info.host && host.state == CHIAKI_DISCOVERY_HOST_STATE_READY) {
                 session->SetCoPlayRoomGame(host.running_app_name, host.running_app_titleid);
@@ -3222,6 +3252,9 @@ void QmlBackend::updateDiscoveryHosts()
         }
     }
     emit hostsChanged();
+    // The game the console now says it runs, for the friends' status
+    if (session)
+        updateFriendsActivity();
 }
 
 void QmlBackend::prepareStartupPresentation(bool present_warmup)

@@ -5,11 +5,12 @@ import org.streetpea.chiaking
 
 import "../controls" as C
 
-// General: what happens when a session ends, and while you stream.
+// General: how the app starts and stays in the tray, notifications, what happens when a
+// session ends, and while you stream.
 C.SettingsPage {
     id: page
     title: qsTr("General")
-    description: qsTr("What happens when a session ends, and while you stream.")
+    description: qsTr("How the app starts, the tray and notifications, what happens when a session ends, and while you stream.")
 
     /** The buttons a combination can use, by Chiaki.settings.streamMenuShortcut1…4; 0 is none. */
     readonly property var buttonNames: [qsTr("None"), qsTr("Cross"), qsTr("Circle"), qsTr("Square"), qsTr("Triangle"),
@@ -21,6 +22,107 @@ C.SettingsPage {
     readonly property var menuButtons: [Chiaki.settings.streamMenuShortcut1, Chiaki.settings.streamMenuShortcut2,
         Chiaki.settings.streamMenuShortcut3, Chiaki.settings.streamMenuShortcut4].filter((b) => b > 0)
     property bool changingCombination: false
+    /** The tray is the menu bar on a Mac. */
+    readonly property bool mac: Qt.platform.os === "osx"
+    /** This desktop has a tray to keep the app in. */
+    readonly property bool trayAvailable: !!Chiaki.tray && Chiaki.tray.available
+
+    // What the system has may have been changed in its own settings meanwhile
+    Component.onCompleted: Chiaki.settings.refreshStartWithComputer()
+
+    C.SettingsGroup {
+        title: qsTr("Start, tray and notifications")
+
+        C.SettingsRow {
+            enabled: Chiaki.settings.startWithComputerPossible
+            title: qsTr("Start with the computer")
+            subtitle: Chiaki.settings.startWithComputerNote
+                      || qsTr("Opens PSRemotePlayTogether when you log in, so friends see you online and can reach you.")
+            keywords: qsTr("autostart login startup launch boot")
+            switchItem: startWithComputer
+
+            C.Toggle {
+                id: startWithComputer
+                Accessible.name: qsTr("Start with the computer")
+                checked: Chiaki.settings.startWithComputer
+                onToggled: {
+                    Chiaki.settings.startWithComputer = checked;
+                    // The system may have said no: show what it has
+                    checked = Qt.binding(() => Chiaki.settings.startWithComputer);
+                }
+            }
+        }
+
+        C.SettingsRow {
+            sub: true
+            enabled: page.trayAvailable && Chiaki.settings.startWithComputerPossible && Chiaki.settings.startWithComputer
+            title: qsTr("Start in the tray")
+            subtitle: page.mac
+                      ? qsTr("No window when it starts with the computer, only the icon in the menu bar. The window opens from there.")
+                      : qsTr("No window when it starts with the computer, only the icon in the tray. The window opens from there.")
+            keywords: qsTr("minimized hidden background menu bar")
+            switchItem: startInTray
+
+            C.Toggle {
+                id: startInTray
+                Accessible.name: qsTr("Start in the tray")
+                checked: Chiaki.settings.startInTray
+                onToggled: Chiaki.settings.startInTray = checked
+            }
+        }
+
+        C.SettingsRow {
+            enabled: page.trayAvailable
+            title: qsTr("Closing the window keeps the app in the tray")
+            subtitle: !page.trayAvailable
+                      ? qsTr("This desktop shows no tray icons, so closing the window quits the app.")
+                      : page.mac
+                        ? qsTr("The icon stays in the menu bar with your status and the friends who host. Quit from there.")
+                        : qsTr("The icon stays in the tray with your status and the friends who host. Quit from there.")
+            keywords: qsTr("close minimize background menu bar quit")
+            switchItem: closeToTray
+
+            C.Toggle {
+                id: closeToTray
+                Accessible.name: qsTr("Closing the window keeps the app in the tray")
+                checked: Chiaki.settings.closeToTray
+                onToggled: Chiaki.settings.closeToTray = checked
+            }
+        }
+
+        C.SettingsRow {
+            enabled: !Chiaki.tray || Chiaki.tray.notificationsPossible
+            title: qsTr("Notifications")
+            subtitle: Chiaki.tray && !Chiaki.tray.notificationsPossible
+                      ? qsTr("This desktop shows no notifications from apps.")
+                      : qsTr("Friend requests, new messages and friends who start hosting. Never while you are Busy or playing.")
+            keywords: qsTr("notify alert toast message request")
+            switchItem: notifications
+
+            C.Toggle {
+                id: notifications
+                Accessible.name: qsTr("Notifications")
+                checked: Chiaki.settings.notifications
+                onToggled: Chiaki.settings.notifications = checked
+            }
+        }
+
+        C.SettingsRow {
+            sub: true
+            enabled: Chiaki.settings.notifications && (!Chiaki.tray || Chiaki.tray.notificationsPossible)
+            title: qsTr("Show the words in notifications")
+            subtitle: qsTr("Off, a notification says who wrote, not what. On, anyone who sees your screen can read it.")
+            keywords: qsTr("message text preview privacy")
+            switchItem: notificationWords
+
+            C.Toggle {
+                id: notificationWords
+                Accessible.name: qsTr("Show the words in notifications")
+                checked: Chiaki.settings.notificationWords
+                onToggled: Chiaki.settings.notificationWords = checked
+            }
+        }
+    }
 
     C.SettingsGroup {
         title: qsTr("When a session ends")

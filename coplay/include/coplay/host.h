@@ -165,6 +165,8 @@ struct HostCallbacks
 	std::function<void(const ChatMessage &)> on_chat;
 	/** The picture of a link preview has arrived; fetch it with Host::ChatImage(). */
 	std::function<void(const BlobRef &)> on_chat_image;
+	/** Somebody read further or reacted to a message; see Host::GetChatMarks(). */
+	std::function<void()> on_chat_marks;
 	/** What Host::Reach() says has changed. */
 	std::function<void()> on_reach_changed;
 	/**
@@ -236,12 +238,21 @@ class Host
 
 		/**
 		 * Writes in the chat as the host. image is the preview picture of the
-		 * embed (JPEG, at most kMaxChatImageSize) or empty. @return the message as
-		 * everybody gets it; seq is 0 if it could not be sent
+		 * embed (JPEG, at most kMaxChatImageSize) or empty; reply is the message it
+		 * answers (0: none). @return the message as everybody gets it; seq is 0 if it
+		 * could not be sent
 		 */
-		ChatMessage SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image);
+		ChatMessage SendChat(const std::string &text, const ChatEmbed &embed, const std::vector<uint8_t> &image, uint32_t reply = 0);
 		/** The picture of a link preview, or null if it is not (yet) here. */
 		BlobData ChatImage(const BlobHash &hash);
+		/** The host has read the chat up to this message. */
+		void SetChatRead(uint32_t seq);
+		/** The host's own reaction to a message, given or taken back. */
+		void React(uint32_t seq, const std::string &emoji, bool on);
+		/** Deletes one of the host's own messages for everybody. */
+		void DeleteChat(uint32_t seq);
+		/** Who read how far, and the reactions. */
+		ChatMarks GetChatMarks();
 
 		void SetRumble(uint8_t left, uint8_t right);
 		void SetTriggerEffects(uint8_t type_left, uint8_t type_right, const uint8_t left[10], const uint8_t right[10]);
@@ -393,6 +404,14 @@ class Host
 				bool history = false;
 			};
 			std::map<uint32_t, PendingChat> chat_pending; // by seq
+			/** Read marks and reactions it has not acknowledged yet, by mark number. */
+			struct PendingMark
+			{
+				std::vector<uint8_t> payload;
+				uint64_t first_ms = 0;
+				uint64_t last_ms = 0;
+			};
+			std::map<uint32_t, PendingMark> mark_pending;
 			std::deque<uint32_t> chat_up_seen; // its own numbers of what it wrote lately
 			/** Not 0: a guest in a web browser, reached through the WebRTC gateway under this id. */
 			uint64_t web_peer = 0;
@@ -432,6 +451,7 @@ class Host
 			std::vector<std::pair<uint8_t, std::vector<uint8_t>>> cams;  // slot, picture
 			std::vector<ChatMessage> chats;
 			std::vector<BlobRef> chat_images;
+			bool chat_marks_changed = false;
 			std::vector<KeyMouseUpdate> key_mouse;
 		};
 
@@ -506,6 +526,15 @@ class Host
 		void ResendChats(uint64_t now_ms);
 		/** Keeps the pictures of link previews to a few. */
 		void TrackChatImage(const BlobHash &hash);
+		/** Applies a read mark or reaction and tells every guest; false if it changed nothing. */
+		bool ChangeMark(ChatMark m, uint64_t now_ms, Deferred &d);
+		void SendMarkTo(Guest &g, ChatMark m, uint64_t now_ms);
+		/** Whether a player may give this reaction to this message (the limits per message). */
+		bool ReactionAllowed(uint32_t seq, uint8_t slot, const std::string &emoji) const;
+		/** A writer deletes their message: out of the log, and a mark to everybody. */
+		void DeleteFromLog(uint32_t seq, uint8_t slot, Guest *asking, uint64_t now_ms, Deferred &d);
+		/** A message still in the log, by number (0 or gone: none). */
+		bool InChatLog(uint32_t seq) const;
 		void BumpSeq(uint16_t &seq);
 		Guest *FindBySlot(uint8_t slot);
 		void TickMeet(uint64_t now_ms, Deferred &d);
@@ -566,6 +595,10 @@ class Host
 
 		std::deque<ChatMessage> chat_log;
 		uint32_t chat_seq = 0;
+		ChatMarks chat_marks;
+		/** Who deleted which message (its writer), while it would still be in the log. */
+		std::map<uint32_t, uint8_t> chat_deleted_by;
+		uint32_t chat_mark_seq = 0;
 		BlobStore chat_blobs;
 		std::deque<BlobHash> chat_blob_order;
 		std::map<BlobHash, uint32_t> chat_blob_from; // picture -> conn_id of the guest that has it
