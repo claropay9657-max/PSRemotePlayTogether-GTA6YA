@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-AGPL-3.0-only-OpenSSL
-// GTA6YA v0.1: localhost control bridge (disabled unless token configured).
-// IMPORTANT: not connected to Cloudflare yet. Never expose this port to the network.
+// GTA6YA v0.2: localhost control bridge (disabled unless token configured).
+// Never expose this port to the network. The agent connects outward to Cloudflare.
 
 #include "gta6yabridge.h"
 #include "qmlbackend.h"
@@ -168,6 +168,29 @@ private:
                 data.insert("guests", guests);
             }
             reply(socket, 200, data);
+            return;
+        }
+        // Read the existing invitation only while the private host is locked and empty.
+        // END already rotates the invitation. Never put credentials in STATUS or logs.
+        if (method == "GET" && path == "/v1/invite") {
+            if (!hosting || session->GetCoPlayPublic() ||
+                session->GetCoPlayMixMode() != static_cast<int>(coplay::MixMode::HostOnly)) {
+                reply(socket, 409, {{"ok", false}, {"error", "private_locked_host_required"}});
+                return;
+            }
+            for (const QVariant &v : session->GetCoPlayPlayers()) {
+                if (!v.toMap().value("host").toBool()) {
+                    reply(socket, 409, {{"ok", false}, {"error", "guests_present"}});
+                    return;
+                }
+            }
+            const QString invite = session->GetCoPlayInviteWeb();
+            if (!invite.startsWith(QStringLiteral("https://gta6ya.com/jugar/#")) ||
+                invite.size() <= QStringLiteral("https://gta6ya.com/jugar/#").size()) {
+                reply(socket, 409, {{"ok", false}, {"error", "gta6ya_web_invite_unavailable"}});
+                return;
+            }
+            reply(socket, 200, {{"ok", true}, {"invite", invite}});
             return;
         }
         if (method != "POST" ||

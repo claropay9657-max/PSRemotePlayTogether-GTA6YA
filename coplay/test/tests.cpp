@@ -1812,6 +1812,24 @@ TEST(net_input_reaches_host_and_is_merged)
 	h.host->SetMixMode(MixMode::Together);
 }
 
+TEST(net_gta6ya_guest_system_buttons_filtered)
+{
+ TestHost h;
+ TestGuest g(h.MakeInvite(), "Guest", 0);
+ CHECK(g.Connect());
+ CHECK(WaitFor([&] { return h.host->Guests().size() == 1; }, 2000));
+ h.host->SetLocalInput(Pad(kButtonPs | kButtonShare));
+ CHECK(h.host->MixedInput().buttons == (kButtonPs | kButtonShare));
+ h.host->SetLocalInput(Pad(0));
+ g.client->SetInput(Pad(kButtonPs | kButtonShare | kButtonCross, -20000, 15000, 0, 180));
+ CHECK(WaitFor([&] { return (h.host->MixedInput().buttons & kButtonCross) != 0; }, 1000));
+ PadState m = h.host->MixedInput();
+ CHECK(m.buttons == kButtonCross);
+ CHECK(m.left_x == -20000 && m.left_y == 15000 && m.r2 == 180);
+ h.host->SetMixMode(MixMode::HostOnly);
+ CHECK(h.host->MixedInput().buttons == 0);
+}
+
 TEST(protocol_key_mouse_roundtrip)
 {
 	KeyMouseState s;

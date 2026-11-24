@@ -655,6 +655,9 @@ bool Host::HandleGuestPacket(Guest &g, PacketType type, const uint8_t *payload, 
 				break;
 			if(g.have_input && static_cast<int32_t>(seq - g.last_input_seq) <= 0)
 				break; // older than what we already have
+			// GTA6YA: filter guest system buttons before mixing. Host input is unchanged.
+			if(stream.source == GameSource::Console)
+				state.buttons &= ~(kButtonPs | kButtonShare);
 			g.have_input = true;
 			g.last_input_seq = seq;
 			// Each on a controller of their own: a guest's input changes no mix, but its controller
